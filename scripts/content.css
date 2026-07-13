@@ -181,4 +181,168 @@
   font-size: 0.78rem;
   color: rgba(255, 255, 255, 0.45);
   line-height: 1.4;
+  margin-top: 4px;
+}
+
+/* Injected Interactive Controls */
+.cm-tracker-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.cm-control-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cm-control-item label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.50);
+}
+
+.cm-dropdown {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #fff;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+  min-width: 110px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.cm-dropdown:hover, .cm-dropdown:focus {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Custom Multiselect Popover */
+.cm-multiselect-details {
+  position: relative;
+  display: inline-block;
+}
+
+.cm-multiselect-details summary {
+  list-style: none;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #fff;
+  padding: 6px 28px 6px 10px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+  min-width: 100px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  user-select: none;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+}
+
+.cm-multiselect-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.cm-multiselect-details summary::after {
+  content: '';
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid rgba(255, 255, 255, 0.6);
+  transition: transform 0.2s;
+}
+
+.cm-multiselect-details[open] summary::after {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.cm-multiselect-details summary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.cm-multiselect-options {
+  position: absolute;
+  top: 105%;
+  left: 0;
+  z-index: 10000;
+  background: rgba(20, 20, 22, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px;
+  width: 160px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: cm-fade-in 0.15s ease-out forwards;
+}
+
+@keyframes cm-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.cm-multiselect-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.cm-multiselect-options label:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.cm-multiselect-options input[type="checkbox"] {
+  accent-color: #10b981;
+  cursor: pointer;
+  margin: 0;
+}
+
+/* Match Badge & Meta Info */
+.cm-tracker-match-badge {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #34d399;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  display: inline-flex;
+  align-items: center;
+}
+
+.loading-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
