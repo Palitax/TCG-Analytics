@@ -14,13 +14,16 @@ const CONDITION_NAMES = {
   "PO": "Poor"
 };
 
-// Map language codes to labels in Cardmarket
+// Map language codes to labels in Cardmarket (Expanded with JP, ZH, KO)
 const LANGUAGE_LABELS = {
   "DE": ["Deutsch", "German"],
   "EN": ["Englisch", "English"],
   "ES": ["Spanisch", "Spanish"],
   "FR": ["Französisch", "French"],
-  "IT": ["Italienisch", "Italian"]
+  "IT": ["Italienisch", "Italian"],
+  "JP": ["Japanisch", "Japanese"],
+  "ZH": ["Chinesisch", "Chinese"],
+  "KO": ["Koreanisch", "Korean"]
 };
 
 const COUNTRY_NAMES = {
@@ -55,21 +58,16 @@ function getTcgAndCardId() {
 
 // Helper to find a checkbox input by its label keywords globally
 function findCheckboxByLabel(keywords) {
-  // Try to find the filter sidebar container first using broad aside/sidebar selectors
   let container = document.querySelector('aside, .sidebar, #sidebar, #searchFilterForm, .filter-sidebar, #filter-sidebar, [class*="sidebar"], [id*="sidebar"], [class*="filter"], [id*="filter"]');
   console.log(`findCheckboxByLabel: Searching keywords [${keywords.join(', ')}] in container:`, container ? container.tagName + (container.id ? '#' + container.id : '') : 'BODY');
   
   if (!container) container = document.body;
 
-  // Search labels, spans, divs and anchors
   const candidates = container.querySelectorAll('label, span, div, a');
   for (const el of candidates) {
-    // Skip if inside article table rows to prevent false-positives matching table rows
     if (el.closest('.article-row, [id^="articleRow"], div.table-body > div.row, .table-body div.row, tr.article-row, .table-body, #articlesTable')) {
       continue;
     }
-
-    // Skip if it contains too many children (checkbox labels are simple)
     if (el.children.length > 3) continue;
 
     const text = el.textContent.trim().toLowerCase();
@@ -77,7 +75,6 @@ function findCheckboxByLabel(keywords) {
 
     const matchesKeyword = keywords.some(keyword => text === keyword.toLowerCase() || text.includes(keyword.toLowerCase()));
     if (matchesKeyword) {
-      // Find checkbox in its parent hierarchy (up to 4 levels)
       let parent = el;
       for (let i = 0; i < 4; i++) {
         if (!parent) break;
@@ -161,6 +158,8 @@ function getFlagHtml(type, code) {
 
   let flagClass = cleanCode.toLowerCase();
   if (flagClass === 'en') flagClass = 'gb'; // Map EN to GB flag class
+  else if (flagClass === 'zh') flagClass = 'cn'; // Map ZH (Chinese language) to CN (China flag)
+  else if (flagClass === 'ko') flagClass = 'kr'; // Map KO (Korean language) to KR (Korea flag)
   
   return `<img src="/img/static/v2/images/flags/${flagClass}.${ext}" class="flag" title="${cleanCode}" style="vertical-align: middle; display: inline-block; width: 16px; height: 11px; margin: 0;">`;
 }
@@ -171,7 +170,7 @@ function getSidebarState() {
   const isDeChecked = deCheckbox ? deCheckbox.checked : false;
 
   const activeLanguages = [];
-  const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT'];
+  const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
   for (const lang of langCodes) {
     const keywords = LANGUAGE_LABELS[lang];
     const checkbox = findCheckboxByLabel(keywords);
@@ -208,7 +207,7 @@ async function applySidebarFilter(newPrefs) {
   }
 
   // 2. Set language checkboxes
-  const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT'];
+  const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
   for (const lang of langCodes) {
     const keywords = LANGUAGE_LABELS[lang];
     const checkbox = findCheckboxByLabel(keywords);
@@ -304,7 +303,7 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
 
     // 3. Verify card language matches target
     let matchedLanguage = null;
-    const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT'];
+    const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
     const flags = row.querySelectorAll('.flag, .icon, img, [class*="flag"], [class*="icon"]');
     
     for (const el of flags) {
@@ -569,6 +568,9 @@ function updateOverlay(status, details = {}) {
               <label><input type="checkbox" value="ES" class="cm-lang-check" ${selectedLanguages.includes('ES') ? 'checked' : ''}> Spanisch</label>
               <label><input type="checkbox" value="FR" class="cm-lang-check" ${selectedLanguages.includes('FR') ? 'checked' : ''}> Französisch</label>
               <label><input type="checkbox" value="IT" class="cm-lang-check" ${selectedLanguages.includes('IT') ? 'checked' : ''}> Italienisch</label>
+              <label><input type="checkbox" value="JP" class="cm-lang-check" ${selectedLanguages.includes('JP') ? 'checked' : ''}> Japanisch</label>
+              <label><input type="checkbox" value="ZH" class="cm-lang-check" ${selectedLanguages.includes('ZH') ? 'checked' : ''}> Chinesisch</label>
+              <label><input type="checkbox" value="KO" class="cm-lang-check" ${selectedLanguages.includes('KO') ? 'checked' : ''}> Koreanisch</label>
             </div>
           </details>
         </div>
@@ -640,7 +642,7 @@ function attachListeners() {
     });
   });
 
-  // Seller click and highlight event binding
+  // Seller click and highlight event binding (Duration set to 5000ms / 5s)
   const clickableSeller = document.querySelector('.cm-clickable-seller');
   if (clickableSeller && currentMatchedElement) {
     clickableSeller.addEventListener('click', () => {
@@ -650,7 +652,7 @@ function attachListeners() {
         if (currentMatchedElement) {
           currentMatchedElement.classList.remove('cm-highlight-row');
         }
-      }, 1500);
+      }, 5000);
     });
   }
 
