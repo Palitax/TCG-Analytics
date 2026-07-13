@@ -1,6 +1,21 @@
 const SUPABASE_URL = "https://pjorjwwhiinaaebxvhhi.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqb3Jqd3doaWluYWFlYnh2aGhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5MjQ4NzEsImV4cCI6MjA5OTUwMDg3MX0.T8Gs9JaF9X-DbEgx0fSN9VeSEUPsV6nlFMd0RRW2hOs";
 
+// Robust base64url decoder to decode JWT payload safely
+function decodeJWT(token) {
+  try {
+    const base64Url = token.split('.')[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = base64.length % 4;
+    const padded = pad ? base64 + '='.repeat(4 - pad) : base64;
+    return JSON.parse(atob(padded));
+  } catch (err) {
+    console.error("Failed to decode JWT:", err);
+    return null;
+  }
+}
+
 // Helper to get active session tokens, with auto-refresh if expired
 async function getSession() {
   const { session } = await chrome.storage.local.get('session');
@@ -8,7 +23,9 @@ async function getSession() {
 
   // Check if access token is expired or close to expiry (e.g. expires in less than 5 minutes)
   try {
-    const payload = JSON.parse(atob(session.access_token.split('.')[1]));
+    const payload = decodeJWT(session.access_token);
+    if (!payload) return null;
+    
     const now = Math.floor(Date.now() / 1000);
     // If token is expired or expiring in under 5 minutes, refresh it
     if (payload.exp - now < 300) {
@@ -83,7 +100,10 @@ async function loginUser() {
         }
 
         // Decode JWT payload to get user details
-        const payload = JSON.parse(atob(accessToken.split('.')[1]));
+        const payload = decodeJWT(accessToken);
+        if (!payload) {
+          throw new Error("Failed to decode JWT response from OAuth provider");
+        }
 
         const session = {
           access_token: accessToken,
