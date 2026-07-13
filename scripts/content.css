@@ -346,3 +346,65 @@
   align-items: center;
   gap: 10px;
 }
+
+/* Flag layout in tracker */
+.cm-tracker-meta-flags {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px 12px;
+}
+
+.cm-flag-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-flag-group-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.02em;
+}
+
+/* Comments Container */
+.cm-tracker-comments-container {
+  margin-top: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cm-comments-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+}
+
+.cm-comment-row {
+  display: flex;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.cm-comment-label {
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 500;
+  min-width: 125px;
+}
+
+.cm-comment-val {
+  color: rgba(255, 255, 255, 0.85);
+  font-style: italic;
+}
