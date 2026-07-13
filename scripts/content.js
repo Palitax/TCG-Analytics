@@ -65,9 +65,12 @@ function findCheckboxByLabel(keywords) {
 
   const candidates = container.querySelectorAll('label, span, div, a');
   for (const el of candidates) {
+    // Skip if inside article table rows to prevent false-positives matching table rows
     if (el.closest('.article-row, [id^="articleRow"], div.table-body > div.row, .table-body div.row, tr.article-row, .table-body, #articlesTable')) {
       continue;
     }
+
+    // Skip if it contains too many children (checkbox labels are simple)
     if (el.children.length > 3) continue;
 
     const text = el.textContent.trim().toLowerCase();
@@ -106,8 +109,9 @@ function getFlagHtml(type, code) {
       if (type === 'language' && isSellerCol) continue;
 
       const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
-      const titleText = el.getAttribute('title') || '';
+      const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
       const srcText = el.getAttribute('src') || '';
+      const filename = srcText.split('/').pop().toUpperCase();
 
       let match = false;
       if (type === 'seller') {
@@ -118,22 +122,33 @@ function getFlagHtml(type, code) {
           titleText.toLowerCase().includes('(' + name.toLowerCase())
         );
 
-        if (
-          classText.toUpperCase().includes('FLAG-' + cleanCode) ||
-          srcText.toUpperCase().includes('/' + cleanCode + '.') ||
-          srcText.toUpperCase().includes('/' + cleanCode + '/') ||
-          matchesTitle
-        ) {
+        const matchesFile = filename.startsWith(cleanCode + '.') || filename === cleanCode;
+        const matchesClass = classText.toUpperCase().includes('FLAG-' + cleanCode);
+
+        if (matchesFile || matchesClass || matchesTitle) {
           match = true;
         }
       } else {
         const keywords = LANGUAGE_LABELS[cleanCode];
-        if (keywords) {
-          match = keywords.some(keyword =>
-            titleText.toLowerCase().includes(keyword.toLowerCase()) ||
-            srcText.toLowerCase().includes(cleanCode.toLowerCase()) ||
-            classText.toLowerCase().includes('flag-' + cleanCode.toLowerCase())
-          );
+        const matchesTitle = keywords && keywords.some(keyword =>
+          titleText.toLowerCase() === keyword.toLowerCase() ||
+          titleText.toLowerCase().includes(' ' + keyword.toLowerCase()) ||
+          titleText.toLowerCase().includes('(' + keyword.toLowerCase())
+        );
+
+        const matchesFile = filename.startsWith(cleanCode.toLowerCase() + '.') || 
+                            filename === cleanCode.toLowerCase() ||
+                            (cleanCode === 'EN' && (filename.startsWith('us.') || filename.startsWith('gb.'))) ||
+                            (cleanCode === 'ZH' && filename.startsWith('cn.')) ||
+                            (cleanCode === 'KO' && filename.startsWith('kr.'));
+
+        const matchesClass = classText.toLowerCase().includes('flag-' + cleanCode.toLowerCase()) ||
+                             (cleanCode === 'EN' && (classText.toLowerCase().includes('flag-us') || classText.toLowerCase().includes('flag-gb'))) ||
+                             (cleanCode === 'ZH' && classText.toLowerCase().includes('flag-cn')) ||
+                             (cleanCode === 'KO' && classText.toLowerCase().includes('flag-kr'));
+
+        if (matchesFile || matchesClass || matchesTitle) {
+          match = true;
         }
       }
 
@@ -255,6 +270,7 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
       const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
       const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
       const srcText = el.getAttribute('src') || '';
+      const filename = srcText.split('/').pop().toUpperCase();
       
       const codes = ['DE', 'ES', 'FR', 'IT', 'GB', 'PT', 'NL', 'BE', 'AT', 'CH', 'DK', 'SE', 'PL'];
       for (const code of codes) {
@@ -265,14 +281,10 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
           titleText.toLowerCase().includes('(' + name.toLowerCase())
         );
 
-        if (
-          classText.toUpperCase().includes('FLAG-' + code) ||
-          srcText.toUpperCase().includes('/' + code + '.') ||
-          srcText.toUpperCase().includes('/' + code + '/') ||
-          srcText.toUpperCase().includes(code + '.PNG') ||
-          srcText.toUpperCase().includes(code + '.SVG') ||
-          matchesTitle
-        ) {
+        const matchesFile = filename.startsWith(code + '.') || filename === code;
+        const matchesClass = classText.toUpperCase().includes('FLAG-' + code);
+
+        if (matchesFile || matchesClass || matchesTitle) {
           sellerCountry = code;
           if (code === 'DE') isGerman = true;
           break;
@@ -314,15 +326,30 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
       const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
       const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
       const srcText = el.getAttribute('src') || '';
+      const filename = srcText.split('/').pop().toLowerCase();
       
       for (const lang of langCodes) {
         const keywords = LANGUAGE_LABELS[lang];
-        const matches = keywords.some(keyword =>
-          titleText.toLowerCase().includes(keyword.toLowerCase()) ||
-          srcText.toLowerCase().includes(lang.toLowerCase()) ||
-          classText.toLowerCase().includes('flag-' + lang.toLowerCase())
+        
+        // Strict filename check to prevent matching subfolders like "/images/" as Spanish (ES)
+        const matchesFile = filename.startsWith(lang.toLowerCase() + '.') || 
+                            filename === lang.toLowerCase() ||
+                            (lang === 'EN' && (filename.startsWith('us.') || filename.startsWith('gb.'))) ||
+                            (lang === 'ZH' && filename.startsWith('cn.')) ||
+                            (lang === 'KO' && filename.startsWith('kr.'));
+
+        const matchesClass = classText.toLowerCase().includes('flag-' + lang.toLowerCase()) ||
+                             (lang === 'EN' && (classText.toLowerCase().includes('flag-us') || classText.toLowerCase().includes('flag-gb'))) ||
+                             (lang === 'ZH' && classText.toLowerCase().includes('flag-cn')) ||
+                             (lang === 'KO' && classText.toLowerCase().includes('flag-kr'));
+
+        const matchesTitle = keywords && keywords.some(keyword =>
+          titleText.toLowerCase() === keyword.toLowerCase() ||
+          titleText.toLowerCase().includes(' ' + keyword.toLowerCase()) ||
+          titleText.toLowerCase().includes('(' + keyword.toLowerCase())
         );
-        if (matches) {
+
+        if (matchesFile || matchesClass || matchesTitle) {
           matchedLanguage = lang;
           break;
         }
