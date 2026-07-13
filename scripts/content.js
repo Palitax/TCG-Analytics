@@ -1,7 +1,8 @@
 // Cardmarket Price Tracker Pro - Content Script
 let activeOverlay = null;
+let currentUserId = null;
 
-// Standardize condition mapping just in case
+// Standardize condition mapping
 const CONDITION_NAMES = {
   "MT": "Mint",
   "NM": "Near Mint",
@@ -12,56 +13,7 @@ const CONDITION_NAMES = {
   "PO": "Poor"
 };
 
-// Normalize Cardmarket product URL to get a stable card ID
-function getCardId() {
-  const path = window.location.pathname;
-  // Cardmarket URLs usually look like: /de/Magic/Products/Singles/Theros/Thoughtseize
-  // We want to strip the language prefix (e.g. /de/, /en/, /es/)
-  const parts = path.split('/').filter(p => p.length > 0);
-  if (parts.length > 0) {
-    // If the first part is a 2-letter language code, remove it
-    if (parts[0].length === 2 && /^[a-z]{2}$/i.test(parts[0])) {
-      parts.shift();
-    }
-  }
-  return '/' + parts.join('/');
-}
-
-// Helper to find a checkbox input by its label keywords inside the filter sidebar
-function findCheckboxByLabel(keywords) {
-  // Restrict search to the filter sidebar to prevent matching table rows or cart items
-  const filterContainer = document.querySelector('#searchFilterForm, #filterForm, form.filter-form, .filter-container, .filter-sidebar, #filter-sidebar, [id*="filter"]');
-  if (!filterContainer) return null;
-
-  const labels = filterContainer.querySelectorAll('label, span, div');
-  for (const label of labels) {
-    const text = label.textContent.trim().toLowerCase();
-    const matchesKeyword = keywords.some(keyword => text === keyword.toLowerCase() || text.includes(keyword.toLowerCase()));
-    
-    if (matchesKeyword) {
-      // 1. Check for attribute pointing to ID
-      const forId = label.getAttribute('for');
-      if (forId) {
-        const checkbox = document.getElementById(forId);
-        if (checkbox && checkbox.type === 'checkbox') return checkbox;
-      }
-      
-      // 2. Check for child input
-      let checkbox = label.querySelector('input[type="checkbox"]');
-      if (checkbox) return checkbox;
-      
-      // 3. Check for sibling/parent inputs
-      const parent = label.parentElement;
-      if (parent) {
-        checkbox = parent.querySelector('input[type="checkbox"]');
-        if (checkbox) return checkbox;
-      }
-    }
-  }
-  return null;
-}
-
-// Map language codes to labels in Cardmarket filter
+// Map language codes to labels in Cardmarket
 const LANGUAGE_LABELS = {
   "DE": ["Deutsch", "German"],
   "EN": ["Englisch", "English"],
@@ -70,86 +22,71 @@ const LANGUAGE_LABELS = {
   "IT": ["Italienisch", "Italian"]
 };
 
-// Automate checking the filters (Germany location & target language) and submitting the form
-async function applyFilters() {
-  const { targetLanguage = 'ALL' } = await chrome.storage.local.get('targetLanguage');
-  
-  let needsSubmit = false;
-
-  // 1. Locate Germany location checkbox
-  const deCheckbox = findCheckboxByLabel(["Deutschland", "Germany"]);
-  if (deCheckbox && !deCheckbox.checked) {
-    console.log("Auto-checking location filter: Germany");
-    deCheckbox.checked = true;
-    needsSubmit = true;
-  }
-
-  // 2. Locate target language checkbox
-  if (targetLanguage !== 'ALL') {
-    const langKeywords = LANGUAGE_LABELS[targetLanguage];
-    if (langKeywords) {
-      const langCheckbox = findCheckboxByLabel(langKeywords);
-      if (langCheckbox && !langCheckbox.checked) {
-        console.log("Auto-checking language filter:", targetLanguage);
-        langCheckbox.checked = true;
-        needsSubmit = true;
-      }
+// Extract TCG name and normalized card ID from pathname
+function getTcgAndCardId() {
+  const path = window.location.pathname;
+  // Cardmarket URLs usually look like: /de/OnePiece/Products/Singles/...
+  const parts = path.split('/').filter(p => p.length > 0);
+  if (parts.length > 0) {
+    // If the first part is a 2-letter language code, remove it
+    if (parts[0].length === 2 && /^[a-z]{2}$/i.test(parts[0])) {
+      parts.shift();
     }
   }
-
-  // 3. Submit the filter form if anything was checked
-  if (needsSubmit) {
-    const checkbox = deCheckbox || (targetLanguage !== 'ALL' && findCheckboxByLabel(LANGUAGE_LABELS[targetLanguage]));
-    if (checkbox) {
-      const form = checkbox.form || document.querySelector('form.filter-form, #filterForm, #searchFilterForm');
-      if (form) {
-        console.log("Submitting Cardmarket filter form to apply extension preferences...");
-        form.submit();
-        return true; // Indicates page reload was triggered
-      }
-    }
-  }
-  return false;
+  const tcg = parts.length > 0 ? parts[0] : 'Magic';
+  const cardId = '/' + parts.join('/');
+  return { tcg, cardId };
 }
 
-// Scrape the DOM for the first German seller offer matching the target condition and language
-function scrapePrice(targetCondition, targetLanguage) {
-  // Query rows representing listings on Cardmarket (include direct child divs of table-body as fallback)
+// Scrape the DOM for the first offer matching target conditions
+function scrapePrice(targetCondition, targetLocation, targetLanguages) {
+  // Query rows representing listings on Cardmarket (include grid divs as fallback)
   const rows = document.querySelectorAll(
     '.article-row, [id^="articleRow"], div.table-body > div.row, .table-body div.row, tr.article-row'
   );
 
   for (const row of rows) {
-    // 1. Verify seller is in Germany (check flag elements, class attributes, tooltips, and src image attributes)
+    // 1. Verify seller matches location criteria
     const flagElements = row.querySelectorAll('.flag, .icon, [class*="flag"], [class*="icon"], img');
     let isGerman = false;
+    let sellerCountry = 'OTHER';
+
     for (const el of flagElements) {
+      // Seller flags are located inside the seller column (skip product info flags)
+      if (el.closest('.product-info, .condition, .badge')) continue;
+      
       const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
       const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
       const srcText = el.getAttribute('src') || '';
       
-      if (
-        classText.toUpperCase().includes('DE') ||
-        titleText.toUpperCase().includes('DEUTSCHLAND') ||
-        titleText.toUpperCase().includes('GERMANY') ||
-        srcText.toUpperCase().includes('/DE.') ||
-        srcText.toUpperCase().includes('/DE/') ||
-        srcText.toUpperCase().includes('DE.PNG') ||
-        srcText.toUpperCase().includes('DE.SVG')
-      ) {
-        isGerman = true;
-        break;
+      // Check common European country codes
+      const codes = ['DE', 'ES', 'FR', 'IT', 'GB', 'PT', 'NL', 'BE', 'AT', 'CH', 'DK', 'SE', 'PL'];
+      for (const code of codes) {
+        if (
+          classText.toUpperCase().includes('FLAG-' + code) ||
+          srcText.toUpperCase().includes('/' + code + '.') ||
+          srcText.toUpperCase().includes('/' + code + '/') ||
+          srcText.toUpperCase().includes(code + '.PNG') ||
+          srcText.toUpperCase().includes(code + '.SVG') ||
+          titleText.toUpperCase().includes(code) ||
+          (code === 'DE' && (titleText.toUpperCase().includes('DEUTSCHLAND') || titleText.toUpperCase().includes('GERMANY')))
+        ) {
+          sellerCountry = code;
+          if (code === 'DE') isGerman = true;
+          break;
+        }
       }
+      if (sellerCountry !== 'OTHER') break;
     }
 
-    if (!isGerman) continue;
+    // If target location is DE (Germany) and seller is not German, skip row
+    if (targetLocation === 'DE' && !isGerman) continue;
 
-    // 2. Verify card condition matches target (check for exact match or word prefix boundary)
+    // 2. Verify card condition matches target
     const conditionElements = row.querySelectorAll('.article-condition, .condition, .badge, span, a');
     let conditionMatches = false;
     for (const el of conditionElements) {
       const text = el.textContent.trim().toUpperCase();
-      // Matches "NM", "NM English", "NM (EN)", or word boundary token
       if (
         text === targetCondition ||
         text.startsWith(targetCondition + ' ') ||
@@ -163,52 +100,62 @@ function scrapePrice(targetCondition, targetLanguage) {
 
     if (!conditionMatches) continue;
 
-    // 2b. Verify card language matches target (passive filter, no reload)
-    if (targetLanguage && targetLanguage !== 'ALL') {
-      const langKeywords = LANGUAGE_LABELS[targetLanguage];
-      if (langKeywords) {
-        const flags = row.querySelectorAll('.flag, .icon, img, [class*="flag"], [class*="icon"]');
-        let langMatches = false;
-        for (const el of flags) {
-          // Skip seller location flags by checking parent containers
-          if (el.closest('.seller-link, .seller, [class*="seller"], [class*="user"], .merchant')) {
-            continue;
-          }
-          
-          const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
-          const srcText = el.getAttribute('src') || '';
-          const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
-          
-          const matchesLang = langKeywords.some(keyword => 
-            titleText.toLowerCase().includes(keyword.toLowerCase()) ||
-            srcText.toLowerCase().includes(targetLanguage.toLowerCase()) ||
-            classText.toLowerCase().includes('flag-' + targetLanguage.toLowerCase())
-          );
-          
-          if (matchesLang) {
-            langMatches = true;
-            break;
-          }
-        }
-        if (!langMatches) continue;
+    // 3. Verify card language matches any target language (if not 'ALL')
+    let matchedLanguage = null;
+    const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT'];
+    const flags = row.querySelectorAll('.flag, .icon, img, [class*="flag"], [class*="icon"]');
+    
+    for (const el of flags) {
+      if (el.closest('.seller-link, .seller, [class*="seller"], [class*="user"], .merchant')) {
+        continue; // Skip seller flags
       }
+      
+      const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
+      const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
+      const srcText = el.getAttribute('src') || '';
+      
+      for (const lang of langCodes) {
+        const keywords = LANGUAGE_LABELS[lang];
+        const matches = keywords.some(keyword =>
+          titleText.toLowerCase().includes(keyword.toLowerCase()) ||
+          srcText.toLowerCase().includes(lang.toLowerCase()) ||
+          classText.toLowerCase().includes('flag-' + lang.toLowerCase())
+        );
+        if (matches) {
+          matchedLanguage = lang;
+          break;
+        }
+      }
+      if (matchedLanguage) break;
     }
 
-    // 3. Extract the listing price
+    // Default to EN if no specific language tag found
+    if (!matchedLanguage) matchedLanguage = 'EN';
+
+    // If card language doesn't match selected filters, skip row
+    if (targetLanguages && !targetLanguages.includes('ALL') && !targetLanguages.includes(matchedLanguage)) {
+      continue;
+    }
+
+    // 4. Extract price
     const priceElements = row.querySelectorAll('[class*="price"], .color-primary, span');
     for (const el of priceElements) {
       const text = el.textContent.trim();
       if (text.includes('€')) {
-        // Clean currency formatting (e.g. "1.300,00 €" -> 1300.00)
         const cleaned = text
           .replace('€', '')
-          .replace(/\s/g, '')       // remove whitespaces
-          .replace(/\./g, '')       // remove thousand separators
-          .replace(',', '.');       // convert decimal comma to dot
+          .replace(/\s/g, '')
+          .replace(/\./g, '')
+          .replace(',', '.');
 
         const parsed = parseFloat(cleaned);
         if (!isNaN(parsed) && parsed > 0) {
-          return { price: parsed, element: row };
+          return {
+            price: parsed,
+            language: matchedLanguage,
+            sellerCountry: sellerCountry,
+            element: row
+          };
         }
       }
     }
@@ -216,35 +163,25 @@ function scrapePrice(targetCondition, targetLanguage) {
   return null;
 }
 
-// Inject or update the modern glassmorphic overlay UI
+// Inject interactive dropdowns and status results in the page overlay
 function updateOverlay(status, details = {}) {
-  // Remove existing overlay if present
-  if (activeOverlay) {
-    activeOverlay.remove();
-    activeOverlay = null;
-  }
-
-  // Find placement container (below card name header)
   const header = document.querySelector('.page-title-container, .d-flex.align-items-center.page-title, h1');
   if (!header) return;
 
-  const container = document.createElement('div');
-  container.className = 'cm-price-tracker-overlay';
+  if (!activeOverlay) {
+    const container = document.createElement('div');
+    container.className = 'cm-price-tracker-overlay';
+    
+    if (header.nextSibling) {
+      header.parentNode.insertBefore(container, header.nextSibling);
+    } else {
+      header.parentNode.appendChild(container);
+    }
+    activeOverlay = container;
+  }
 
-  let htmlContent = '';
-
-  if (status === 'loading') {
-    htmlContent = `
-      <div class="cm-tracker-header">
-        <span class="cm-tracker-dot pulsing"></span>
-        <span class="cm-tracker-title">Cardmarket Price Tracker Pro</span>
-      </div>
-      <div class="cm-tracker-body">
-        <span class="cm-tracker-text">Preise werden analysiert...</span>
-      </div>
-    `;
-  } else if (status === 'unauthenticated') {
-    htmlContent = `
+  if (status === 'unauthenticated') {
+    activeOverlay.innerHTML = `
       <div class="cm-tracker-header">
         <span class="cm-tracker-dot inactive"></span>
         <span class="cm-tracker-title">Cardmarket Price Tracker Pro</span>
@@ -253,71 +190,77 @@ function updateOverlay(status, details = {}) {
         <span class="cm-tracker-text warning">Bitte im Popup der Erweiterung einloggen!</span>
       </div>
     `;
-  } else if (status === 'no_offer') {
-    htmlContent = `
-      <div class="cm-tracker-header">
-        <span class="cm-tracker-dot active"></span>
-        <span class="cm-tracker-title">Cardmarket Price Tracker Pro</span>
-      </div>
-      <div class="cm-tracker-body">
-        <div class="cm-tracker-info">
-          <span class="cm-tracker-label">Ziel-Zustand:</span>
-          <span class="cm-tracker-badge">${CONDITION_NAMES[details.condition] || details.condition} (DE)</span>
-        </div>
-        <span class="cm-tracker-text error">Kein passendes Angebot gefunden.</span>
+    return;
+  }
+
+  // Load active dropdown values from details
+  const {
+    selectedCondition = 'NM',
+    selectedLocation = 'DE',
+    selectedLanguages = ['ALL'],
+    currentPrice = null,
+    lastPrice = null,
+    lastScannedAt = null,
+    lastUserId = null,
+    matchedLanguage = null,
+    matchedCountry = null,
+    noMatch = false
+  } = details;
+
+  const summaryText = selectedLanguages.includes('ALL') ? 'Alle' : selectedLanguages.join(', ');
+
+  let resultHtml = '';
+  if (status === 'loading') {
+    resultHtml = `
+      <div class="cm-tracker-results loading-state">
+        <span class="cm-tracker-dot pulsing"></span>
+        <span class="cm-tracker-text">Preise werden analysiert...</span>
       </div>
     `;
-  } else if (status === 'success') {
-    const { currentPrice, lastPrice, lastScannedAt, condition } = details;
-    
+  } else if (noMatch) {
+    resultHtml = `
+      <div class="cm-tracker-results error-state">
+        <span class="cm-tracker-text error">Kein passendes Angebot auf dieser Seite gefunden.</span>
+      </div>
+    `;
+  } else if (currentPrice !== null) {
     let diffBadge = '';
     let statusText = '';
 
-    if (lastPrice === undefined || lastPrice === null) {
-      // First scan
+    const dateStr = lastScannedAt ? new Date(lastScannedAt).toLocaleDateString('de-DE', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    }) : '';
+
+    const authorText = lastUserId === currentUserId ? 'dir selbst' : 'einem anderen Nutzer';
+
+    if (lastPrice === null || lastPrice === undefined) {
       diffBadge = `<span class="cm-tracker-diff-badge first">Erster Scan</span>`;
       statusText = `<span class="cm-tracker-status-desc">Dieser Preis wurde als Startwert in der Datenbank gesichert.</span>`;
     } else {
       const diffPercent = ((currentPrice - lastPrice) / lastPrice) * 100;
       const formattedDiff = diffPercent.toFixed(2);
-      
-      const dateStr = new Date(lastScannedAt).toLocaleDateString('de-DE', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
 
       if (diffPercent > 0) {
-        // Price increased
         diffBadge = `<span class="cm-tracker-diff-badge loss">+${formattedDiff}%</span>`;
-        statusText = `<span class="cm-tracker-status-desc">Gestiegen seit dem letzten Scan am ${dateStr} (${lastPrice.toFixed(2)} €)</span>`;
+        statusText = `<span class="cm-tracker-status-desc">Gestiegen seit Scan am ${dateStr} von ${authorText} (${lastPrice.toFixed(2)} €)</span>`;
       } else if (diffPercent < 0) {
-        // Price decreased
         diffBadge = `<span class="cm-tracker-diff-badge gain">${formattedDiff}%</span>`;
-        statusText = `<span class="cm-tracker-status-desc">Günstiger seit dem letzten Scan am ${dateStr} (${lastPrice.toFixed(2)} €)</span>`;
+        statusText = `<span class="cm-tracker-status-desc">Günstiger seit Scan am ${dateStr} von ${authorText} (${lastPrice.toFixed(2)} €)</span>`;
       } else {
-        // Price stable
         diffBadge = `<span class="cm-tracker-diff-badge stable">±0.00%</span>`;
-        statusText = `<span class="cm-tracker-status-desc">Unverändert seit dem letzten Scan am ${dateStr}</span>`;
+        statusText = `<span class="cm-tracker-status-desc">Unverändert seit Scan am ${dateStr} von ${authorText}</span>`;
       }
     }
 
-    htmlContent = `
-      <div class="cm-tracker-header">
-        <span class="cm-tracker-dot active"></span>
-        <span class="cm-tracker-title">Cardmarket Price Tracker Pro</span>
-      </div>
-      <div class="cm-tracker-body">
+    resultHtml = `
+      <div class="cm-tracker-results">
         <div class="cm-tracker-row">
-          <div class="cm-tracker-info">
-            <span class="cm-tracker-label">Ziel-Zustand:</span>
-            <span class="cm-tracker-badge">${CONDITION_NAMES[condition] || condition} (DE)</span>
-          </div>
           <div class="cm-tracker-price-box">
             <span class="cm-tracker-price-value">${currentPrice.toFixed(2)} €</span>
             ${diffBadge}
+          </div>
+          <div class="cm-tracker-meta">
+            <span class="cm-tracker-match-badge" title="Tatsächlicher Treffer">${matchedLanguage} | ${matchedCountry}</span>
           </div>
         </div>
         ${statusText}
@@ -325,80 +268,210 @@ function updateOverlay(status, details = {}) {
     `;
   }
 
-  container.innerHTML = htmlContent;
+  activeOverlay.innerHTML = `
+    <div class="cm-tracker-header">
+      <span class="cm-tracker-dot active"></span>
+      <span class="cm-tracker-title">Cardmarket Price Tracker Pro</span>
+    </div>
+    <div class="cm-tracker-body">
+      <!-- Injected Dropdown Controls -->
+      <div class="cm-tracker-controls">
+        <div class="cm-control-item">
+          <label>Zustand:</label>
+          <select id="cm-select-condition" class="cm-dropdown">
+            <option value="MT" ${selectedCondition === 'MT' ? 'selected' : ''}>MT (Mint)</option>
+            <option value="NM" ${selectedCondition === 'NM' ? 'selected' : ''}>NM (Near Mint)</option>
+            <option value="EX" ${selectedCondition === 'EX' ? 'selected' : ''}>EX (Excellent)</option>
+            <option value="GD" ${selectedCondition === 'GD' ? 'selected' : ''}>GD (Good)</option>
+            <option value="LP" ${selectedCondition === 'LP' ? 'selected' : ''}>LP (Light Played)</option>
+            <option value="PL" ${selectedCondition === 'PL' ? 'selected' : ''}>PL (Played)</option>
+            <option value="PO" ${selectedCondition === 'PO' ? 'selected' : ''}>PO (Poor)</option>
+          </select>
+        </div>
 
-  // Insert overlay under the header
-  if (header.nextSibling) {
-    header.parentNode.insertBefore(container, header.nextSibling);
-  } else {
-    header.parentNode.appendChild(container);
-  }
+        <div class="cm-control-item">
+          <label>Verkäufer:</label>
+          <select id="cm-select-location" class="cm-dropdown">
+            <option value="ALL" ${selectedLocation === 'ALL' ? 'selected' : ''}>Alle Länder</option>
+            <option value="DE" ${selectedLocation === 'DE' ? 'selected' : ''}>Deutschland</option>
+          </select>
+        </div>
 
-  activeOverlay = container;
+        <div class="cm-control-item">
+          <label>Sprachen:</label>
+          <details class="cm-multiselect-details" id="cm-select-languages-details">
+            <summary id="cm-languages-summary">${summaryText}</summary>
+            <div class="cm-multiselect-options">
+              <label><input type="checkbox" value="ALL" id="cm-lang-all" ${selectedLanguages.includes('ALL') ? 'checked' : ''}> Alle</label>
+              <label><input type="checkbox" value="DE" class="cm-lang-check" ${selectedLanguages.includes('DE') ? 'checked' : ''}> Deutsch</label>
+              <label><input type="checkbox" value="EN" class="cm-lang-check" ${selectedLanguages.includes('EN') ? 'checked' : ''}> Englisch</label>
+              <label><input type="checkbox" value="ES" class="cm-lang-check" ${selectedLanguages.includes('ES') ? 'checked' : ''}> Spanisch</label>
+              <label><input type="checkbox" value="FR" class="cm-lang-check" ${selectedLanguages.includes('FR') ? 'checked' : ''}> Französisch</label>
+              <label><input type="checkbox" value="IT" class="cm-lang-check" ${selectedLanguages.includes('IT') ? 'checked' : ''}> Italienisch</label>
+            </div>
+          </details>
+        </div>
+      </div>
+      
+      <!-- Scan Result Output -->
+      ${resultHtml}
+    </div>
+  `;
+
+  // Attach interactive UI listeners
+  attachListeners();
 }
 
-// Perform active scan sequence
-async function runScan() {
-  updateOverlay('loading');
+// Bind DOM event listeners to dropdown changes in the overlay
+function attachListeners() {
+  const selectCondition = document.getElementById('cm-select-condition');
+  const selectLocation = document.getElementById('cm-select-location');
+  const langAll = document.getElementById('cm-lang-all');
+  const langChecks = document.querySelectorAll('.cm-lang-check');
+  const selectLanguagesDetails = document.getElementById('cm-select-languages-details');
 
-  // Load selected target condition and language from storage
-  const { targetCondition = 'NM', targetLanguage = 'ALL' } = await chrome.storage.local.get(['targetCondition', 'targetLanguage']);
-  const cardId = getCardId();
+  if (!selectCondition || !selectLocation) return;
 
-  // Scrape price matching criteria (passively check both condition and language without page reload)
-  const match = scrapePrice(targetCondition, targetLanguage);
-  if (!match) {
-    // Send check message to service worker to verify auth even if no offers found
-    chrome.runtime.sendMessage({ action: "getSession" }, (response) => {
-      if (response && response.authenticated) {
-        updateOverlay('no_offer', { condition: targetCondition });
-      } else {
-        updateOverlay('unauthenticated');
+  const saveAndRefresh = async () => {
+    // Gather languages
+    let checkedLangs = [];
+    if (langAll.checked) {
+      checkedLangs = ['ALL'];
+    } else {
+      langChecks.forEach(cb => {
+        if (cb.checked) checkedLangs.push(cb.value);
+      });
+      if (checkedLangs.length === 0) {
+        checkedLangs = ['ALL'];
+        langAll.checked = true;
       }
+    }
+
+    const newPrefs = {
+      condition: selectCondition.value,
+      location: selectLocation.value,
+      languages: checkedLangs
+    };
+
+    const storageKey = 'preferences_' + currentUserId;
+    await chrome.storage.local.set({ [storageKey]: newPrefs });
+    runScan();
+  };
+
+  selectCondition.addEventListener('change', saveAndRefresh);
+  selectLocation.addEventListener('change', saveAndRefresh);
+
+  langAll.addEventListener('change', (e) => {
+    if (e.target.checked) {
+      langChecks.forEach(cb => cb.checked = false);
+    }
+    saveAndRefresh();
+  });
+
+  langChecks.forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        langAll.checked = false;
+      }
+      saveAndRefresh();
     });
-    return;
-  }
+  });
 
-  const currentPrice = match.price;
+  // Close the custom language selector when clicking outside
+  document.addEventListener('click', (e) => {
+    if (selectLanguagesDetails && !selectLanguagesDetails.contains(e.target)) {
+      selectLanguagesDetails.removeAttribute('open');
+    }
+  });
+}
 
-  // Send scan data to background worker for DB processing
-  chrome.runtime.sendMessage({
-    action: "scanCard",
-    cardId: cardId,
-    condition: targetCondition,
-    currentPrice: currentPrice
-  }, (response) => {
+// Execute active scan sequence matching interactive selection criteria
+async function runScan() {
+  // 1. Verify user authentication status first
+  chrome.runtime.sendMessage({ action: "getSession" }, async (response) => {
     if (chrome.runtime.lastError) {
       console.error("Message passing error:", chrome.runtime.lastError);
       return;
     }
 
-    if (response.error === "UNAUTHENTICATED") {
+    if (!response || !response.authenticated) {
       updateOverlay('unauthenticated');
-    } else if (response.success) {
-      const record = response.latestRecord;
+      return;
+    }
+
+    currentUserId = response.user.id;
+    const storageKey = 'preferences_' + currentUserId;
+
+    // 2. Load settings profile (saved per logged in user id)
+    const { [storageKey]: prefs } = await chrome.storage.local.get(storageKey);
+    const targetCondition = prefs?.condition || 'NM';
+    const targetLocation = prefs?.location || 'DE';
+    const targetLanguages = prefs?.languages || ['ALL'];
+
+    updateOverlay('loading', {
+      selectedCondition: targetCondition,
+      selectedLocation: targetLocation,
+      selectedLanguages: targetLanguages
+    });
+
+    const { tcg, cardId } = getTcgAndCardId();
+
+    // 3. Scan DOM for first offer match
+    const match = scrapePrice(targetCondition, targetLocation, targetLanguages);
+    if (!match) {
       updateOverlay('success', {
-        currentPrice: currentPrice,
+        selectedCondition: targetCondition,
+        selectedLocation: targetLocation,
+        selectedLanguages: targetLanguages,
+        noMatch: true
+      });
+      return;
+    }
+
+    // 4. Send scan parameters to service-worker for DB processing
+    chrome.runtime.sendMessage({
+      action: "scanCard",
+      tcg: tcg,
+      cardId: cardId,
+      condition: targetCondition,
+      language: match.language,
+      sellerCountry: match.sellerCountry,
+      currentPrice: match.price
+    }, (dbResponse) => {
+      if (chrome.runtime.lastError || !dbResponse) {
+        console.error("Database connection failed:", chrome.runtime.lastError);
+        return;
+      }
+
+      if (dbResponse.error) {
+        console.error("Scanning process failed:", dbResponse.error);
+        return;
+      }
+
+      const record = dbResponse.latestRecord;
+
+      updateOverlay('success', {
+        selectedCondition: targetCondition,
+        selectedLocation: targetLocation,
+        selectedLanguages: targetLanguages,
+        currentPrice: match.price,
         lastPrice: record ? parseFloat(record.price) : null,
         lastScannedAt: record ? record.scanned_at : null,
-        condition: targetCondition
+        lastUserId: record ? record.user_id : null,
+        matchedLanguage: match.language,
+        matchedCountry: match.sellerCountry
       });
-    } else {
-      console.error("Scanning failed:", response.error);
-    }
+    });
   });
 }
 
-// Watch table mutations for dynamically loaded filters / tab switching
+// Watch table container DOM changes for dynamic pagination/filter updates
 let scanTimeout = null;
 function setupObserver() {
-  // Find tables or containers that load articles dynamically
   const targetNode = document.querySelector('.table-body, #table-container, #articlesTable') || document.body;
-  
   if (!targetNode) return;
 
   const observer = new MutationObserver(() => {
-    // Debounce scans to avoid rapid re-triggering during animations/DOM updates
     clearTimeout(scanTimeout);
     scanTimeout = setTimeout(() => {
       runScan();
@@ -407,11 +480,11 @@ function setupObserver() {
 
   observer.observe(targetNode, {
     childList: true,
-    subtree: targetNode === document.body // only use subtree if falling back to document.body
+    subtree: targetNode === document.body
   });
 }
 
-// Listen for updates from popup (e.g. when condition changes or user logs in)
+// Global scan refresh message receiver
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "refreshScan") {
     runScan();
@@ -420,6 +493,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// Initialization
+// Start
 runScan();
 setupObserver();
