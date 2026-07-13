@@ -125,7 +125,7 @@ function scrapePrice(targetCondition) {
     const flagElements = row.querySelectorAll('.flag, .icon, [class*="flag"], [class*="icon"], img');
     let isGerman = false;
     for (const el of flagElements) {
-      const classText = el.className || '';
+      const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
       const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
       const srcText = el.getAttribute('src') || '';
       
