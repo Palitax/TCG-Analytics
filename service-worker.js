@@ -149,12 +149,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return sendResponse({ error: "UNAUTHENTICATED" });
         }
 
-        const { cardId, condition, currentPrice } = message;
+        const { tcg, cardId, condition, language, sellerCountry, currentPrice } = message;
         const accessToken = session.access_token;
         const userId = session.user.id;
 
-        // 1. Fetch latest historical price from Supabase
-        const getUrl = `${SUPABASE_URL}/rest/v1/price_history?card_id=eq.${encodeURIComponent(cardId)}&condition=eq.${encodeURIComponent(condition)}&order=scanned_at.desc&limit=1`;
+        // 1. Fetch latest historical price from Supabase using composite columns
+        const getUrl = `${SUPABASE_URL}/rest/v1/price_history?tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}&condition=eq.${encodeURIComponent(condition)}&language=eq.${encodeURIComponent(language)}&seller_country=eq.${encodeURIComponent(sellerCountry)}&order=scanned_at.desc&limit=1`;
         
         const getResponse = await fetch(getUrl, {
           method: "GET",
@@ -174,7 +174,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         let shouldUpload = false;
         
         if (!latestRecord) {
-          // No history exists for this card/condition
+          // No history exists for this specific combination
           shouldUpload = true;
         } else {
           const lastPrice = parseFloat(latestRecord.price);
@@ -197,9 +197,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               "Prefer": "return=representation"
             },
             body: JSON.stringify({
+              tcg: tcg,
               card_id: cardId,
               price: currentPrice,
               condition: condition,
+              language: language,
+              seller_country: sellerCountry,
               user_id: userId
             })
           });
@@ -207,13 +210,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (!postResponse.ok) {
             console.error("Failed to upload new scan to Supabase:", postResponse.statusText);
           } else {
-            console.log(`Successfully uploaded scan: ${cardId} (${condition}) = ${currentPrice} €`);
+            console.log(`Successfully uploaded scan: ${tcg} | ${cardId} (${condition} | ${language} | ${sellerCountry}) = ${currentPrice} €`);
           }
         }
 
         sendResponse({
           success: true,
-          latestRecord: latestRecord
+          latestRecord: latestRecord,
+          currentUserId: userId
         });
       }
     } catch (err) {
