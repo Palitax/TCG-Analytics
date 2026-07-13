@@ -27,19 +27,23 @@ const LANGUAGE_LABELS = {
 };
 
 const COUNTRY_NAMES = {
-  "DE": ["Deutschland", "Germany"],
-  "ES": ["Spanien", "Spain"],
-  "FR": ["Frankreich", "France"],
-  "IT": ["Italien", "Italy"],
-  "GB": ["Großbritannien", "United Kingdom", "UK", "Englisch", "English"],
+  "DE": ["Deutschland", "Germany", "Allemagne", "Alemania", "Germania"],
+  "ES": ["Spanien", "Spain", "Espagne", "España", "Spagna"],
+  "FR": ["Frankreich", "France", "Francia"],
+  "IT": ["Italien", "Italy", "Italie", "Italia"],
+  "GB": ["Großbritannien", "United Kingdom", "UK", "Royaume-Uni", "Reino Unido", "Regno Unito"],
   "PT": ["Portugal"],
-  "NL": ["Niederlande", "Netherlands"],
-  "BE": ["Belgien", "Belgium"],
-  "AT": ["Österreich", "Austria"],
-  "CH": ["Schweiz", "Switzerland"],
-  "DK": ["Dänemark", "Denmark"],
-  "SE": ["Schweden", "Sweden"],
-  "PL": ["Polen", "Poland"]
+  "NL": ["Niederlande", "Netherlands", "Pays-Bas", "Países Bajos", "Paesi Bassi"],
+  "BE": ["Belgien", "Belgium", "Belgique", "Bélgica", "Belgio"],
+  "AT": ["Österreich", "Austria", "Autriche"],
+  "CH": ["Schweiz", "Switzerland", "Suisse", "Suiza", "Svizzera"],
+  "DK": ["Dänemark", "Denmark", "Danemark", "Dinamarca", "Danimarca"],
+  "SE": ["Schweden", "Sweden", "Suède", "Suecia", "Svezia"],
+  "PL": ["Polen", "Poland", "Pologne", "Polonia"],
+  "IE": ["Irland", "Ireland", "Irlande", "Irlanda"],
+  "GR": ["Griechenland", "Greece", "Grèce", "Grecia"],
+  "FI": ["Finnland", "Finland", "Finlande", "Finlandia"],
+  "NO": ["Norwegen", "Norway", "Norvège", "Noruega", "Norvegia"]
 };
 
 // Extract TCG name and normalized card ID from pathname
@@ -91,90 +95,48 @@ function findCheckboxByLabel(keywords) {
   return null;
 }
 
-// Helper to look up and clone flag elements from Cardmarket's table for high-fidelity styling
-function getFlagHtml(type, code) {
+// Return custom inline SVGs for EU countries and card languages (zero external assets, 100% CSP compliant)
+function getCustomFlagSvg(code) {
   if (!code) return '';
   const cleanCode = code.trim().toUpperCase();
   
-  // Try to find a matching flag element in the current DOM to clone it
-  const rows = document.querySelectorAll('.article-row, [id^="articleRow"]');
-  for (const row of rows) {
-    const sellerCol = row.querySelector('.col-seller, [class*="seller"], [class*="user"], .col-sellerProductInfo');
-    if (type === 'seller' && !sellerCol) continue;
-
-    const candidates = type === 'seller'
-      ? sellerCol.querySelectorAll('span[style*="background-image"], img')
-      : row.querySelectorAll('span[style*="background-image"], img');
-
-    for (const el of candidates) {
-      if (type === 'language' && el.closest('.col-seller, [class*="seller"], [class*="user"], .col-sellerProductInfo')) {
-        continue;
-      }
-
-      const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
-      const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || el.getAttribute('aria-label') || '';
-      const srcText = el.getAttribute('src') || '';
-      const filename = srcText.split('/').pop().toUpperCase();
-
-      let match = false;
-      if (type === 'seller') {
-        const names = COUNTRY_NAMES[cleanCode];
-        const matchesTitle = names && names.some(name => 
-          titleText.toLowerCase().includes(name.toLowerCase())
-        );
-        const matchesFile = filename.startsWith(cleanCode + '.') || filename === cleanCode;
-        const matchesClass = classText.toUpperCase().includes('FLAG-' + cleanCode);
-
-        if (matchesTitle || matchesFile || matchesClass) {
-          match = true;
-        }
-      } else {
-        const keywords = LANGUAGE_LABELS[cleanCode];
-        const matchesTitle = keywords && keywords.some(keyword =>
-          titleText.toLowerCase().includes(keyword.toLowerCase())
-        );
-
-        const matchesFile = filename.startsWith(cleanCode.toLowerCase() + '.') || 
-                            filename === cleanCode.toLowerCase() ||
-                            (cleanCode === 'EN' && (filename.startsWith('us.') || filename.startsWith('gb.'))) ||
-                            (cleanCode === 'ZH' && filename.startsWith('cn.')) ||
-                            (cleanCode === 'KO' && filename.startsWith('kr.'));
-
-        const matchesClass = classText.toLowerCase().includes('flag-' + cleanCode.toLowerCase()) ||
-                             (cleanCode === 'EN' && (classText.toLowerCase().includes('flag-us') || classText.toLowerCase().includes('flag-gb'))) ||
-                             (cleanCode === 'ZH' && classText.toLowerCase().includes('flag-cn')) ||
-                             (cleanCode === 'KO' && classText.toLowerCase().includes('flag-kr'));
-
-        if (matchesTitle || matchesFile || matchesClass) {
-          match = true;
-        }
-      }
-
-      if (match) {
-        const cloned = el.cloneNode(true);
-        cloned.style.margin = '0';
-        cloned.style.display = 'inline-block';
-        cloned.style.verticalAlign = 'middle';
-        return cloned.outerHTML;
-      }
-    }
-  }
-
-  // Fallback: Reconstruct image tag matching Cardmarket's file extension
-  let ext = 'svg'; // default to SVG
-  const anyImg = document.querySelector('.table-body img[src*="/flags/"], tr img[src*="/flags/"], img[src*="/flags/"]');
-  if (anyImg) {
-    const src = anyImg.getAttribute('src') || '';
-    if (src.toLowerCase().endsWith('.png')) ext = 'png';
-    else if (src.toLowerCase().endsWith('.gif')) ext = 'gif';
-  }
-
-  let flagClass = cleanCode.toLowerCase();
-  if (flagClass === 'en') flagClass = 'gb'; // Map EN to GB flag class
-  else if (flagClass === 'zh') flagClass = 'cn'; // Map ZH (Chinese language) to CN (China flag)
-  else if (flagClass === 'ko') flagClass = 'kr'; // Map KO (Korean language) to KR (Korea flag)
+  const SVG_MAP = {
+    "DE": `<svg viewBox="0 0 5 3" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="5" height="3" fill="#FFCE00"/><rect width="5" height="2" fill="#DD0000"/><rect width="5" height="1" fill="#000000"/></svg>`,
+    "FR": `<svg viewBox="0 0 3 2" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="1" height="2" fill="#002395"/><rect x="1" width="1" height="2" fill="#ffffff"/><rect x="2" width="1" height="2" fill="#ED2939"/></svg>`,
+    "IT": `<svg viewBox="0 0 3 2" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="1" height="2" fill="#009246"/><rect x="1" width="1" height="2" fill="#ffffff"/><rect x="2" width="1" height="2" fill="#ce2b37"/></svg>`,
+    "AT": `<svg viewBox="0 0 3 3" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="3" height="3" fill="#C8102E"/><rect y="1" width="3" height="1" fill="#ffffff"/></svg>`,
+    "BE": `<svg viewBox="0 0 3 3" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="1" height="3" fill="#000000"/><rect x="1" width="1" height="3" fill="#FDDA24"/><rect x="2" width="1" height="3" fill="#EF3340"/></svg>`,
+    "ES": `<svg viewBox="0 0 3 4" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="3" height="4" fill="#C8102E"/><rect y="1" width="3" height="2" fill="#FFD100"/></svg>`,
+    "NL": `<svg viewBox="0 0 3 3" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="3" height="1" fill="#AE1C28"/><rect y="1" width="3" height="1" fill="#ffffff"/><rect y="2" width="3" height="1" fill="#21468B"/></svg>`,
+    "JP": `<svg viewBox="0 0 3 2" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="3" height="2" fill="#ffffff"/><circle cx="1.5" cy="1" r="0.6" fill="#BC002D"/></svg>`,
+    "ZH": `<svg viewBox="0 0 30 20" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="30" height="20" fill="#DE2910"/><path d="M6 2l1.18 3.61h3.8L7.9 7.85l1.18 3.61-3.08-2.24-3.08 2.24 1.18-3.61L1 5.61h3.8z" fill="#FFDE00"/></svg>`,
+    "CN": `<svg viewBox="0 0 30 20" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="30" height="20" fill="#DE2910"/><path d="M6 2l1.18 3.61h3.8L7.9 7.85l1.18 3.61-3.08-2.24-3.08 2.24 1.18-3.61L1 5.61h3.8z" fill="#FFDE00"/></svg>`,
+    "KO": `<svg viewBox="0 0 3 2" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="3" height="2" fill="#ffffff"/><circle cx="1.5" cy="1" r="0.5" fill="#CD2E3A"/><path d="M1.5 1.5a.5.5 0 0 1 0-1 .25.25 0 0 1 0 .5.25.25 0 0 0 0 .5" fill="#0047A0"/><circle cx="1.5" cy="1" r="0.45" fill="none" stroke="#000000" stroke-width="0.05" stroke-dasharray="0.1 0.1"/></svg>`,
+    "KR": `<svg viewBox="0 0 3 2" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="3" height="2" fill="#ffffff"/><circle cx="1.5" cy="1" r="0.5" fill="#CD2E3A"/><path d="M1.5 1.5a.5.5 0 0 1 0-1 .25.25 0 0 1 0 .5.25.25 0 0 0 0 .5" fill="#0047A0"/><circle cx="1.5" cy="1" r="0.45" fill="none" stroke="#000000" stroke-width="0.05" stroke-dasharray="0.1 0.1"/></svg>`,
+    "GB": `<svg viewBox="0 0 50 30" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="50" height="30" fill="#012169"/><path d="M0 0l50 30M0 30l50 -30" stroke="#ffffff" stroke-width="6"/><path d="M0 0l50 30M0 30l50 -30" stroke="#C8102E" stroke-width="2"/><path d="M25 0v30M0 15h50" stroke="#ffffff" stroke-width="10"/><path d="M25 0v30M0 15h50" stroke="#C8102E" stroke-width="6"/></svg>`,
+    "EN": `<svg viewBox="0 0 50 30" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="50" height="30" fill="#012169"/><path d="M0 0l50 30M0 30l50 -30" stroke="#ffffff" stroke-width="6"/><path d="M0 0l50 30M0 30l50 -30" stroke="#C8102E" stroke-width="2"/><path d="M25 0v30M0 15h50" stroke="#ffffff" stroke-width="10"/><path d="M25 0v30M0 15h50" stroke="#C8102E" stroke-width="6"/></svg>`,
+    "PT": `<svg viewBox="0 0 5 3" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="5" height="3" fill="#FF0000"/><rect width="2" height="3" fill="#006600"/></svg>`,
+    "CH": `<svg viewBox="0 0 1 1" class="flag-svg" style="display:inline-block;vertical-align:middle;width:11px;height:11px;margin:0;"><rect width="1" height="1" fill="#D52B1E"/><rect x="0.4" y="0.25" width="0.2" height="0.5" fill="#ffffff"/><rect x="0.25" y="0.4" width="0.5" height="0.2" fill="#ffffff"/></svg>`,
+    "DK": `<svg viewBox="0 0 37 28" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="37" height="28" fill="#C8102E"/><rect x="12" width="4" height="28" fill="#ffffff"/><rect y="12" width="37" height="4" fill="#ffffff"/></svg>`,
+    "SE": `<svg viewBox="0 0 16 10" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="16" height="10" fill="#006AA7"/><rect x="5" width="2" height="10" fill="#FECC00"/><rect y="4" width="16" height="2" fill="#FECC00"/></svg>`,
+    "PL": `<svg viewBox="0 0 3 2" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="3" height="2" fill="#D52B1E"/><rect width="3" height="1" fill="#ffffff"/></svg>`,
+    "IE": `<svg viewBox="0 0 3 2" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="1" height="2" fill="#169B62"/><rect x="1" width="1" height="2" fill="#ffffff"/><rect x="2" width="1" height="2" fill="#FF883E"/></svg>`,
+    "GR": `<svg viewBox="0 0 9 6" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="9" height="6" fill="#005A9C"/><rect y="1" width="9" height="1" fill="#ffffff"/><rect y="3" width="9" height="1" fill="#ffffff"/><rect y="5" width="9" height="1" fill="#ffffff"/><rect width="3" height="3" fill="#005A9C"/><rect x="1" width="1" height="3" fill="#ffffff"/><rect y="1" width="3" height="1" fill="#ffffff"/></svg>`,
+    "FI": `<svg viewBox="0 0 18 11" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="18" height="11" fill="#ffffff"/><rect x="5" width="3" height="11" fill="#003580"/><rect y="4" width="18" height="3" fill="#003580"/></svg>`,
+    "NO": `<svg viewBox="0 0 22 16" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="22" height="16" fill="#BA0C2F"/><rect x="6" width="4" height="16" fill="#ffffff"/><rect y="6" width="22" height="4" fill="#ffffff"/><rect x="7" width="2" height="16" fill="#00205B"/><rect y="7" width="22" height="2" fill="#00205B"/></svg>`
+  };
   
-  return `<img src="/img/static/v2/images/flags/${flagClass}.${ext}" class="flag" title="${cleanCode}" style="vertical-align: middle; display: inline-block; width: 16px; height: 11px; margin: 0;">`;
+  if (SVG_MAP[cleanCode]) {
+    return SVG_MAP[cleanCode];
+  }
+  
+  // General EU Flag Fallback (blue background with yellow stars circle approximation)
+  return `<svg viewBox="0 0 3 2" class="flag-svg" style="display:inline-block;vertical-align:middle;width:16px;height:11px;margin:0;"><rect width="3" height="2" fill="#003399"/><circle cx="1.5" cy="1" r="0.5" fill="none" stroke="#FFCC00" stroke-width="0.08" stroke-dasharray="0.05 0.2"/></svg>`;
+}
+
+function getFlagHtml(type, code) {
+  if (!code) return '';
+  return getCustomFlagSvg(code);
 }
 
 // Read the active filters from Cardmarket's URL query parameters (highly robust)
@@ -285,6 +247,74 @@ async function applySidebarFilter(newPrefs) {
   return false;
 }
 
+// Extract seller country in a rock solid, language-independent way
+function extractSellerCountry(sellerCol) {
+  if (!sellerCol) return 'OTHER';
+  
+  // 1. Look inside the .seller-name container (most specific for the country flag icon)
+  const sellerNameEl = sellerCol.querySelector('.seller-name');
+  const searchArea = sellerNameEl || sellerCol;
+  
+  // Find all elements with title/label attributes
+  const candidates = searchArea.querySelectorAll('[title], [data-original-title], [data-bs-original-title], [aria-label]');
+  for (const el of candidates) {
+    const titleText = (el.getAttribute('aria-label') || 
+                       el.getAttribute('data-bs-original-title') || 
+                       el.getAttribute('data-original-title') || 
+                       el.getAttribute('title') || '').trim();
+                       
+    // Check if the title indicates a seller location
+    // e.g. "Artikelstandort: Deutschland" or "Seller's location: Germany"
+    if (titleText.includes(':')) {
+      const parts = titleText.split(':');
+      const possibleCountry = parts[1].trim().toLowerCase();
+      
+      for (const code of Object.keys(COUNTRY_NAMES)) {
+        const names = COUNTRY_NAMES[code];
+        if (names.some(name => possibleCountry.includes(name.toLowerCase()))) {
+          return code;
+        }
+      }
+    }
+    
+    // Direct matches if the text itself matches a country name (excluding calendar info)
+    for (const code of Object.keys(COUNTRY_NAMES)) {
+      const names = COUNTRY_NAMES[code];
+      if (names.some(name => titleText.toLowerCase().includes(name.toLowerCase()))) {
+        // Double-check to avoid shipping calendar collision
+        if (!titleText.toLowerCase().includes('versand') && !titleText.toLowerCase().includes('shipping') && !titleText.toLowerCase().includes('livraison')) {
+          return code;
+        }
+      }
+    }
+  }
+  
+  // 2. Fallback: Search in filenames
+  const images = searchArea.querySelectorAll('img');
+  for (const img of images) {
+    const srcText = img.getAttribute('src') || '';
+    const filename = srcText.split('/').pop().toUpperCase();
+    for (const code of Object.keys(COUNTRY_NAMES)) {
+      if (filename.startsWith(code + '.') || filename === code) {
+        return code;
+      }
+    }
+  }
+  
+  // 3. Fallback: Check class names
+  const elementsWithClasses = searchArea.querySelectorAll('[class*="flag"], [class*="FLAG"]');
+  for (const el of elementsWithClasses) {
+    const classText = el.className || '';
+    for (const code of Object.keys(COUNTRY_NAMES)) {
+      if (classText.toUpperCase().includes('FLAG-' + code)) {
+        return code;
+      }
+    }
+  }
+
+  return 'OTHER';
+}
+
 // Scrape the DOM for the first offer matching target conditions
 function scrapePrice(targetCondition, targetLocation, targetLanguages) {
   // ONLY match top-level article rows to avoid scanning sub-rows!
@@ -296,35 +326,9 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     const row = rows[rowIndex];
     
     // 1. Find Seller Country
-    let isGerman = false;
-    let sellerCountry = 'OTHER';
-    
     const sellerCol = row.querySelector('.col-seller, [class*="seller"], [class*="user"], .col-sellerProductInfo');
-    if (sellerCol) {
-      // Find all spans or images with background images (sprite sheets)
-      const flagCandidates = sellerCol.querySelectorAll('span[style*="background-image"], img');
-      for (const el of flagCandidates) {
-        const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || el.getAttribute('aria-label') || '';
-        const srcText = el.getAttribute('src') || '';
-        const filename = srcText.split('/').pop().toUpperCase();
-
-        for (const code of Object.keys(COUNTRY_NAMES)) {
-          const names = COUNTRY_NAMES[code];
-          const matchesTitle = names && names.some(name => 
-            titleText.toLowerCase().includes(name.toLowerCase())
-          );
-          const matchesFile = filename.startsWith(code + '.') || filename === code;
-          const matchesClass = el.className.toUpperCase().includes('FLAG-' + code);
-
-          if (matchesTitle || matchesFile || matchesClass) {
-            sellerCountry = code;
-            if (code === 'DE') isGerman = true;
-            break;
-          }
-        }
-        if (sellerCountry !== 'OTHER') break;
-      }
-    }
+    const sellerCountry = extractSellerCountry(sellerCol);
+    const isGerman = (sellerCountry === 'DE');
 
     if (targetLocation === 'DE' && !isGerman) {
       continue;

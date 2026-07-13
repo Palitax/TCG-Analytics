@@ -411,10 +411,12 @@
   font-style: italic;
 }
 
-/* Ensure cloned flags are sized correctly and visible */
+/* Ensure cloned and inline SVG flags are sized correctly and visible */
 .cm-tracker-meta-flags .flag,
 .cm-tracker-meta-flags .flag-icon,
+.cm-tracker-meta-flags .flag-svg,
 .cm-tracker-meta-flags img,
+.cm-tracker-meta-flags svg,
 .cm-tracker-meta-flags span.flag {
   width: 16px !important;
   height: 11px !important;
