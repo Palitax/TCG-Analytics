@@ -53,34 +53,44 @@ function getTcgAndCardId() {
   return { tcg, cardId };
 }
 
-// Helper to find a checkbox input by its label keywords globally (restricted to <label> elements)
+// Helper to find a checkbox input by its label keywords globally
 function findCheckboxByLabel(keywords) {
-  // Querying specifically <label> elements is extremely robust and avoids matching table rows
-  const labels = document.querySelectorAll('label');
-  for (const label of labels) {
-    const text = label.textContent.trim().toLowerCase();
+  // Try to find the filter sidebar container first using broad aside/sidebar selectors
+  let container = document.querySelector('aside, .sidebar, #sidebar, #searchFilterForm, .filter-sidebar, #filter-sidebar, [class*="sidebar"], [id*="sidebar"], [class*="filter"], [id*="filter"]');
+  console.log(`findCheckboxByLabel: Searching keywords [${keywords.join(', ')}] in container:`, container ? container.tagName + (container.id ? '#' + container.id : '') : 'BODY');
+  
+  if (!container) container = document.body;
+
+  // Search labels, spans, divs and anchors
+  const candidates = container.querySelectorAll('label, span, div, a');
+  for (const el of candidates) {
+    // Skip if inside article table rows to prevent false-positives matching table rows
+    if (el.closest('.article-row, [id^="articleRow"], div.table-body > div.row, .table-body div.row, tr.article-row, .table-body, #articlesTable')) {
+      continue;
+    }
+
+    // Skip if it contains too many children (checkbox labels are simple)
+    if (el.children.length > 3) continue;
+
+    const text = el.textContent.trim().toLowerCase();
+    if (!text) continue;
+
     const matchesKeyword = keywords.some(keyword => text === keyword.toLowerCase() || text.includes(keyword.toLowerCase()));
-    
     if (matchesKeyword) {
-      // 1. Check for attribute pointing to ID
-      const forId = label.getAttribute('for');
-      if (forId) {
-        const checkbox = document.getElementById(forId);
-        if (checkbox && checkbox.type === 'checkbox') return checkbox;
-      }
-      
-      // 2. Check for child input
-      let checkbox = label.querySelector('input[type="checkbox"]');
-      if (checkbox) return checkbox;
-      
-      // 3. Check for sibling/parent inputs
-      const parent = label.parentElement;
-      if (parent) {
-        checkbox = parent.querySelector('input[type="checkbox"]');
-        if (checkbox) return checkbox;
+      // Find checkbox in its parent hierarchy (up to 4 levels)
+      let parent = el;
+      for (let i = 0; i < 4; i++) {
+        if (!parent) break;
+        const checkbox = parent.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+          console.log(`findCheckboxByLabel: MATCH found for [${keywords.join(', ')}] -> checkbox ID: ${checkbox.id || 'NO_ID'}, Checked: ${checkbox.checked}`);
+          return checkbox;
+        }
+        parent = parent.parentElement;
       }
     }
   }
+  console.log(`findCheckboxByLabel: NO MATCH found for [${keywords.join(', ')}]`);
   return null;
 }
 
@@ -170,6 +180,8 @@ function getSidebarState() {
     }
   }
 
+  console.log(`getSidebarState: Location = ${isDeChecked ? 'DE' : 'ALL'}, Languages = [${activeLanguages.join(', ')}]`);
+
   return {
     location: isDeChecked ? 'DE' : 'ALL',
     languages: activeLanguages.length === 0 ? ['ALL'] : activeLanguages
@@ -180,12 +192,14 @@ function getSidebarState() {
 async function applySidebarFilter(newPrefs) {
   let needsSubmit = false;
 
+  console.log("applySidebarFilter: Applying overlay preferences to sidebar:", newPrefs);
+
   // 1. Set location checkbox
   const deCheckbox = findCheckboxByLabel(["Deutschland", "Germany"]);
   if (deCheckbox) {
     const shouldBeChecked = (newPrefs.location === 'DE');
     if (deCheckbox.checked !== shouldBeChecked) {
-      console.log(`Syncing location checkbox to ${shouldBeChecked}`);
+      console.log(`applySidebarFilter: Syncing location checkbox to ${shouldBeChecked}`);
       deCheckbox.checked = shouldBeChecked;
       deCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
       deCheckbox.dispatchEvent(new Event('input', { bubbles: true }));
@@ -201,7 +215,7 @@ async function applySidebarFilter(newPrefs) {
     if (checkbox) {
       const shouldBeChecked = newPrefs.languages.includes(lang);
       if (checkbox.checked !== shouldBeChecked) {
-        console.log(`Syncing language checkbox ${lang} to ${shouldBeChecked}`);
+        console.log(`applySidebarFilter: Syncing language checkbox ${lang} to ${shouldBeChecked}`);
         checkbox.checked = shouldBeChecked;
         checkbox.dispatchEvent(new Event('change', { bubbles: true }));
         checkbox.dispatchEvent(new Event('input', { bubbles: true }));
@@ -215,7 +229,7 @@ async function applySidebarFilter(newPrefs) {
     if (anchor) {
       const form = anchor.form || document.querySelector('#searchFilterForm, #filterForm, form.filter-form');
       if (form) {
-        console.log("Applying overlay preferences to Cardmarket sidebar and submitting...");
+        console.log("applySidebarFilter: Triggering form submit...");
         form.submit();
         return true; // Reload triggered
       }
@@ -679,7 +693,7 @@ async function runScan() {
                               sidebar.languages.every(lang => savedLanguages.includes(lang)));
 
     // Verify if the sidebar container is present in the DOM before attempting to reload
-    const filterContainer = document.querySelector('#searchFilterForm, #filterForm, form.filter-form, .filter-container, .filter-sidebar, #filter-sidebar');
+    const filterContainer = document.querySelector('aside, .sidebar, #sidebar, #searchFilterForm, .filter-sidebar, #filter-sidebar');
 
     if (filterContainer && (!matchesLocation || !matchesLanguages)) {
       const sessionKey = 'cm_reload_' + cardId;
