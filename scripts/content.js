@@ -1,6 +1,7 @@
 // Cardmarket Price Tracker Pro - Content Script
 let activeOverlay = null;
 let currentUserId = null;
+let currentMatchedElement = null; // Store reference to scroll to the matched seller row
 
 // Standardize condition mapping
 const CONDITION_NAMES = {
@@ -108,10 +109,19 @@ function getFlagHtml(type, code) {
     }
   }
 
-  // Fallback: Reconstruct standard CSS flags used by Cardmarket
+  // Fallback: Reconstruct image tag matching Cardmarket's file extension
+  let ext = 'svg'; // default to SVG
+  const anyImg = document.querySelector('.table-body img[src*="/flags/"], tr img[src*="/flags/"], img[src*="/flags/"]');
+  if (anyImg) {
+    const src = anyImg.getAttribute('src') || '';
+    if (src.toLowerCase().endsWith('.png')) ext = 'png';
+    else if (src.toLowerCase().endsWith('.gif')) ext = 'gif';
+  }
+
   let flagClass = cleanCode.toLowerCase();
-  if (flagClass === 'en') flagClass = 'us'; // Map EN to US flag class for English
-  return `<span class="flag flag-${flagClass}" title="${cleanCode}" style="vertical-align: middle; display: inline-block;"></span>`;
+  if (flagClass === 'en') flagClass = 'gb'; // Map EN to GB flag class
+  
+  return `<img src="/img/static/v2/images/flags/${flagClass}.${ext}" class="flag" title="${cleanCode}" style="vertical-align: middle; display: inline-block; width: 16px; height: 11px; margin: 0;">`;
 }
 
 // Scrape the DOM for the first offer matching target conditions
@@ -228,7 +238,6 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
           const condText = condBadge.textContent.trim();
           cellText = cellText.replace(condText, '');
         }
-        // Remove photo icons text representation (e.g. camera symbol text if any)
         comment = cellText.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim();
       }
     }
@@ -342,9 +351,6 @@ function updateOverlay(status, details = {}) {
     const sellerFlag = getFlagHtml('seller', matchedCountry);
     const langFlag = getFlagHtml('language', matchedLanguage);
 
-    const lastSellerFlag = record => getFlagHtml('seller', record.seller_country);
-    const lastLangFlag = record => getFlagHtml('language', record.language);
-
     if (lastPrice === null || lastPrice === undefined) {
       diffBadge = `<span class="cm-tracker-diff-badge first">Erster Scan</span>`;
       statusText = `<span class="cm-tracker-status-desc">Dieser Preis wurde als Startwert in der Datenbank gesichert.</span>`;
@@ -393,7 +399,7 @@ function updateOverlay(status, details = {}) {
             ${diffBadge}
           </div>
           <div class="cm-tracker-meta-flags">
-            <div class="cm-flag-group" title="Herkunftsland des Verkäufers">
+            <div class="cm-flag-group cm-clickable-seller" title="Klicke hier, um zum Verkäufer in der Liste zu springen">
               <span class="cm-flag-group-label">Verkäufer:</span>
               ${sellerFlag}
             </div>
@@ -516,6 +522,20 @@ function attachListeners() {
     });
   });
 
+  // Seller click and highlight event binding
+  const clickableSeller = document.querySelector('.cm-clickable-seller');
+  if (clickableSeller && currentMatchedElement) {
+    clickableSeller.addEventListener('click', () => {
+      currentMatchedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      currentMatchedElement.classList.add('cm-highlight-row');
+      setTimeout(() => {
+        if (currentMatchedElement) {
+          currentMatchedElement.classList.remove('cm-highlight-row');
+        }
+      }, 1500);
+    });
+  }
+
   document.addEventListener('click', (e) => {
     if (selectLanguagesDetails && !selectLanguagesDetails.contains(e.target)) {
       selectLanguagesDetails.removeAttribute('open');
@@ -554,6 +574,7 @@ async function runScan() {
 
     const match = scrapePrice(targetCondition, targetLocation, targetLanguages);
     if (!match) {
+      currentMatchedElement = null;
       updateOverlay('success', {
         selectedCondition: targetCondition,
         selectedLocation: targetLocation,
@@ -562,6 +583,8 @@ async function runScan() {
       });
       return;
     }
+
+    currentMatchedElement = match.element; // Save matched row reference
 
     chrome.runtime.sendMessage({
       action: "scanCard",
