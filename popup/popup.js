@@ -7,6 +7,7 @@ const btnLogin = document.getElementById('btn-login');
 const btnLogout = document.getElementById('btn-logout');
 const userEmail = document.getElementById('user-email');
 const selectCondition = document.getElementById('select-condition');
+const selectLanguage = document.getElementById('select-language');
 
 // Toggle active display states
 function showPanel(panel) {
@@ -45,6 +46,10 @@ async function init() {
       // 2. Load preferred condition
       const { targetCondition = 'NM' } = await chrome.storage.local.get('targetCondition');
       selectCondition.value = targetCondition;
+      
+      // 3. Load preferred language
+      const { targetLanguage = 'ALL' } = await chrome.storage.local.get('targetLanguage');
+      selectLanguage.value = targetLanguage;
       
       showPanel(panelLoggedIn);
     } else {
@@ -85,6 +90,12 @@ btnLogout.addEventListener('click', () => {
 selectCondition.addEventListener('change', async (e) => {
   const value = e.target.value;
   await chrome.storage.local.set({ targetCondition: value });
+  triggerTabScan();
+});
+
+selectLanguage.addEventListener('change', async (e) => {
+  const value = e.target.value;
+  await chrome.storage.local.set({ targetLanguage: value });
   triggerTabScan();
 });
 

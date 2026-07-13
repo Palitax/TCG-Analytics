@@ -27,29 +27,136 @@ function getCardId() {
   return '/' + parts.join('/');
 }
 
+// Helper to find a checkbox input by its label keywords
+function findCheckboxByLabel(keywords) {
+  const labels = document.querySelectorAll('label, span, div');
+  for (const label of labels) {
+    const text = label.textContent.trim().toLowerCase();
+    const matchesKeyword = keywords.some(keyword => text === keyword.toLowerCase() || text.includes(keyword.toLowerCase()));
+    
+    if (matchesKeyword) {
+      // 1. Check for attribute pointing to ID
+      const forId = label.getAttribute('for');
+      if (forId) {
+        const checkbox = document.getElementById(forId);
+        if (checkbox && checkbox.type === 'checkbox') return checkbox;
+      }
+      
+      // 2. Check for child input
+      let checkbox = label.querySelector('input[type="checkbox"]');
+      if (checkbox) return checkbox;
+      
+      // 3. Check for sibling/parent inputs
+      const parent = label.parentElement;
+      if (parent) {
+        checkbox = parent.querySelector('input[type="checkbox"]');
+        if (checkbox) return checkbox;
+      }
+    }
+  }
+  return null;
+}
+
+// Map language codes to labels in Cardmarket filter
+const LANGUAGE_LABELS = {
+  "DE": ["Deutsch", "German"],
+  "EN": ["Englisch", "English"],
+  "ES": ["Spanisch", "Spanish"],
+  "FR": ["Französisch", "French"],
+  "IT": ["Italienisch", "Italian"]
+};
+
+// Automate checking the filters (Germany location & target language) and submitting the form
+async function applyFilters() {
+  const { targetLanguage = 'ALL' } = await chrome.storage.local.get('targetLanguage');
+  
+  let needsSubmit = false;
+
+  // 1. Locate Germany location checkbox
+  const deCheckbox = findCheckboxByLabel(["Deutschland", "Germany"]);
+  if (deCheckbox && !deCheckbox.checked) {
+    console.log("Auto-checking location filter: Germany");
+    deCheckbox.checked = true;
+    needsSubmit = true;
+  }
+
+  // 2. Locate target language checkbox
+  if (targetLanguage !== 'ALL') {
+    const langKeywords = LANGUAGE_LABELS[targetLanguage];
+    if (langKeywords) {
+      const langCheckbox = findCheckboxByLabel(langKeywords);
+      if (langCheckbox && !langCheckbox.checked) {
+        console.log("Auto-checking language filter:", targetLanguage);
+        langCheckbox.checked = true;
+        needsSubmit = true;
+      }
+    }
+  }
+
+  // 3. Submit the filter form if anything was checked
+  if (needsSubmit) {
+    const checkbox = deCheckbox || (targetLanguage !== 'ALL' && findCheckboxByLabel(LANGUAGE_LABELS[targetLanguage]));
+    if (checkbox) {
+      const form = checkbox.form || document.querySelector('form.filter-form, #filterForm, #searchFilterForm');
+      if (form) {
+        console.log("Submitting Cardmarket filter form to apply extension preferences...");
+        const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
+        if (submitBtn) {
+          submitBtn.click();
+        } else {
+          form.submit();
+        }
+        return true; // Indicates page reload was triggered
+      }
+    }
+  }
+  return false;
+}
+
 // Scrape the DOM for the first German seller offer matching the target condition
 function scrapePrice(targetCondition) {
-  // Query rows representing listings on Cardmarket
+  // Query rows representing listings on Cardmarket (include direct child divs of table-body as fallback)
   const rows = document.querySelectorAll(
-    '.article-row, [id^="articleRow"], div.row.g-0.align-items-center, tr.article-row'
+    '.article-row, [id^="articleRow"], div.table-body > div.row, .table-body div.row, tr.article-row'
   );
 
   for (const row of rows) {
-    // 1. Verify seller is in Germany (DE flag icon/title attribute)
-    const hasDeFlag = row.querySelector('.flag-DE, .flag-de, [class*="flag-DE"], [class*="flag-de"]') ||
-                      row.querySelector('[title="Deutschland"], [data-original-title="Deutschland"], [data-bs-original-title="Deutschland"], [title="Germany"], [data-original-title="Germany"], [data-bs-original-title="Germany"]') ||
-                      row.innerHTML.includes('title="Deutschland"') ||
-                      row.innerHTML.includes('title="Germany"') ||
-                      row.innerHTML.includes('flag-DE');
+    // 1. Verify seller is in Germany (check flag elements, class attributes, tooltips, and src image attributes)
+    const flagElements = row.querySelectorAll('.flag, .icon, [class*="flag"], [class*="icon"], img');
+    let isGerman = false;
+    for (const el of flagElements) {
+      const classText = el.className || '';
+      const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
+      const srcText = el.getAttribute('src') || '';
+      
+      if (
+        classText.toUpperCase().includes('DE') ||
+        titleText.toUpperCase().includes('DEUTSCHLAND') ||
+        titleText.toUpperCase().includes('GERMANY') ||
+        srcText.toUpperCase().includes('/DE.') ||
+        srcText.toUpperCase().includes('/DE/') ||
+        srcText.toUpperCase().includes('DE.PNG') ||
+        srcText.toUpperCase().includes('DE.SVG')
+      ) {
+        isGerman = true;
+        break;
+      }
+    }
 
-    if (!hasDeFlag) continue;
+    if (!isGerman) continue;
 
-    // 2. Verify card condition matches target
+    // 2. Verify card condition matches target (check for exact match or word prefix boundary)
     const conditionElements = row.querySelectorAll('.article-condition, .condition, .badge, span, a');
     let conditionMatches = false;
     for (const el of conditionElements) {
       const text = el.textContent.trim().toUpperCase();
-      if (text === targetCondition) {
+      // Matches "NM", "NM English", "NM (EN)", or word boundary token
+      if (
+        text === targetCondition ||
+        text.startsWith(targetCondition + ' ') ||
+        text.startsWith(targetCondition + '(') ||
+        text.split(/[^A-Z]/)[0] === targetCondition
+      ) {
         conditionMatches = true;
         break;
       }
@@ -62,7 +169,7 @@ function scrapePrice(targetCondition) {
     for (const el of priceElements) {
       const text = el.textContent.trim();
       if (text.includes('€')) {
-        // Clean currency formatting (e.g. "12,99 €" -> 12.99)
+        // Clean currency formatting (e.g. "1.300,00 €" -> 1300.00)
         const cleaned = text
           .replace('€', '')
           .replace(/\s/g, '')       // remove whitespaces
@@ -203,6 +310,13 @@ function updateOverlay(status, details = {}) {
 // Perform active scan sequence
 async function runScan() {
   updateOverlay('loading');
+
+  // Apply Cardmarket location and language preferences
+  const isReloading = await applyFilters();
+  if (isReloading) {
+    console.log("Filters applied. Page reloading, scanning deferred.");
+    return;
+  }
 
   // Load selected target condition from storage
   const { targetCondition = 'NM' } = await chrome.storage.local.get('targetCondition');

@@ -80,7 +80,19 @@
             <option value="PO">Poor (PO)</option>
           </select>
         </div>
-        <p class="settings-note">Preisscanner sucht bevorzugt nach Händlern aus Deutschland.</p>
+
+        <label for="select-language" class="settings-label" style="margin-top: 6px;">Gewünschte Sprache (Target Language):</label>
+        <div class="select-wrapper">
+          <select id="select-language">
+            <option value="ALL" selected>Alle Sprachen</option>
+            <option value="DE">Deutsch (German)</option>
+            <option value="EN">Englisch (English)</option>
+            <option value="ES">Spanisch (Spanish)</option>
+            <option value="FR">Französisch (French)</option>
+            <option value="IT">Italienisch (Italian)</option>
+          </select>
+        </div>
+        <p class="settings-note">Scanner filtert automatisch nach Standort Deutschland und der gewählten Sprache.</p>
       </div>
     </div>
   </div>
