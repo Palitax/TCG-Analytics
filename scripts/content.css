@@ -408,3 +408,16 @@
   color: rgba(255, 255, 255, 0.85);
   font-style: italic;
 }
+
+/* Ensure cloned flags are sized correctly and visible */
+.cm-tracker-meta-flags .flag,
+.cm-tracker-meta-flags .flag-icon,
+.cm-tracker-meta-flags img,
+.cm-tracker-meta-flags span.flag {
+  width: 16px !important;
+  height: 11px !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  line-height: 11px !important;
+  margin: 0 !important;
+}

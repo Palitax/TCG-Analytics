@@ -22,6 +22,22 @@ const LANGUAGE_LABELS = {
   "IT": ["Italienisch", "Italian"]
 };
 
+const COUNTRY_NAMES = {
+  "DE": ["Deutschland", "Germany"],
+  "ES": ["Spanien", "Spain"],
+  "FR": ["Frankreich", "France"],
+  "IT": ["Italien", "Italy"],
+  "GB": ["Großbritannien", "United Kingdom", "UK", "Englisch", "English"],
+  "PT": ["Portugal"],
+  "NL": ["Niederlande", "Netherlands"],
+  "BE": ["Belgien", "Belgium"],
+  "AT": ["Österreich", "Austria"],
+  "CH": ["Schweiz", "Switzerland"],
+  "DK": ["Dänemark", "Denmark"],
+  "SE": ["Schweden", "Sweden"],
+  "PL": ["Polen", "Poland"]
+};
+
 // Extract TCG name and normalized card ID from pathname
 function getTcgAndCardId() {
   const path = window.location.pathname;
@@ -56,12 +72,18 @@ function getFlagHtml(type, code) {
 
       let match = false;
       if (type === 'seller') {
+        const names = COUNTRY_NAMES[cleanCode];
+        const matchesTitle = names && names.some(name => 
+          titleText.toLowerCase() === name.toLowerCase() || 
+          titleText.toLowerCase().includes(' ' + name.toLowerCase()) ||
+          titleText.toLowerCase().includes('(' + name.toLowerCase())
+        );
+
         if (
           classText.toUpperCase().includes('FLAG-' + cleanCode) ||
           srcText.toUpperCase().includes('/' + cleanCode + '.') ||
           srcText.toUpperCase().includes('/' + cleanCode + '/') ||
-          titleText.toUpperCase().includes(cleanCode) ||
-          (cleanCode === 'DE' && (titleText.toUpperCase().includes('DEUTSCHLAND') || titleText.toUpperCase().includes('GERMANY')))
+          matchesTitle
         ) {
           match = true;
         }
@@ -113,14 +135,20 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
       
       const codes = ['DE', 'ES', 'FR', 'IT', 'GB', 'PT', 'NL', 'BE', 'AT', 'CH', 'DK', 'SE', 'PL'];
       for (const code of codes) {
+        const names = COUNTRY_NAMES[code];
+        const matchesTitle = names && names.some(name => 
+          titleText.toLowerCase() === name.toLowerCase() || 
+          titleText.toLowerCase().includes(' ' + name.toLowerCase()) ||
+          titleText.toLowerCase().includes('(' + name.toLowerCase())
+        );
+
         if (
           classText.toUpperCase().includes('FLAG-' + code) ||
           srcText.toUpperCase().includes('/' + code + '.') ||
           srcText.toUpperCase().includes('/' + code + '/') ||
           srcText.toUpperCase().includes(code + '.PNG') ||
           srcText.toUpperCase().includes(code + '.SVG') ||
-          titleText.toUpperCase().includes(code) ||
-          (code === 'DE' && (titleText.toUpperCase().includes('DEUTSCHLAND') || titleText.toUpperCase().includes('GERMANY')))
+          matchesTitle
         ) {
           sellerCountry = code;
           if (code === 'DE') isGerman = true;
