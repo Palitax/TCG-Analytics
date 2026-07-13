@@ -65,12 +65,9 @@ function findCheckboxByLabel(keywords) {
 
   const candidates = container.querySelectorAll('label, span, div, a');
   for (const el of candidates) {
-    // Skip if inside article table rows to prevent false-positives matching table rows
     if (el.closest('.article-row, [id^="articleRow"], div.table-body > div.row, .table-body div.row, tr.article-row, .table-body, #articlesTable')) {
       continue;
     }
-
-    // Skip if it contains too many children (checkbox labels are simple)
     if (el.children.length > 3) continue;
 
     const text = el.textContent.trim().toLowerCase();
@@ -179,75 +176,110 @@ function getFlagHtml(type, code) {
   return `<img src="/img/static/v2/images/flags/${flagClass}.${ext}" class="flag" title="${cleanCode}" style="vertical-align: middle; display: inline-block; width: 16px; height: 11px; margin: 0;">`;
 }
 
-// Read the active filters from Cardmarket's sidebar checkboxes
+// Read the active filters from Cardmarket's URL query parameters (highly robust)
 function getSidebarState() {
-  const deCheckbox = findCheckboxByLabel(["Deutschland", "Germany"]);
-  const isDeChecked = deCheckbox ? deCheckbox.checked : false;
-
-  const activeLanguages = [];
-  const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
-  for (const lang of langCodes) {
-    const keywords = LANGUAGE_LABELS[lang];
-    const checkbox = findCheckboxByLabel(keywords);
-    if (checkbox && checkbox.checked) {
-      activeLanguages.push(lang);
+  const urlParams = new URLSearchParams(window.location.search);
+  const sellerCountryParam = urlParams.get('sellerCountry');
+  
+  const langParams = [];
+  urlParams.forEach((value, key) => {
+    if (key === 'language' || key === 'language[]') {
+      langParams.push(value);
     }
-  }
+  });
 
-  console.log(`getSidebarState: Location = ${isDeChecked ? 'DE' : 'ALL'}, Languages = [${activeLanguages.join(', ')}]`);
+  const isDeFiltered = (sellerCountryParam === '7'); // Germany = 7
+
+  const languageMap = {
+    "1": "EN",
+    "2": "FR",
+    "3": "DE",
+    "4": "ES",
+    "5": "IT",
+    "6": "ZH",
+    "7": "JP",
+    "8": "KO"
+  };
+
+  const activeLangs = langParams.map(id => languageMap[id]).filter(Boolean);
+  const activeLocation = isDeFiltered ? 'DE' : 'ALL';
+
+  console.log(`getSidebarState (URL): Location = ${activeLocation}, Languages = [${activeLangs.join(', ')}]`);
 
   return {
-    location: isDeChecked ? 'DE' : 'ALL',
-    languages: activeLanguages.length === 0 ? ['ALL'] : activeLanguages
+    location: activeLocation,
+    languages: activeLangs.length === 0 ? ['ALL'] : activeLangs
   };
 }
 
 // Synchronize selected overlay preferences to Cardmarket's native sidebar checkboxes and submit
 async function applySidebarFilter(newPrefs) {
-  let needsSubmit = false;
+  const url = new URL(window.location.href);
+  const params = url.searchParams;
+  let changed = false;
 
-  console.log("applySidebarFilter: Applying overlay preferences to sidebar:", newPrefs);
+  console.log("applySidebarFilter: Applying overlay preferences via URL query parameters:", newPrefs);
 
-  // 1. Set location checkbox
-  const deCheckbox = findCheckboxByLabel(["Deutschland", "Germany"]);
-  if (deCheckbox) {
-    const shouldBeChecked = (newPrefs.location === 'DE');
-    if (deCheckbox.checked !== shouldBeChecked) {
-      console.log(`applySidebarFilter: Syncing location checkbox to ${shouldBeChecked}`);
-      deCheckbox.checked = shouldBeChecked;
-      deCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-      deCheckbox.dispatchEvent(new Event('input', { bubbles: true }));
-      needsSubmit = true;
+  // 1. Sync location (Germany ID = 7)
+  const currentLocationParam = params.get('sellerCountry');
+  const targetLocationParam = newPrefs.location === 'DE' ? '7' : null;
+  if (currentLocationParam !== targetLocationParam) {
+    if (targetLocationParam) {
+      params.set('sellerCountry', targetLocationParam);
+    } else {
+      params.delete('sellerCountry');
+    }
+    changed = true;
+  }
+
+  // 2. Sync languages
+  const languageMap = {
+    "EN": "1",
+    "FR": "2",
+    "DE": "3",
+    "ES": "4",
+    "IT": "5",
+    "ZH": "6",
+    "JP": "7",
+    "KO": "8"
+  };
+
+  // Get current language parameters
+  const currentLangs = [];
+  params.forEach((val, key) => {
+    if (key === 'language' || key === 'language[]') {
+      currentLangs.push(val);
+    }
+  });
+
+  // Calculate target language parameters
+  const targetLangs = [];
+  if (!newPrefs.languages.includes('ALL')) {
+    for (const lang of newPrefs.languages) {
+      const id = languageMap[lang];
+      if (id) targetLangs.push(id);
     }
   }
 
-  // 2. Set language checkboxes
-  const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
-  for (const lang of langCodes) {
-    const keywords = LANGUAGE_LABELS[lang];
-    const checkbox = findCheckboxByLabel(keywords);
-    if (checkbox) {
-      const shouldBeChecked = newPrefs.languages.includes(lang);
-      if (checkbox.checked !== shouldBeChecked) {
-        console.log(`applySidebarFilter: Syncing language checkbox ${lang} to ${shouldBeChecked}`);
-        checkbox.checked = shouldBeChecked;
-        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-        checkbox.dispatchEvent(new Event('input', { bubbles: true }));
-        needsSubmit = true;
-      }
+  // Compare current and target languages
+  currentLangs.sort();
+  targetLangs.sort();
+  const langsMatch = (currentLangs.length === targetLangs.length && 
+                      currentLangs.every((val, index) => val === targetLangs[index]));
+
+  if (!langsMatch) {
+    params.delete('language');
+    params.delete('language[]');
+    for (const id of targetLangs) {
+      params.append('language[]', id);
     }
+    changed = true;
   }
 
-  if (needsSubmit) {
-    const anchor = deCheckbox || findCheckboxByLabel(LANGUAGE_LABELS['EN']);
-    if (anchor) {
-      const form = anchor.form || document.querySelector('#searchFilterForm, #filterForm, form.filter-form');
-      if (form) {
-        console.log("applySidebarFilter: Triggering form submit...");
-        form.submit();
-        return true; // Reload triggered
-      }
-    }
+  if (changed) {
+    console.log("applySidebarFilter: Navigating to new filtered URL:", url.toString());
+    window.location.href = url.toString();
+    return true; // Reload triggered
   }
   return false;
 }
@@ -709,12 +741,44 @@ async function runScan() {
     // Load saved settings
     const { [storageKey]: prefs } = await chrome.storage.local.get(storageKey);
     const savedCondition = prefs?.condition || 'NM';
-    const savedLocation = prefs?.location || 'DE';
-    const savedLanguages = prefs?.languages || ['ALL'];
+    let savedLocation = prefs?.location || 'DE';
+    let savedLanguages = prefs?.languages || ['ALL'];
 
-    // Read the current state of Cardmarket's sidebar
+    // Read the current state from the URL query parameters
     const sidebar = getSidebarState();
     const { tcg, cardId } = getTcgAndCardId();
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasUrlLocation = urlParams.has('sellerCountry');
+    const hasUrlLanguages = urlParams.has('language') || urlParams.has('language[]');
+
+    let prefsUpdated = false;
+
+    // Bidirectional sync: if the URL contains active filters, we save them as the active preference!
+    if (hasUrlLocation && savedLocation !== sidebar.location) {
+      savedLocation = sidebar.location;
+      prefsUpdated = true;
+    }
+    if (hasUrlLanguages) {
+      const sortedSaved = [...savedLanguages].sort();
+      const sortedSidebar = [...sidebar.languages].sort();
+      const match = (sortedSaved.length === sortedSidebar.length && 
+                     sortedSaved.every((val, index) => val === sortedSidebar[index]));
+      if (!match) {
+        savedLanguages = sidebar.languages;
+        prefsUpdated = true;
+      }
+    }
+
+    if (prefsUpdated) {
+      const newPrefs = {
+        condition: savedCondition,
+        location: savedLocation,
+        languages: savedLanguages
+      };
+      await chrome.storage.local.set({ [storageKey]: newPrefs });
+      console.log("Updated saved preferences from URL state:", newPrefs);
+    }
 
     // Verify if sidebar checkboxes match our user-saved preferences.
     const matchesLocation = (sidebar.location === savedLocation);
