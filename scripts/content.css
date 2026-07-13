@@ -3,7 +3,9 @@
 
 .cm-price-tracker-overlay {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  margin: 16px 0;
+  position: relative !important;
+  z-index: 999 !important;
+  margin: 16px 0 24px 0 !important;
   padding: 16px 20px;
   border-radius: 12px;
   /* Dark glassmorphic background - readable on both light & dark page themes */
@@ -437,7 +439,7 @@
 
 /* Scroll and Highlight Row Animation */
 .cm-highlight-row {
-  animation: cm-row-flash 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  animation: cm-row-flash 5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
   position: relative;
 }
 
