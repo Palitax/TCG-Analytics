@@ -356,41 +356,41 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     let matchedLanguage = null;
     const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
     
-    // Search the row, but skip anything in the seller column
-    const flagCandidates = row.querySelectorAll('span[style*="background-image"], img');
-    for (const el of flagCandidates) {
-      if (el.closest('.col-seller, [class*="seller"], [class*="user"], .col-sellerProductInfo')) {
-        continue; // Skip seller flags
-      }
+    // Find the product info cell (contains condition, language flag, comments)
+    const productInfoCell = row.querySelector('.product-info, [class*="product-info"], td:nth-child(2), div:nth-child(2), .col-product');
+    if (productInfoCell) {
+      // Find candidate elements representing the language flag (excluding plain text spans/comments)
+      const flagCandidates = productInfoCell.querySelectorAll('.icon, .flag, [class*="flag"], [style*="background-image"], img');
+      for (const el of flagCandidates) {
+        const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || el.getAttribute('aria-label') || '';
+        const srcText = el.getAttribute('src') || '';
+        const filename = srcText.split('/').pop().toLowerCase();
 
-      const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || el.getAttribute('aria-label') || '';
-      const srcText = el.getAttribute('src') || '';
-      const filename = srcText.split('/').pop().toLowerCase();
+        for (const lang of langCodes) {
+          const keywords = LANGUAGE_LABELS[lang];
+          const matchesTitle = keywords && keywords.some(keyword =>
+            titleText.toLowerCase().includes(keyword.toLowerCase())
+          );
 
-      for (const lang of langCodes) {
-        const keywords = LANGUAGE_LABELS[lang];
-        const matchesTitle = keywords && keywords.some(keyword =>
-          titleText.toLowerCase().includes(keyword.toLowerCase())
-        );
+          // Fallback checks
+          const matchesFile = filename.startsWith(lang.toLowerCase() + '.') || 
+                              filename === lang.toLowerCase() ||
+                              (lang === 'EN' && (filename.startsWith('us.') || filename.startsWith('gb.'))) ||
+                              (lang === 'ZH' && filename.startsWith('cn.')) ||
+                              (lang === 'KO' && filename.startsWith('kr.'));
 
-        // Fallback checks
-        const matchesFile = filename.startsWith(lang.toLowerCase() + '.') || 
-                            filename === lang.toLowerCase() ||
-                            (lang === 'EN' && (filename.startsWith('us.') || filename.startsWith('gb.'))) ||
-                            (lang === 'ZH' && filename.startsWith('cn.')) ||
-                            (lang === 'KO' && filename.startsWith('kr.'));
+          const matchesClass = el.className.toLowerCase().includes('flag-' + lang.toLowerCase()) ||
+                               (lang === 'EN' && (el.className.toLowerCase().includes('flag-us') || el.className.toLowerCase().includes('flag-gb'))) ||
+                               (lang === 'ZH' && el.className.toLowerCase().includes('flag-cn')) ||
+                               (lang === 'KO' && el.className.toLowerCase().includes('flag-kr'));
 
-        const matchesClass = el.className.toLowerCase().includes('flag-' + lang.toLowerCase()) ||
-                             (lang === 'EN' && (el.className.toLowerCase().includes('flag-us') || el.className.toLowerCase().includes('flag-gb'))) ||
-                             (lang === 'ZH' && el.className.toLowerCase().includes('flag-cn')) ||
-                             (lang === 'KO' && el.className.toLowerCase().includes('flag-kr'));
-
-        if (matchesTitle || matchesFile || matchesClass) {
-          matchedLanguage = lang;
-          break;
+          if (matchesTitle || matchesFile || matchesClass) {
+            matchedLanguage = lang;
+            break;
+          }
         }
+        if (matchedLanguage) break;
       }
-      if (matchedLanguage) break;
     }
 
     if (!matchedLanguage) matchedLanguage = 'EN';
