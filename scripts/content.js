@@ -100,12 +100,7 @@ async function applyFilters() {
       const form = checkbox.form || document.querySelector('form.filter-form, #filterForm, #searchFilterForm');
       if (form) {
         console.log("Submitting Cardmarket filter form to apply extension preferences...");
-        const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
-        if (submitBtn) {
-          submitBtn.click();
-        } else {
-          form.submit();
-        }
+        form.submit();
         return true; // Indicates page reload was triggered
       }
     }
