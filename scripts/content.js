@@ -99,7 +99,8 @@ function getFlagHtml(type, code) {
   // Try to find a matching flag element in the current DOM to clone it
   const rows = document.querySelectorAll('.article-row, [id^="articleRow"], div.table-body > div.row');
   for (const row of rows) {
-    const flagElements = row.querySelectorAll('.flag, .icon, img, [class*="flag"], [class*="icon"]');
+    // Restricting query specifically to flag classes or images inside a flags directory
+    const flagElements = row.querySelectorAll('.flag, [class*="flag"], img[src*="/flags/"]');
     for (const el of flagElements) {
       const isSellerCol = el.closest('.seller-link, .seller, [class*="seller"], [class*="user"], .merchant');
       if (type === 'seller' && !isSellerCol) continue;
@@ -292,7 +293,8 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
 
   for (const row of rows) {
     // 1. Verify seller matches location criteria
-    const flagElements = row.querySelectorAll('.flag, .icon, [class*="flag"], [class*="icon"], img');
+    // Restricting query specifically to flag classes or images inside a flags directory
+    const flagElements = row.querySelectorAll('.flag, [class*="flag"], img[src*="/flags/"]');
     let isGerman = false;
     let sellerCountry = 'OTHER';
 
@@ -348,7 +350,8 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     // 3. Verify card language matches target
     let matchedLanguage = null;
     const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
-    const flags = row.querySelectorAll('.flag, .icon, img, [class*="flag"], [class*="icon"]');
+    // Restricting query specifically to flag classes or images inside a flags directory
+    const flags = row.querySelectorAll('.flag, [class*="flag"], img[src*="/flags/"]');
     
     for (const el of flags) {
       if (el.closest('.seller-link, .seller, [class*="seller"], [class*="user"], .merchant')) {
