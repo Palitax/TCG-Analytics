@@ -1,0 +1,205 @@
+const SUPABASE_URL = "https://pjorjwwhiinaaebxvhhi.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqb3Jqd3doaWluYWFlYnh2aGhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5MjQ4NzEsImV4cCI6MjA5OTUwMDg3MX0.T8Gs9JaF9X-DbEgx0fSN9VeSEUPsV6nlFMd0RRW2hOs";
+
+// Helper to get active session tokens, with auto-refresh if expired
+async function getSession() {
+  const { session } = await chrome.storage.local.get('session');
+  if (!session) return null;
+
+  // Check if access token is expired or close to expiry (e.g. expires in less than 5 minutes)
+  try {
+    const payload = JSON.parse(atob(session.access_token.split('.')[1]));
+    const now = Math.floor(Date.now() / 1000);
+    // If token is expired or expiring in under 5 minutes, refresh it
+    if (payload.exp - now < 300) {
+      console.log("Access token expiring soon. Refreshing...");
+      return await refreshSession(session.refresh_token);
+    }
+    return session;
+  } catch (err) {
+    console.error("Error checking token expiry:", err);
+    return null;
+  }
+}
+
+// Refresh Supabase session using the refresh token
+async function refreshSession(refreshToken) {
+  try {
+    const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_ANON_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to refresh token: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const newSession = {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      user: data.user
+    };
+
+    await chrome.storage.local.set({ session: newSession });
+    console.log("Session refreshed successfully.");
+    return newSession;
+  } catch (err) {
+    console.error("Token refresh failed. User must log in again.", err);
+    await chrome.storage.local.remove('session');
+    return null;
+  }
+}
+
+// Trigger Google OAuth authorization flow via launchWebAuthFlow
+async function loginUser() {
+  const redirectUrl = chrome.identity.getRedirectURL();
+  const authUrl = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`;
+
+  console.log("Starting Web Auth Flow on URL:", authUrl);
+  
+  return new Promise((resolve, reject) => {
+    chrome.identity.launchWebAuthFlow({
+      url: authUrl,
+      interactive: true
+    }, async (responseUrl) => {
+      if (chrome.runtime.lastError || !responseUrl) {
+        console.error("OAuth Flow Error:", chrome.runtime.lastError);
+        return reject(new Error(chrome.runtime.lastError?.message || "OAuth Flow cancelled"));
+      }
+
+      try {
+        // Parse returned tokens from URL hash fragment
+        const url = new URL(responseUrl.replace('#', '?'));
+        const accessToken = url.searchParams.get('access_token');
+        const refreshToken = url.searchParams.get('refresh_token');
+
+        if (!accessToken || !refreshToken) {
+          throw new Error("Missing tokens in OAuth callback response");
+        }
+
+        // Decode JWT payload to get user details
+        const payload = JSON.parse(atob(accessToken.split('.')[1]));
+
+        const session = {
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          user: {
+            id: payload.sub,
+            email: payload.email
+          }
+        };
+
+        await chrome.storage.local.set({ session });
+        console.log("Login successful for user:", payload.email);
+        resolve(session);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
+// Main message listener
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  (async () => {
+    try {
+      if (message.action === "login") {
+        const session = await loginUser();
+        sendResponse({ success: true, user: session.user });
+      } 
+      
+      else if (message.action === "logout") {
+        await chrome.storage.local.remove('session');
+        sendResponse({ success: true });
+      } 
+      
+      else if (message.action === "getSession") {
+        const session = await getSession();
+        sendResponse({ authenticated: !!session, user: session?.user || null });
+      }
+      
+      else if (message.action === "scanCard") {
+        const session = await getSession();
+        if (!session) {
+          return sendResponse({ error: "UNAUTHENTICATED" });
+        }
+
+        const { cardId, condition, currentPrice } = message;
+        const accessToken = session.access_token;
+        const userId = session.user.id;
+
+        // 1. Fetch latest historical price from Supabase
+        const getUrl = `${SUPABASE_URL}/rest/v1/price_history?card_id=eq.${encodeURIComponent(cardId)}&condition=eq.${encodeURIComponent(condition)}&order=scanned_at.desc&limit=1`;
+        
+        const getResponse = await fetch(getUrl, {
+          method: "GET",
+          headers: {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${accessToken}`
+          }
+        });
+
+        if (!getResponse.ok) {
+          throw new Error(`Failed to fetch history: ${getResponse.statusText}`);
+        }
+
+        const history = await getResponse.json();
+        const latestRecord = history.length > 0 ? history[0] : null;
+
+        let shouldUpload = false;
+        
+        if (!latestRecord) {
+          // No history exists for this card/condition
+          shouldUpload = true;
+        } else {
+          const lastPrice = parseFloat(latestRecord.price);
+          const timeSinceLastScan = Date.now() - new Date(latestRecord.scanned_at).getTime();
+          
+          // Upload if the price differs OR if the last scan is older than 1 hour (3600000 ms)
+          if (lastPrice !== currentPrice || timeSinceLastScan > 3600000) {
+            shouldUpload = true;
+          }
+        }
+
+        // 2. Perform upload if triggered
+        if (shouldUpload) {
+          const postResponse = await fetch(`${SUPABASE_URL}/rest/v1/price_history`, {
+            method: "POST",
+            headers: {
+              "apikey": SUPABASE_ANON_KEY,
+              "Authorization": `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+              "Prefer": "return=representation"
+            },
+            body: JSON.stringify({
+              card_id: cardId,
+              price: currentPrice,
+              condition: condition,
+              user_id: userId
+            })
+          });
+
+          if (!postResponse.ok) {
+            console.error("Failed to upload new scan to Supabase:", postResponse.statusText);
+          } else {
+            console.log(`Successfully uploaded scan: ${cardId} (${condition}) = ${currentPrice} €`);
+          }
+        }
+
+        sendResponse({
+          success: true,
+          latestRecord: latestRecord
+        });
+      }
+    } catch (err) {
+      console.error("Error handling message:", err);
+      sendResponse({ error: err.message });
+    }
+  })();
+  return true; // Keep message channel open for asynchronous responses
+});

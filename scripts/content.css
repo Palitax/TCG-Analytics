@@ -1,0 +1,184 @@
+/* Cardmarket Price Tracker Pro - Overlay Styles */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+.cm-price-tracker-overlay {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  margin: 16px 0;
+  padding: 16px 20px;
+  border-radius: 12px;
+  /* Dark glassmorphic background - readable on both light & dark page themes */
+  background: rgba(18, 18, 20, 0.85);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  color: #f3f4f6;
+  animation: cm-slide-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes cm-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Header Section */
+.cm-tracker-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 8px;
+}
+
+.cm-tracker-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Status Indicator Dot */
+.cm-tracker-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.cm-tracker-dot.active {
+  background-color: #10b981; /* neon-green */
+  box-shadow: 0 0 8px #10b981;
+}
+
+.cm-tracker-dot.pulsing {
+  background-color: #3b82f6; /* blue */
+  box-shadow: 0 0 8px #3b82f6;
+  animation: cm-dot-pulse 1.5s infinite ease-in-out;
+}
+
+.cm-tracker-dot.inactive {
+  background-color: #ef4444; /* red */
+  box-shadow: 0 0 8px #ef4444;
+}
+
+@keyframes cm-dot-pulse {
+  0% { transform: scale(0.9); opacity: 0.6; }
+  50% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.6; }
+}
+
+/* Body Section */
+.cm-tracker-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cm-tracker-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.cm-tracker-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cm-tracker-label {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.cm-tracker-badge {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cm-tracker-price-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cm-tracker-price-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* Price Diff Badges */
+.cm-tracker-diff-badge {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Gain (Price dropped - Good for buyers!) */
+.cm-tracker-diff-badge.gain {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+/* Loss (Price rose - Bad for buyers!) */
+.cm-tracker-diff-badge.loss {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* Stable (No change) */
+.cm-tracker-diff-badge.stable {
+  background: rgba(156, 163, 175, 0.15);
+  color: #d1d5db;
+  border: 1px solid rgba(156, 163, 175, 0.2);
+}
+
+/* First Scan */
+.cm-tracker-diff-badge.first {
+  background: rgba(129, 140, 248, 0.15);
+  color: #a5b4fc;
+  border: 1px solid rgba(129, 140, 248, 0.2);
+}
+
+/* Status / Helper Texts */
+.cm-tracker-text {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.cm-tracker-text.warning {
+  color: #fbbf24; /* yellow */
+}
+
+.cm-tracker-text.error {
+  color: #f87171; /* red */
+}
+
+.cm-tracker-status-desc {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.4;
+}
