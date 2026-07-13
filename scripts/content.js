@@ -97,17 +97,22 @@ function getFlagHtml(type, code) {
   const cleanCode = code.trim().toUpperCase();
   
   // Try to find a matching flag element in the current DOM to clone it
-  const rows = document.querySelectorAll('.article-row, [id^="articleRow"], div.table-body > div.row');
+  const rows = document.querySelectorAll('.article-row, [id^="articleRow"]');
   for (const row of rows) {
-    // Search both class names and images. Strict name filters will ignore non-flag images (like calendars)
-    const flagElements = row.querySelectorAll('.flag, [class*="flag"], img');
-    for (const el of flagElements) {
-      const isSellerCol = el.closest('.seller-link, .seller, [class*="seller"], [class*="user"], .merchant');
-      if (type === 'seller' && !isSellerCol) continue;
-      if (type === 'language' && isSellerCol) continue;
+    const sellerCol = row.querySelector('.col-seller, [class*="seller"], [class*="user"], .col-sellerProductInfo');
+    if (type === 'seller' && !sellerCol) continue;
+
+    const candidates = type === 'seller'
+      ? sellerCol.querySelectorAll('span[style*="background-image"], img')
+      : row.querySelectorAll('span[style*="background-image"], img');
+
+    for (const el of candidates) {
+      if (type === 'language' && el.closest('.col-seller, [class*="seller"], [class*="user"], .col-sellerProductInfo')) {
+        continue;
+      }
 
       const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
-      const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
+      const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || el.getAttribute('aria-label') || '';
       const srcText = el.getAttribute('src') || '';
       const filename = srcText.split('/').pop().toUpperCase();
 
@@ -117,11 +122,10 @@ function getFlagHtml(type, code) {
         const matchesTitle = names && names.some(name => 
           titleText.toLowerCase().includes(name.toLowerCase())
         );
-
         const matchesFile = filename.startsWith(cleanCode + '.') || filename === cleanCode;
         const matchesClass = classText.toUpperCase().includes('FLAG-' + cleanCode);
 
-        if (matchesFile || matchesClass || matchesTitle) {
+        if (matchesTitle || matchesFile || matchesClass) {
           match = true;
         }
       } else {
@@ -141,7 +145,7 @@ function getFlagHtml(type, code) {
                              (cleanCode === 'ZH' && classText.toLowerCase().includes('flag-cn')) ||
                              (cleanCode === 'KO' && classText.toLowerCase().includes('flag-kr'));
 
-        if (matchesFile || matchesClass || matchesTitle) {
+        if (matchesTitle || matchesFile || matchesClass) {
           match = true;
         }
       }
@@ -283,62 +287,46 @@ async function applySidebarFilter(newPrefs) {
 
 // Scrape the DOM for the first offer matching target conditions
 function scrapePrice(targetCondition, targetLocation, targetLanguages) {
-  const rows = document.querySelectorAll(
-    '.article-row, [id^="articleRow"], div.table-body > div.row, .table-body div.row, tr.article-row'
-  );
+  // ONLY match top-level article rows to avoid scanning sub-rows!
+  const rows = document.querySelectorAll('.article-row, [id^="articleRow"]');
 
   console.log(`scrapePrice: Starting scan on ${rows.length} rows. Target: Cond=${targetCondition}, Loc=${targetLocation}, Langs=[${targetLanguages.join(', ')}]`);
 
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
     const row = rows[rowIndex];
-    if (rowIndex === 0) {
-      console.log("FULL ROW 1 HTML:", row.innerHTML);
-    }
-    console.log(`--- Row ${rowIndex + 1} --- Class="${row.className}" ID="${row.id}" HTML="${row.innerHTML.substring(0, 300)}..."`);
-
-    // Search both class names and images. Strict name filters will ignore non-flag images (like calendars)
-    const flagElements = row.querySelectorAll('.flag, [class*="flag"], img');
-    console.log(`  Found ${flagElements.length} flag elements:`, Array.from(flagElements).map(el => el.outerHTML));
     
+    // 1. Find Seller Country
     let isGerman = false;
     let sellerCountry = 'OTHER';
+    
+    const sellerCol = row.querySelector('.col-seller, [class*="seller"], [class*="user"], .col-sellerProductInfo');
+    if (sellerCol) {
+      // Find all spans or images with background images (sprite sheets)
+      const flagCandidates = sellerCol.querySelectorAll('span[style*="background-image"], img');
+      for (const el of flagCandidates) {
+        const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || el.getAttribute('aria-label') || '';
+        const srcText = el.getAttribute('src') || '';
+        const filename = srcText.split('/').pop().toUpperCase();
 
-    for (const el of flagElements) {
-      if (el.closest('.product-info, .condition, .badge')) {
-        console.log(`  Skipping element (product info child):`, el.outerHTML);
-        continue;
-      }
-      
-      const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
-      const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
-      const srcText = el.getAttribute('src') || '';
-      const filename = srcText.split('/').pop().toUpperCase();
-      
-      console.log(`  Checking seller flag element:`, el.outerHTML, `Class="${classText}", Title="${titleText}", Src="${srcText}", Filename="${filename}"`);
+        for (const code of Object.keys(COUNTRY_NAMES)) {
+          const names = COUNTRY_NAMES[code];
+          const matchesTitle = names && names.some(name => 
+            titleText.toLowerCase().includes(name.toLowerCase())
+          );
+          const matchesFile = filename.startsWith(code + '.') || filename === code;
+          const matchesClass = el.className.toUpperCase().includes('FLAG-' + code);
 
-      const codes = ['DE', 'ES', 'FR', 'IT', 'GB', 'PT', 'NL', 'BE', 'AT', 'CH', 'DK', 'SE', 'PL'];
-      for (const code of codes) {
-        const names = COUNTRY_NAMES[code];
-        const matchesTitle = names && names.some(name => 
-          titleText.toLowerCase().includes(name.toLowerCase())
-        );
-
-        const matchesFile = filename.startsWith(code + '.') || filename === code;
-        const matchesClass = classText.toUpperCase().includes('FLAG-' + code);
-
-        if (matchesFile || matchesClass || matchesTitle) {
-          sellerCountry = code;
-          if (code === 'DE') isGerman = true;
-          console.log(`    MATCHED seller country: ${code}`);
-          break;
+          if (matchesTitle || matchesFile || matchesClass) {
+            sellerCountry = code;
+            if (code === 'DE') isGerman = true;
+            break;
+          }
         }
+        if (sellerCountry !== 'OTHER') break;
       }
-      if (sellerCountry !== 'OTHER') break;
     }
 
-    console.log(`  Seller Country Result: ${sellerCountry}, isGerman: ${isGerman}`);
     if (targetLocation === 'DE' && !isGerman) {
-      console.log(`  Skipping row: Location mismatch`);
       continue;
     }
 
@@ -358,52 +346,43 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
       }
     }
 
-    console.log(`  Condition matches: ${conditionMatches}`);
-    if (!conditionMatches) {
-      console.log(`  Skipping row: Condition mismatch`);
-      continue;
-    }
+    if (!conditionMatches) continue;
 
     // 3. Verify card language matches target
     let matchedLanguage = null;
     const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
-    const flags = row.querySelectorAll('.flag, [class*="flag"], img');
     
-    for (const el of flags) {
-      if (el.closest('.seller-link, .seller, [class*="seller"], [class*="user"], .merchant')) {
-        console.log(`  Skipping language element (seller column child):`, el.outerHTML);
-        continue;
+    // Search the row, but skip anything in the seller column
+    const flagCandidates = row.querySelectorAll('span[style*="background-image"], img');
+    for (const el of flagCandidates) {
+      if (el.closest('.col-seller, [class*="seller"], [class*="user"], .col-sellerProductInfo')) {
+        continue; // Skip seller flags
       }
-      
-      const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
-      const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
+
+      const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || el.getAttribute('aria-label') || '';
       const srcText = el.getAttribute('src') || '';
       const filename = srcText.split('/').pop().toLowerCase();
-      
-      console.log(`  Checking language flag element:`, el.outerHTML, `Class="${classText}", Title="${titleText}", Src="${srcText}", Filename="${filename}"`);
 
       for (const lang of langCodes) {
         const keywords = LANGUAGE_LABELS[lang];
-        
-        // Strict filename check to prevent matching subfolders like "/images/" as Spanish (ES)
+        const matchesTitle = keywords && keywords.some(keyword =>
+          titleText.toLowerCase().includes(keyword.toLowerCase())
+        );
+
+        // Fallback checks
         const matchesFile = filename.startsWith(lang.toLowerCase() + '.') || 
                             filename === lang.toLowerCase() ||
                             (lang === 'EN' && (filename.startsWith('us.') || filename.startsWith('gb.'))) ||
                             (lang === 'ZH' && filename.startsWith('cn.')) ||
                             (lang === 'KO' && filename.startsWith('kr.'));
 
-        const matchesClass = classText.toLowerCase().includes('flag-' + lang.toLowerCase()) ||
-                             (lang === 'EN' && (classText.toLowerCase().includes('flag-us') || classText.toLowerCase().includes('flag-gb'))) ||
-                             (lang === 'ZH' && classText.toLowerCase().includes('flag-cn')) ||
-                             (lang === 'KO' && classText.toLowerCase().includes('flag-kr'));
+        const matchesClass = el.className.toLowerCase().includes('flag-' + lang.toLowerCase()) ||
+                             (lang === 'EN' && (el.className.toLowerCase().includes('flag-us') || el.className.toLowerCase().includes('flag-gb'))) ||
+                             (lang === 'ZH' && el.className.toLowerCase().includes('flag-cn')) ||
+                             (lang === 'KO' && el.className.toLowerCase().includes('flag-kr'));
 
-        const matchesTitle = keywords && keywords.some(keyword =>
-          titleText.toLowerCase().includes(keyword.toLowerCase())
-        );
-
-        if (matchesFile || matchesClass || matchesTitle) {
+        if (matchesTitle || matchesFile || matchesClass) {
           matchedLanguage = lang;
-          console.log(`    MATCHED card language: ${lang}`);
           break;
         }
       }
@@ -411,18 +390,16 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     }
 
     if (!matchedLanguage) matchedLanguage = 'EN';
-    console.log(`  Matched Language Result: ${matchedLanguage}`);
 
     if (targetLanguages && !targetLanguages.includes('ALL') && !targetLanguages.includes(matchedLanguage)) {
-      console.log(`  Skipping row: Language mismatch (Target: [${targetLanguages.join(', ')}])`);
       continue;
     }
 
     // 4. Extract product comment/description from Produktinfo cell
     let comment = '';
-    const productInfoCell = row.querySelector('.product-info, [class*="product-info"], td:nth-child(2), div:nth-child(2)');
+    const productInfoCell = row.querySelector('.product-info, [class*="product-info"], td:nth-child(2), div:nth-child(2), .col-product');
     if (productInfoCell) {
-      const commentElement = productInfoCell.querySelector('.article-comment, .comment, [class*="comment"], .description');
+      const commentElement = productInfoCell.querySelector('.article-comment, .comment, [class*="comment"], .description, .product-comments span');
       if (commentElement) {
         comment = commentElement.textContent.trim();
       } else {
