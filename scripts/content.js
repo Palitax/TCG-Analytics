@@ -112,8 +112,8 @@ async function applyFilters() {
   return false;
 }
 
-// Scrape the DOM for the first German seller offer matching the target condition
-function scrapePrice(targetCondition) {
+// Scrape the DOM for the first German seller offer matching the target condition and language
+function scrapePrice(targetCondition, targetLanguage) {
   // Query rows representing listings on Cardmarket (include direct child divs of table-body as fallback)
   const rows = document.querySelectorAll(
     '.article-row, [id^="articleRow"], div.table-body > div.row, .table-body div.row, tr.article-row'
@@ -162,6 +162,37 @@ function scrapePrice(targetCondition) {
     }
 
     if (!conditionMatches) continue;
+
+    // 2b. Verify card language matches target (passive filter, no reload)
+    if (targetLanguage && targetLanguage !== 'ALL') {
+      const langKeywords = LANGUAGE_LABELS[targetLanguage];
+      if (langKeywords) {
+        const flags = row.querySelectorAll('.flag, .icon, img, [class*="flag"], [class*="icon"]');
+        let langMatches = false;
+        for (const el of flags) {
+          // Skip seller location flags by checking parent containers
+          if (el.closest('.seller-link, .seller, [class*="seller"], [class*="user"], .merchant')) {
+            continue;
+          }
+          
+          const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
+          const srcText = el.getAttribute('src') || '';
+          const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
+          
+          const matchesLang = langKeywords.some(keyword => 
+            titleText.toLowerCase().includes(keyword.toLowerCase()) ||
+            srcText.toLowerCase().includes(targetLanguage.toLowerCase()) ||
+            classText.toLowerCase().includes('flag-' + targetLanguage.toLowerCase())
+          );
+          
+          if (matchesLang) {
+            langMatches = true;
+            break;
+          }
+        }
+        if (!langMatches) continue;
+      }
+    }
 
     // 3. Extract the listing price
     const priceElements = row.querySelectorAll('[class*="price"], .color-primary, span');
@@ -310,19 +341,12 @@ function updateOverlay(status, details = {}) {
 async function runScan() {
   updateOverlay('loading');
 
-  // Apply Cardmarket location and language preferences
-  const isReloading = await applyFilters();
-  if (isReloading) {
-    console.log("Filters applied. Page reloading, scanning deferred.");
-    return;
-  }
-
-  // Load selected target condition from storage
-  const { targetCondition = 'NM' } = await chrome.storage.local.get('targetCondition');
+  // Load selected target condition and language from storage
+  const { targetCondition = 'NM', targetLanguage = 'ALL' } = await chrome.storage.local.get(['targetCondition', 'targetLanguage']);
   const cardId = getCardId();
 
-  // Scrape price matching criteria
-  const match = scrapePrice(targetCondition);
+  // Scrape price matching criteria (passively check both condition and language without page reload)
+  const match = scrapePrice(targetCondition, targetLanguage);
   if (!match) {
     // Send check message to service worker to verify auth even if no offers found
     chrome.runtime.sendMessage({ action: "getSession" }, (response) => {
