@@ -356,8 +356,12 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     let matchedLanguage = null;
     const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
     
-    // Find the product info cell (contains condition, language flag, comments)
-    const productInfoCell = row.querySelector('.product-info, [class*="product-info"], td:nth-child(2), div:nth-child(2), .col-product');
+    // Find the product info cell specifically (excluding the parent .col-sellerProductInfo)
+    const productInfoCell = row.querySelector('.col-product, .product-info') || 
+                            row.querySelector('.col-sellerProductInfo .col-product') ||
+                            row.querySelector('.col-sellerProductInfo div.row > div:nth-child(2)') ||
+                            row.querySelector('td:nth-child(2)');
+                            
     if (productInfoCell) {
       // Find candidate elements representing the language flag (excluding plain text spans/comments)
       const flagCandidates = productInfoCell.querySelectorAll('.icon, .flag, [class*="flag"], [style*="background-image"], img');
@@ -372,14 +376,16 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
             titleText.toLowerCase().includes(keyword.toLowerCase())
           );
 
-          // Fallback checks
+          // Fallback checks (mapping JP to ja, EN to gb/us, ZH to cn, KO to kr)
           const matchesFile = filename.startsWith(lang.toLowerCase() + '.') || 
                               filename === lang.toLowerCase() ||
+                              (lang === 'JP' && filename.startsWith('ja.')) ||
                               (lang === 'EN' && (filename.startsWith('us.') || filename.startsWith('gb.'))) ||
                               (lang === 'ZH' && filename.startsWith('cn.')) ||
                               (lang === 'KO' && filename.startsWith('kr.'));
 
           const matchesClass = el.className.toLowerCase().includes('flag-' + lang.toLowerCase()) ||
+                               (lang === 'JP' && el.className.toLowerCase().includes('flag-ja')) ||
                                (lang === 'EN' && (el.className.toLowerCase().includes('flag-us') || el.className.toLowerCase().includes('flag-gb'))) ||
                                (lang === 'ZH' && el.className.toLowerCase().includes('flag-cn')) ||
                                (lang === 'KO' && el.className.toLowerCase().includes('flag-kr'));
