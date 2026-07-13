@@ -25,10 +25,8 @@ const LANGUAGE_LABELS = {
 // Extract TCG name and normalized card ID from pathname
 function getTcgAndCardId() {
   const path = window.location.pathname;
-  // Cardmarket URLs usually look like: /de/OnePiece/Products/Singles/...
   const parts = path.split('/').filter(p => p.length > 0);
   if (parts.length > 0) {
-    // If the first part is a 2-letter language code, remove it
     if (parts[0].length === 2 && /^[a-z]{2}$/i.test(parts[0])) {
       parts.shift();
     }
@@ -38,9 +36,64 @@ function getTcgAndCardId() {
   return { tcg, cardId };
 }
 
+// Helper to look up and clone flag elements from Cardmarket's table for high-fidelity styling
+function getFlagHtml(type, code) {
+  if (!code) return '';
+  const cleanCode = code.trim().toUpperCase();
+  
+  // Try to find a matching flag element in the current DOM to clone it
+  const rows = document.querySelectorAll('.article-row, [id^="articleRow"], div.table-body > div.row');
+  for (const row of rows) {
+    const flagElements = row.querySelectorAll('.flag, .icon, img, [class*="flag"], [class*="icon"]');
+    for (const el of flagElements) {
+      const isSellerCol = el.closest('.seller-link, .seller, [class*="seller"], [class*="user"], .merchant');
+      if (type === 'seller' && !isSellerCol) continue;
+      if (type === 'language' && isSellerCol) continue;
+
+      const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
+      const titleText = el.getAttribute('title') || '';
+      const srcText = el.getAttribute('src') || '';
+
+      let match = false;
+      if (type === 'seller') {
+        if (
+          classText.toUpperCase().includes('FLAG-' + cleanCode) ||
+          srcText.toUpperCase().includes('/' + cleanCode + '.') ||
+          srcText.toUpperCase().includes('/' + cleanCode + '/') ||
+          titleText.toUpperCase().includes(cleanCode) ||
+          (cleanCode === 'DE' && (titleText.toUpperCase().includes('DEUTSCHLAND') || titleText.toUpperCase().includes('GERMANY')))
+        ) {
+          match = true;
+        }
+      } else {
+        const keywords = LANGUAGE_LABELS[cleanCode];
+        if (keywords) {
+          match = keywords.some(keyword =>
+            titleText.toLowerCase().includes(keyword.toLowerCase()) ||
+            srcText.toLowerCase().includes(cleanCode.toLowerCase()) ||
+            classText.toLowerCase().includes('flag-' + cleanCode.toLowerCase())
+          );
+        }
+      }
+
+      if (match) {
+        const cloned = el.cloneNode(true);
+        cloned.style.margin = '0';
+        cloned.style.display = 'inline-block';
+        cloned.style.verticalAlign = 'middle';
+        return cloned.outerHTML;
+      }
+    }
+  }
+
+  // Fallback: Reconstruct standard CSS flags used by Cardmarket
+  let flagClass = cleanCode.toLowerCase();
+  if (flagClass === 'en') flagClass = 'us'; // Map EN to US flag class for English
+  return `<span class="flag flag-${flagClass}" title="${cleanCode}" style="vertical-align: middle; display: inline-block;"></span>`;
+}
+
 // Scrape the DOM for the first offer matching target conditions
 function scrapePrice(targetCondition, targetLocation, targetLanguages) {
-  // Query rows representing listings on Cardmarket (include grid divs as fallback)
   const rows = document.querySelectorAll(
     '.article-row, [id^="articleRow"], div.table-body > div.row, .table-body div.row, tr.article-row'
   );
@@ -52,14 +105,12 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     let sellerCountry = 'OTHER';
 
     for (const el of flagElements) {
-      // Seller flags are located inside the seller column (skip product info flags)
       if (el.closest('.product-info, .condition, .badge')) continue;
       
       const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
       const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
       const srcText = el.getAttribute('src') || '';
       
-      // Check common European country codes
       const codes = ['DE', 'ES', 'FR', 'IT', 'GB', 'PT', 'NL', 'BE', 'AT', 'CH', 'DK', 'SE', 'PL'];
       for (const code of codes) {
         if (
@@ -79,7 +130,6 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
       if (sellerCountry !== 'OTHER') break;
     }
 
-    // If target location is DE (Germany) and seller is not German, skip row
     if (targetLocation === 'DE' && !isGerman) continue;
 
     // 2. Verify card condition matches target
@@ -100,7 +150,7 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
 
     if (!conditionMatches) continue;
 
-    // 3. Verify card language matches any target language (if not 'ALL')
+    // 3. Verify card language matches target
     let matchedLanguage = null;
     const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT'];
     const flags = row.querySelectorAll('.flag, .icon, img, [class*="flag"], [class*="icon"]');
@@ -129,15 +179,33 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
       if (matchedLanguage) break;
     }
 
-    // Default to EN if no specific language tag found
     if (!matchedLanguage) matchedLanguage = 'EN';
 
-    // If card language doesn't match selected filters, skip row
     if (targetLanguages && !targetLanguages.includes('ALL') && !targetLanguages.includes(matchedLanguage)) {
       continue;
     }
 
-    // 4. Extract price
+    // 4. Extract product comment/description from Produktinfo cell
+    let comment = '';
+    const productInfoCell = row.querySelector('.product-info, [class*="product-info"], td:nth-child(2), div:nth-child(2)');
+    if (productInfoCell) {
+      const commentElement = productInfoCell.querySelector('.article-comment, .comment, [class*="comment"], .description');
+      if (commentElement) {
+        comment = commentElement.textContent.trim();
+      } else {
+        // Fallback: subtract condition text and clean spacing
+        let cellText = productInfoCell.textContent.trim();
+        const condBadge = productInfoCell.querySelector('.condition, .article-condition, .badge');
+        if (condBadge) {
+          const condText = condBadge.textContent.trim();
+          cellText = cellText.replace(condText, '');
+        }
+        // Remove photo icons text representation (e.g. camera symbol text if any)
+        comment = cellText.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+      }
+    }
+
+    // 5. Extract price
     const priceElements = row.querySelectorAll('[class*="price"], .color-primary, span');
     for (const el of priceElements) {
       const text = el.textContent.trim();
@@ -154,6 +222,7 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
             price: parsed,
             language: matchedLanguage,
             sellerCountry: sellerCountry,
+            comment: comment,
             element: row
           };
         }
@@ -193,7 +262,6 @@ function updateOverlay(status, details = {}) {
     return;
   }
 
-  // Load active dropdown values from details
   const {
     selectedCondition = 'NM',
     selectedLocation = 'DE',
@@ -202,9 +270,12 @@ function updateOverlay(status, details = {}) {
     lastPrice = null,
     lastScannedAt = null,
     lastUserId = null,
+    lastComment = null,
     matchedLanguage = null,
     matchedCountry = null,
-    noMatch = false
+    comment = null,
+    noMatch = false,
+    errorText = null
   } = details;
 
   const summaryText = selectedLanguages.includes('ALL') ? 'Alle' : selectedLanguages.join(', ');
@@ -213,7 +284,7 @@ function updateOverlay(status, details = {}) {
   if (status === 'error') {
     resultHtml = `
       <div class="cm-tracker-results error-state">
-        <span class="cm-tracker-text error">${details.errorText || "Fehler bei der Analyse."}</span>
+        <span class="cm-tracker-text error">${errorText || "Fehler bei der Analyse."}</span>
       </div>
     `;
   } else if (status === 'loading') {
@@ -239,6 +310,13 @@ function updateOverlay(status, details = {}) {
 
     const authorText = lastUserId === currentUserId ? 'dir selbst' : 'einem anderen Nutzer';
 
+    // Retrieve high-fidelity flags to replace "DE | DE" text representation
+    const sellerFlag = getFlagHtml('seller', matchedCountry);
+    const langFlag = getFlagHtml('language', matchedLanguage);
+
+    const lastSellerFlag = record => getFlagHtml('seller', record.seller_country);
+    const lastLangFlag = record => getFlagHtml('language', record.language);
+
     if (lastPrice === null || lastPrice === undefined) {
       diffBadge = `<span class="cm-tracker-diff-badge first">Erster Scan</span>`;
       statusText = `<span class="cm-tracker-status-desc">Dieser Preis wurde als Startwert in der Datenbank gesichert.</span>`;
@@ -246,16 +324,37 @@ function updateOverlay(status, details = {}) {
       const diffPercent = ((currentPrice - lastPrice) / lastPrice) * 100;
       const formattedDiff = diffPercent.toFixed(2);
 
-      if (diffPercent > 0) {
-        diffBadge = `<span class="cm-tracker-diff-badge loss">+${formattedDiff}%</span>`;
-        statusText = `<span class="cm-tracker-status-desc">Gestiegen seit Scan am ${dateStr} von ${authorText} (${lastPrice.toFixed(2)} €)</span>`;
-      } else if (diffPercent < 0) {
-        diffBadge = `<span class="cm-tracker-diff-badge gain">${formattedDiff}%</span>`;
-        statusText = `<span class="cm-tracker-status-desc">Günstiger seit Scan am ${dateStr} von ${authorText} (${lastPrice.toFixed(2)} €)</span>`;
-      } else {
-        diffBadge = `<span class="cm-tracker-diff-badge stable">±0.00%</span>`;
-        statusText = `<span class="cm-tracker-status-desc">Unverändert seit Scan am ${dateStr} von ${authorText}</span>`;
-      }
+      const changeStr = diffPercent > 0 ? `Gestiegen seit Scan am ${dateStr} von ${authorText} (${lastPrice.toFixed(2)} €)` :
+                        diffPercent < 0 ? `Günstiger seit Scan am ${dateStr} von ${authorText} (${lastPrice.toFixed(2)} €)` :
+                        `Unverändert seit Scan am ${dateStr} von ${authorText}`;
+
+      const diffClass = diffPercent > 0 ? 'loss' : diffPercent < 0 ? 'gain' : 'stable';
+      const diffSign = diffPercent > 0 ? '+' : '';
+
+      diffBadge = `<span class="cm-tracker-diff-badge ${diffClass}">${diffSign}${formattedDiff}%</span>`;
+      statusText = `<span class="cm-tracker-status-desc">${changeStr}</span>`;
+    }
+
+    // Comment field block layout inside the overlay
+    let commentBlockHtml = '';
+    if (comment || lastComment) {
+      commentBlockHtml = `
+        <div class="cm-tracker-comments-container">
+          <span class="cm-comments-title">Kommentare:</span>
+          ${comment ? `
+            <div class="cm-comment-row">
+              <span class="cm-comment-label">Dieses Angebot:</span>
+              <span class="cm-comment-val">"${comment}"</span>
+            </div>
+          ` : ''}
+          ${lastComment ? `
+            <div class="cm-comment-row">
+              <span class="cm-comment-label">Letzter Scan-Wert:</span>
+              <span class="cm-comment-val">"${lastComment}"</span>
+            </div>
+          ` : ''}
+        </div>
+      `;
     }
 
     resultHtml = `
@@ -265,11 +364,19 @@ function updateOverlay(status, details = {}) {
             <span class="cm-tracker-price-value">${currentPrice.toFixed(2)} €</span>
             ${diffBadge}
           </div>
-          <div class="cm-tracker-meta">
-            <span class="cm-tracker-match-badge" title="Tatsächlicher Treffer">${matchedLanguage} | ${matchedCountry}</span>
+          <div class="cm-tracker-meta-flags">
+            <div class="cm-flag-group" title="Herkunftsland des Verkäufers">
+              <span class="cm-flag-group-label">Verkäufer:</span>
+              ${sellerFlag}
+            </div>
+            <div class="cm-flag-group" title="Sprache der Karte">
+              <span class="cm-flag-group-label">Karte:</span>
+              ${langFlag}
+            </div>
           </div>
         </div>
         ${statusText}
+        ${commentBlockHtml}
       </div>
     `;
   }
@@ -324,7 +431,6 @@ function updateOverlay(status, details = {}) {
     </div>
   `;
 
-  // Attach interactive UI listeners
   attachListeners();
 }
 
@@ -339,7 +445,6 @@ function attachListeners() {
   if (!selectCondition || !selectLocation) return;
 
   const saveAndRefresh = async () => {
-    // Gather languages
     let checkedLangs = [];
     if (langAll.checked) {
       checkedLangs = ['ALL'];
@@ -383,7 +488,6 @@ function attachListeners() {
     });
   });
 
-  // Close the custom language selector when clicking outside
   document.addEventListener('click', (e) => {
     if (selectLanguagesDetails && !selectLanguagesDetails.contains(e.target)) {
       selectLanguagesDetails.removeAttribute('open');
@@ -393,7 +497,6 @@ function attachListeners() {
 
 // Execute active scan sequence matching interactive selection criteria
 async function runScan() {
-  // 1. Verify user authentication status first
   chrome.runtime.sendMessage({ action: "getSession" }, async (response) => {
     if (chrome.runtime.lastError) {
       console.error("Message passing error:", chrome.runtime.lastError);
@@ -408,7 +511,6 @@ async function runScan() {
     currentUserId = response.user.id;
     const storageKey = 'preferences_' + currentUserId;
 
-    // 2. Load settings profile (saved per logged in user id)
     const { [storageKey]: prefs } = await chrome.storage.local.get(storageKey);
     const targetCondition = prefs?.condition || 'NM';
     const targetLocation = prefs?.location || 'DE';
@@ -422,7 +524,6 @@ async function runScan() {
 
     const { tcg, cardId } = getTcgAndCardId();
 
-    // 3. Scan DOM for first offer match
     const match = scrapePrice(targetCondition, targetLocation, targetLanguages);
     if (!match) {
       updateOverlay('success', {
@@ -434,7 +535,6 @@ async function runScan() {
       return;
     }
 
-    // 4. Send scan parameters to service-worker for DB processing
     chrome.runtime.sendMessage({
       action: "scanCard",
       tcg: tcg,
@@ -442,7 +542,8 @@ async function runScan() {
       condition: targetCondition,
       language: match.language,
       sellerCountry: match.sellerCountry,
-      currentPrice: match.price
+      currentPrice: match.price,
+      comment: match.comment
     }, (dbResponse) => {
       if (chrome.runtime.lastError || !dbResponse) {
         console.error("Database connection failed:", chrome.runtime.lastError);
@@ -476,8 +577,10 @@ async function runScan() {
         lastPrice: record ? parseFloat(record.price) : null,
         lastScannedAt: record ? record.scanned_at : null,
         lastUserId: record ? record.user_id : null,
+        lastComment: record ? record.comment : null,
         matchedLanguage: match.language,
-        matchedCountry: match.sellerCountry
+        matchedCountry: match.sellerCountry,
+        comment: match.comment
       });
     });
   });
