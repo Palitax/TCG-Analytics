@@ -291,7 +291,7 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
 
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
     const row = rows[rowIndex];
-    console.log(`--- Row ${rowIndex + 1} ---`);
+    console.log(`--- Row ${rowIndex + 1} --- Class="${row.className}" ID="${row.id}" HTML="${row.innerHTML.substring(0, 300)}..."`);
 
     // Search both class names and images. Strict name filters will ignore non-flag images (like calendars)
     const flagElements = row.querySelectorAll('.flag, [class*="flag"], img');
