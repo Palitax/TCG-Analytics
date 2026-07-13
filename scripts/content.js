@@ -53,6 +53,39 @@ function getTcgAndCardId() {
   return { tcg, cardId };
 }
 
+// Helper to find a checkbox input by its label keywords inside the filter sidebar
+function findCheckboxByLabel(keywords) {
+  const filterContainer = document.querySelector('#searchFilterForm, #filterForm, form.filter-form, .filter-container, .filter-sidebar, #filter-sidebar, [id*="filter"]');
+  if (!filterContainer) return null;
+
+  const labels = filterContainer.querySelectorAll('label, span, div');
+  for (const label of labels) {
+    const text = label.textContent.trim().toLowerCase();
+    const matchesKeyword = keywords.some(keyword => text === keyword.toLowerCase() || text.includes(keyword.toLowerCase()));
+    
+    if (matchesKeyword) {
+      // 1. Check for attribute pointing to ID
+      const forId = label.getAttribute('for');
+      if (forId) {
+        const checkbox = document.getElementById(forId);
+        if (checkbox && checkbox.type === 'checkbox') return checkbox;
+      }
+      
+      // 2. Check for child input
+      let checkbox = label.querySelector('input[type="checkbox"]');
+      if (checkbox) return checkbox;
+      
+      // 3. Check for sibling/parent inputs
+      const parent = label.parentElement;
+      if (parent) {
+        checkbox = parent.querySelector('input[type="checkbox"]');
+        if (checkbox) return checkbox;
+      }
+    }
+  }
+  return null;
+}
+
 // Helper to look up and clone flag elements from Cardmarket's table for high-fidelity styling
 function getFlagHtml(type, code) {
   if (!code) return '';
@@ -122,6 +155,71 @@ function getFlagHtml(type, code) {
   if (flagClass === 'en') flagClass = 'gb'; // Map EN to GB flag class
   
   return `<img src="/img/static/v2/images/flags/${flagClass}.${ext}" class="flag" title="${cleanCode}" style="vertical-align: middle; display: inline-block; width: 16px; height: 11px; margin: 0;">`;
+}
+
+// Read the active filters from Cardmarket's sidebar checkboxes
+function getSidebarState() {
+  const deCheckbox = findCheckboxByLabel(["Deutschland", "Germany"]);
+  const isDeChecked = deCheckbox ? deCheckbox.checked : false;
+
+  const activeLanguages = [];
+  const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT'];
+  for (const lang of langCodes) {
+    const keywords = LANGUAGE_LABELS[lang];
+    const checkbox = findCheckboxByLabel(keywords);
+    if (checkbox && checkbox.checked) {
+      activeLanguages.push(lang);
+    }
+  }
+
+  return {
+    location: isDeChecked ? 'DE' : 'ALL',
+    languages: activeLanguages.length === 0 ? ['ALL'] : activeLanguages
+  };
+}
+
+// Synchronize selected overlay preferences to Cardmarket's native sidebar checkboxes and submit
+async function applySidebarFilter(newPrefs) {
+  let needsSubmit = false;
+
+  // 1. Set location checkbox
+  const deCheckbox = findCheckboxByLabel(["Deutschland", "Germany"]);
+  if (deCheckbox) {
+    const shouldBeChecked = (newPrefs.location === 'DE');
+    if (deCheckbox.checked !== shouldBeChecked) {
+      console.log(`Syncing location checkbox to ${shouldBeChecked}`);
+      deCheckbox.checked = shouldBeChecked;
+      needsSubmit = true;
+    }
+  }
+
+  // 2. Set language checkboxes
+  const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT'];
+  for (const lang of langCodes) {
+    const keywords = LANGUAGE_LABELS[lang];
+    const checkbox = findCheckboxByLabel(keywords);
+    if (checkbox) {
+      const shouldBeChecked = newPrefs.languages.includes(lang);
+      if (checkbox.checked !== shouldBeChecked) {
+        console.log(`Syncing language checkbox ${lang} to ${shouldBeChecked}`);
+        checkbox.checked = shouldBeChecked;
+        needsSubmit = true;
+      }
+    }
+  }
+
+  if (needsSubmit) {
+    const anchor = deCheckbox || findCheckboxByLabel(LANGUAGE_LABELS['EN']);
+    if (anchor) {
+      const form = anchor.form || document.querySelector('#searchFilterForm, #filterForm, form.filter-form');
+      if (form) {
+        console.log("Applying overlay preferences to Cardmarket sidebar and submitting...");
+        form.submit();
+        return true; // Reload triggered
+      }
+    }
+  }
+  return false;
 }
 
 // Scrape the DOM for the first offer matching target conditions
@@ -500,7 +598,12 @@ function attachListeners() {
 
     const storageKey = 'preferences_' + currentUserId;
     await chrome.storage.local.set({ [storageKey]: newPrefs });
-    runScan();
+
+    // Sync preferences to Cardmarket's sidebar and reload if necessary
+    const isReloading = await applySidebarFilter(newPrefs);
+    if (!isReloading) {
+      runScan(); // If no page reload is needed, run scanner locally instantly
+    }
   };
 
   selectCondition.addEventListener('change', saveAndRefresh);
@@ -559,26 +662,47 @@ async function runScan() {
     currentUserId = response.user.id;
     const storageKey = 'preferences_' + currentUserId;
 
+    // Load saved settings
     const { [storageKey]: prefs } = await chrome.storage.local.get(storageKey);
-    const targetCondition = prefs?.condition || 'NM';
-    const targetLocation = prefs?.location || 'DE';
-    const targetLanguages = prefs?.languages || ['ALL'];
+    const savedCondition = prefs?.condition || 'NM';
+    const savedLocation = prefs?.location || 'DE';
+    const savedLanguages = prefs?.languages || ['ALL'];
 
+    // Read the current state of Cardmarket's sidebar
+    const sidebar = getSidebarState();
+
+    // Verify if sidebar checkboxes match our user-saved preferences.
+    // If they do not match, we apply the filters and reload the page automatically to stay in sync!
+    const matchesLocation = (sidebar.location === savedLocation);
+    const matchesLanguages = (sidebar.languages.length === savedLanguages.length && 
+                              sidebar.languages.every(lang => savedLanguages.includes(lang)));
+
+    if (!matchesLocation || !matchesLanguages) {
+      console.log("Overlay preferences do not match page filters. Auto-syncing...");
+      const isReloading = await applySidebarFilter({
+        location: savedLocation,
+        languages: savedLanguages
+      });
+      if (isReloading) return; // Wait for the page to reload
+    }
+
+    // Render loading screen with correct filter states
     updateOverlay('loading', {
-      selectedCondition: targetCondition,
-      selectedLocation: targetLocation,
-      selectedLanguages: targetLanguages
+      selectedCondition: savedCondition,
+      selectedLocation: savedLocation,
+      selectedLanguages: savedLanguages
     });
 
     const { tcg, cardId } = getTcgAndCardId();
 
-    const match = scrapePrice(targetCondition, targetLocation, targetLanguages);
+    // Since Cardmarket filtered the page, we simply scrape the matching condition row
+    const match = scrapePrice(savedCondition, savedLocation, savedLanguages);
     if (!match) {
       currentMatchedElement = null;
       updateOverlay('success', {
-        selectedCondition: targetCondition,
-        selectedLocation: targetLocation,
-        selectedLanguages: targetLanguages,
+        selectedCondition: savedCondition,
+        selectedLocation: savedLocation,
+        selectedLanguages: savedLanguages,
         noMatch: true
       });
       return;
@@ -590,7 +714,7 @@ async function runScan() {
       action: "scanCard",
       tcg: tcg,
       cardId: cardId,
-      condition: targetCondition,
+      condition: savedCondition,
       language: match.language,
       sellerCountry: match.sellerCountry,
       currentPrice: match.price,
@@ -599,9 +723,9 @@ async function runScan() {
       if (chrome.runtime.lastError || !dbResponse) {
         console.error("Database connection failed:", chrome.runtime.lastError);
         updateOverlay('error', {
-          selectedCondition: targetCondition,
-          selectedLocation: targetLocation,
-          selectedLanguages: targetLanguages,
+          selectedCondition: savedCondition,
+          selectedLocation: savedLocation,
+          selectedLanguages: savedLanguages,
           errorText: "Verbindung zur Extension fehlgeschlagen."
         });
         return;
@@ -610,9 +734,9 @@ async function runScan() {
       if (dbResponse.error) {
         console.error("Scanning process failed:", dbResponse.error);
         updateOverlay('error', {
-          selectedCondition: targetCondition,
-          selectedLocation: targetLocation,
-          selectedLanguages: targetLanguages,
+          selectedCondition: savedCondition,
+          selectedLocation: savedLocation,
+          selectedLanguages: savedLanguages,
           errorText: `Datenbank-Fehler: ${dbResponse.error}`
         });
         return;
@@ -621,9 +745,9 @@ async function runScan() {
       const record = dbResponse.latestRecord;
 
       updateOverlay('success', {
-        selectedCondition: targetCondition,
-        selectedLocation: targetLocation,
-        selectedLanguages: targetLanguages,
+        selectedCondition: savedCondition,
+        selectedLocation: savedLocation,
+        selectedLanguages: savedLanguages,
         currentPrice: match.price,
         lastPrice: record ? parseFloat(record.price) : null,
         lastScannedAt: record ? record.scanned_at : null,
