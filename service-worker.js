@@ -211,7 +211,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
 
           if (!postResponse.ok) {
-            console.error("Failed to upload new scan to Supabase:", postResponse.statusText);
+            const errText = await postResponse.text();
+            console.error("Failed to upload new scan to Supabase:", postResponse.status, postResponse.statusText, errText);
           } else {
             console.log(`Successfully uploaded scan: ${tcg} | ${cardId} (${condition} | ${language} | ${sellerCountry}) = ${currentPrice} € (Comment: "${comment || ''}")`);
           }
