@@ -421,3 +421,35 @@
   line-height: 11px !important;
   margin: 0 !important;
 }
+
+/* Clickable Seller Hover effect */
+.cm-clickable-seller {
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.cm-clickable-seller:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  transform: scale(1.05);
+}
+
+/* Scroll and Highlight Row Animation */
+.cm-highlight-row {
+  animation: cm-row-flash 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  position: relative;
+}
+
+@keyframes cm-row-flash {
+  0% {
+    background-color: rgba(16, 185, 129, 0.25) !important;
+    outline: 2px solid rgba(16, 185, 129, 0.4);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.3);
+  }
+  100% {
+    background-color: transparent !important;
+    outline: 2px solid transparent;
+    box-shadow: none;
+  }
+}
