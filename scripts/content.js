@@ -115,9 +115,7 @@ function getFlagHtml(type, code) {
       if (type === 'seller') {
         const names = COUNTRY_NAMES[cleanCode];
         const matchesTitle = names && names.some(name => 
-          titleText.toLowerCase() === name.toLowerCase() || 
-          titleText.toLowerCase().includes(' ' + name.toLowerCase()) ||
-          titleText.toLowerCase().includes('(' + name.toLowerCase())
+          titleText.toLowerCase().includes(name.toLowerCase())
         );
 
         const matchesFile = filename.startsWith(cleanCode + '.') || filename === cleanCode;
@@ -129,9 +127,7 @@ function getFlagHtml(type, code) {
       } else {
         const keywords = LANGUAGE_LABELS[cleanCode];
         const matchesTitle = keywords && keywords.some(keyword =>
-          titleText.toLowerCase() === keyword.toLowerCase() ||
-          titleText.toLowerCase().includes(' ' + keyword.toLowerCase()) ||
-          titleText.toLowerCase().includes('(' + keyword.toLowerCase())
+          titleText.toLowerCase().includes(keyword.toLowerCase())
         );
 
         const matchesFile = filename.startsWith(cleanCode.toLowerCase() + '.') || 
@@ -321,9 +317,7 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
       for (const code of codes) {
         const names = COUNTRY_NAMES[code];
         const matchesTitle = names && names.some(name => 
-          titleText.toLowerCase() === name.toLowerCase() || 
-          titleText.toLowerCase().includes(' ' + name.toLowerCase()) ||
-          titleText.toLowerCase().includes('(' + name.toLowerCase())
+          titleText.toLowerCase().includes(name.toLowerCase())
         );
 
         const matchesFile = filename.startsWith(code + '.') || filename === code;
@@ -401,9 +395,7 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
                              (lang === 'KO' && classText.toLowerCase().includes('flag-kr'));
 
         const matchesTitle = keywords && keywords.some(keyword =>
-          titleText.toLowerCase() === keyword.toLowerCase() ||
-          titleText.toLowerCase().includes(' ' + keyword.toLowerCase()) ||
-          titleText.toLowerCase().includes('(' + keyword.toLowerCase())
+          titleText.toLowerCase().includes(keyword.toLowerCase())
         );
 
         if (matchesFile || matchesClass || matchesTitle) {
