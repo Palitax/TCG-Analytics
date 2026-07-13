@@ -99,8 +99,8 @@ function getFlagHtml(type, code) {
   // Try to find a matching flag element in the current DOM to clone it
   const rows = document.querySelectorAll('.article-row, [id^="articleRow"], div.table-body > div.row');
   for (const row of rows) {
-    // Restricting query specifically to flag classes or images inside a flags directory
-    const flagElements = row.querySelectorAll('.flag, [class*="flag"], img[src*="/flags/"]');
+    // Search both class names and images. Strict name filters will ignore non-flag images (like calendars)
+    const flagElements = row.querySelectorAll('.flag, [class*="flag"], img');
     for (const el of flagElements) {
       const isSellerCol = el.closest('.seller-link, .seller, [class*="seller"], [class*="user"], .merchant');
       if (type === 'seller' && !isSellerCol) continue;
@@ -291,21 +291,32 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     '.article-row, [id^="articleRow"], div.table-body > div.row, .table-body div.row, tr.article-row'
   );
 
-  for (const row of rows) {
-    // 1. Verify seller matches location criteria
-    // Restricting query specifically to flag classes or images inside a flags directory
-    const flagElements = row.querySelectorAll('.flag, [class*="flag"], img[src*="/flags/"]');
+  console.log(`scrapePrice: Starting scan on ${rows.length} rows. Target: Cond=${targetCondition}, Loc=${targetLocation}, Langs=[${targetLanguages.join(', ')}]`);
+
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex];
+    console.log(`--- Row ${rowIndex + 1} ---`);
+
+    // Search both class names and images. Strict name filters will ignore non-flag images (like calendars)
+    const flagElements = row.querySelectorAll('.flag, [class*="flag"], img');
+    console.log(`  Found ${flagElements.length} flag elements:`, Array.from(flagElements).map(el => el.outerHTML));
+    
     let isGerman = false;
     let sellerCountry = 'OTHER';
 
     for (const el of flagElements) {
-      if (el.closest('.product-info, .condition, .badge')) continue;
+      if (el.closest('.product-info, .condition, .badge')) {
+        console.log(`  Skipping element (product info child):`, el.outerHTML);
+        continue;
+      }
       
       const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
       const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || '';
       const srcText = el.getAttribute('src') || '';
       const filename = srcText.split('/').pop().toUpperCase();
       
+      console.log(`  Checking seller flag element:`, el.outerHTML, `Class="${classText}", Title="${titleText}", Src="${srcText}", Filename="${filename}"`);
+
       const codes = ['DE', 'ES', 'FR', 'IT', 'GB', 'PT', 'NL', 'BE', 'AT', 'CH', 'DK', 'SE', 'PL'];
       for (const code of codes) {
         const names = COUNTRY_NAMES[code];
@@ -321,13 +332,18 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
         if (matchesFile || matchesClass || matchesTitle) {
           sellerCountry = code;
           if (code === 'DE') isGerman = true;
+          console.log(`    MATCHED seller country: ${code}`);
           break;
         }
       }
       if (sellerCountry !== 'OTHER') break;
     }
 
-    if (targetLocation === 'DE' && !isGerman) continue;
+    console.log(`  Seller Country Result: ${sellerCountry}, isGerman: ${isGerman}`);
+    if (targetLocation === 'DE' && !isGerman) {
+      console.log(`  Skipping row: Location mismatch`);
+      continue;
+    }
 
     // 2. Verify card condition matches target
     const conditionElements = row.querySelectorAll('.article-condition, .condition, .badge, span, a');
@@ -345,17 +361,21 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
       }
     }
 
-    if (!conditionMatches) continue;
+    console.log(`  Condition matches: ${conditionMatches}`);
+    if (!conditionMatches) {
+      console.log(`  Skipping row: Condition mismatch`);
+      continue;
+    }
 
     // 3. Verify card language matches target
     let matchedLanguage = null;
     const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
-    // Restricting query specifically to flag classes or images inside a flags directory
-    const flags = row.querySelectorAll('.flag, [class*="flag"], img[src*="/flags/"]');
+    const flags = row.querySelectorAll('.flag, [class*="flag"], img');
     
     for (const el of flags) {
       if (el.closest('.seller-link, .seller, [class*="seller"], [class*="user"], .merchant')) {
-        continue; // Skip seller flags
+        console.log(`  Skipping language element (seller column child):`, el.outerHTML);
+        continue;
       }
       
       const classText = (typeof el.className === 'string') ? el.className : (el.className?.baseVal || '');
@@ -363,6 +383,8 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
       const srcText = el.getAttribute('src') || '';
       const filename = srcText.split('/').pop().toLowerCase();
       
+      console.log(`  Checking language flag element:`, el.outerHTML, `Class="${classText}", Title="${titleText}", Src="${srcText}", Filename="${filename}"`);
+
       for (const lang of langCodes) {
         const keywords = LANGUAGE_LABELS[lang];
         
@@ -386,6 +408,7 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
 
         if (matchesFile || matchesClass || matchesTitle) {
           matchedLanguage = lang;
+          console.log(`    MATCHED card language: ${lang}`);
           break;
         }
       }
@@ -393,8 +416,10 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     }
 
     if (!matchedLanguage) matchedLanguage = 'EN';
+    console.log(`  Matched Language Result: ${matchedLanguage}`);
 
     if (targetLanguages && !targetLanguages.includes('ALL') && !targetLanguages.includes(matchedLanguage)) {
+      console.log(`  Skipping row: Language mismatch (Target: [${targetLanguages.join(', ')}])`);
       continue;
     }
 
