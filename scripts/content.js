@@ -53,12 +53,10 @@ function getTcgAndCardId() {
   return { tcg, cardId };
 }
 
-// Helper to find a checkbox input by its label keywords inside the filter sidebar
+// Helper to find a checkbox input by its label keywords globally (restricted to <label> elements)
 function findCheckboxByLabel(keywords) {
-  const filterContainer = document.querySelector('#searchFilterForm, #filterForm, form.filter-form, .filter-container, .filter-sidebar, #filter-sidebar, [id*="filter"]');
-  if (!filterContainer) return null;
-
-  const labels = filterContainer.querySelectorAll('label, span, div');
+  // Querying specifically <label> elements is extremely robust and avoids matching table rows
+  const labels = document.querySelectorAll('label');
   for (const label of labels) {
     const text = label.textContent.trim().toLowerCase();
     const matchesKeyword = keywords.some(keyword => text === keyword.toLowerCase() || text.includes(keyword.toLowerCase()));
@@ -189,6 +187,8 @@ async function applySidebarFilter(newPrefs) {
     if (deCheckbox.checked !== shouldBeChecked) {
       console.log(`Syncing location checkbox to ${shouldBeChecked}`);
       deCheckbox.checked = shouldBeChecked;
+      deCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+      deCheckbox.dispatchEvent(new Event('input', { bubbles: true }));
       needsSubmit = true;
     }
   }
@@ -203,6 +203,8 @@ async function applySidebarFilter(newPrefs) {
       if (checkbox.checked !== shouldBeChecked) {
         console.log(`Syncing language checkbox ${lang} to ${shouldBeChecked}`);
         checkbox.checked = shouldBeChecked;
+        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+        checkbox.dispatchEvent(new Event('input', { bubbles: true }));
         needsSubmit = true;
       }
     }
@@ -599,7 +601,6 @@ function attachListeners() {
     const storageKey = 'preferences_' + currentUserId;
     await chrome.storage.local.set({ [storageKey]: newPrefs });
 
-    // Sync preferences to Cardmarket's sidebar and reload if necessary
     const isReloading = await applySidebarFilter(newPrefs);
     if (!isReloading) {
       runScan(); // If no page reload is needed, run scanner locally instantly
