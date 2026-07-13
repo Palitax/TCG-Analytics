@@ -401,7 +401,7 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
 
     // 4. Extract product comment/description from Produktinfo cell
     let comment = '';
-    const productInfoCell = row.querySelector('.product-info, [class*="product-info"], td:nth-child(2), div:nth-child(2), .col-product');
+    // Reuse the productInfoCell resolved in step 3
     if (productInfoCell) {
       const commentElement = productInfoCell.querySelector('.article-comment, .comment, [class*="comment"], .description, .product-comments span');
       if (commentElement) {
