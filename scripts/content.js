@@ -670,20 +670,34 @@ async function runScan() {
 
     // Read the current state of Cardmarket's sidebar
     const sidebar = getSidebarState();
+    const { tcg, cardId } = getTcgAndCardId();
 
     // Verify if sidebar checkboxes match our user-saved preferences.
-    // If they do not match, we apply the filters and reload the page automatically to stay in sync!
     const matchesLocation = (sidebar.location === savedLocation);
     const matchesLanguages = (sidebar.languages.length === savedLanguages.length && 
                               sidebar.languages.every(lang => savedLanguages.includes(lang)));
 
-    if (!matchesLocation || !matchesLanguages) {
-      console.log("Overlay preferences do not match page filters. Auto-syncing...");
-      const isReloading = await applySidebarFilter({
-        location: savedLocation,
-        languages: savedLanguages
-      });
-      if (isReloading) return; // Wait for the page to reload
+    // Verify if the sidebar container is present in the DOM before attempting to reload
+    const filterContainer = document.querySelector('#searchFilterForm, #filterForm, form.filter-form, .filter-container, .filter-sidebar, #filter-sidebar');
+
+    if (filterContainer && (!matchesLocation || !matchesLanguages)) {
+      const sessionKey = 'cm_reload_' + cardId;
+      const reloadCount = parseInt(sessionStorage.getItem(sessionKey) || '0', 10);
+
+      if (reloadCount < 1) {
+        console.log("Overlay preferences do not match page filters. Auto-syncing...");
+        sessionStorage.setItem(sessionKey, (reloadCount + 1).toString());
+        const isReloading = await applySidebarFilter({
+          location: savedLocation,
+          languages: savedLanguages
+        });
+        if (isReloading) return; // Wait for the page to reload
+      } else {
+        console.warn("Auto-sync reload loop prevented. Showing page results with currently active filters.");
+      }
+    } else {
+      // Clear reload count if we are in sync or if sidebar is missing
+      sessionStorage.removeItem('cm_reload_' + cardId);
     }
 
     // Render loading screen with correct filter states
@@ -692,8 +706,6 @@ async function runScan() {
       selectedLocation: savedLocation,
       selectedLanguages: savedLanguages
     });
-
-    const { tcg, cardId } = getTcgAndCardId();
 
     // Since Cardmarket filtered the page, we simply scrape the matching condition row
     const match = scrapePrice(savedCondition, savedLocation, savedLanguages);
