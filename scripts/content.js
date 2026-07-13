@@ -210,7 +210,13 @@ function updateOverlay(status, details = {}) {
   const summaryText = selectedLanguages.includes('ALL') ? 'Alle' : selectedLanguages.join(', ');
 
   let resultHtml = '';
-  if (status === 'loading') {
+  if (status === 'error') {
+    resultHtml = `
+      <div class="cm-tracker-results error-state">
+        <span class="cm-tracker-text error">${details.errorText || "Fehler bei der Analyse."}</span>
+      </div>
+    `;
+  } else if (status === 'loading') {
     resultHtml = `
       <div class="cm-tracker-results loading-state">
         <span class="cm-tracker-dot pulsing"></span>
@@ -440,11 +446,23 @@ async function runScan() {
     }, (dbResponse) => {
       if (chrome.runtime.lastError || !dbResponse) {
         console.error("Database connection failed:", chrome.runtime.lastError);
+        updateOverlay('error', {
+          selectedCondition: targetCondition,
+          selectedLocation: targetLocation,
+          selectedLanguages: targetLanguages,
+          errorText: "Verbindung zur Extension fehlgeschlagen."
+        });
         return;
       }
 
       if (dbResponse.error) {
         console.error("Scanning process failed:", dbResponse.error);
+        updateOverlay('error', {
+          selectedCondition: targetCondition,
+          selectedLocation: targetLocation,
+          selectedLanguages: targetLanguages,
+          errorText: `Datenbank-Fehler: ${dbResponse.error}`
+        });
         return;
       }
 
