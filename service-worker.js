@@ -149,7 +149,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return sendResponse({ error: "UNAUTHENTICATED" });
         }
 
-        const { tcg, cardId, condition, language, sellerCountry, currentPrice } = message;
+        const { tcg, cardId, condition, language, sellerCountry, currentPrice, comment } = message;
         const accessToken = session.access_token;
         const userId = session.user.id;
 
@@ -179,9 +179,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         } else {
           const lastPrice = parseFloat(latestRecord.price);
           const timeSinceLastScan = Date.now() - new Date(latestRecord.scanned_at).getTime();
+          const lastComment = latestRecord.comment || '';
+          const currentComment = comment || '';
           
-          // Upload if the price differs OR if the last scan is older than 1 hour (3600000 ms)
-          if (lastPrice !== currentPrice || timeSinceLastScan > 3600000) {
+          // Upload if the price differs, the comment differs, OR if the last scan is older than 1 hour (3600000 ms)
+          if (lastPrice !== currentPrice || lastComment !== currentComment || timeSinceLastScan > 3600000) {
             shouldUpload = true;
           }
         }
@@ -203,6 +205,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               condition: condition,
               language: language,
               seller_country: sellerCountry,
+              comment: comment || null,
               user_id: userId
             })
           });
@@ -210,7 +213,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (!postResponse.ok) {
             console.error("Failed to upload new scan to Supabase:", postResponse.statusText);
           } else {
-            console.log(`Successfully uploaded scan: ${tcg} | ${cardId} (${condition} | ${language} | ${sellerCountry}) = ${currentPrice} €`);
+            console.log(`Successfully uploaded scan: ${tcg} | ${cardId} (${condition} | ${language} | ${sellerCountry}) = ${currentPrice} € (Comment: "${comment || ''}")`);
           }
         }
 
