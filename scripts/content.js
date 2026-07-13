@@ -27,9 +27,13 @@ function getCardId() {
   return '/' + parts.join('/');
 }
 
-// Helper to find a checkbox input by its label keywords
+// Helper to find a checkbox input by its label keywords inside the filter sidebar
 function findCheckboxByLabel(keywords) {
-  const labels = document.querySelectorAll('label, span, div');
+  // Restrict search to the filter sidebar to prevent matching table rows or cart items
+  const filterContainer = document.querySelector('#searchFilterForm, #filterForm, form.filter-form, .filter-container, .filter-sidebar, #filter-sidebar, [id*="filter"]');
+  if (!filterContainer) return null;
+
+  const labels = filterContainer.querySelectorAll('label, span, div');
   for (const label of labels) {
     const text = label.textContent.trim().toLowerCase();
     const matchesKeyword = keywords.some(keyword => text === keyword.toLowerCase() || text.includes(keyword.toLowerCase()));
