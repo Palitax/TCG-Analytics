@@ -53,17 +53,36 @@ function getCardImageUrl() {
   const isCardImage = (url) => {
     if (!url) return false;
     const cleanUrl = url.toLowerCase();
+    
+    // Filter out layout graphics, flags, icons, logos, and avatars
+    if (
+      cleanUrl.includes('/flags/') || 
+      cleanUrl.includes('flagcdn.com') ||
+      cleanUrl.includes('/payment/') ||
+      cleanUrl.includes('/rarity/') ||
+      cleanUrl.includes('/avatar/') ||
+      cleanUrl.includes('logo') ||
+      cleanUrl.includes('facebook') ||
+      cleanUrl.includes('twitter') ||
+      cleanUrl.includes('instagram') ||
+      cleanUrl.includes('youtube') ||
+      cleanUrl.includes('star')
+    ) {
+      return false;
+    }
+    
     return (
-      cleanUrl.includes('/cards/') || 
-      cleanUrl.includes('/specimens/') || 
-      cleanUrl.includes('/products/') || 
-      cleanUrl.includes('product-images')
+      cleanUrl.includes('.jpg') ||
+      cleanUrl.includes('.jpeg') ||
+      cleanUrl.includes('.png') ||
+      cleanUrl.includes('.webp')
     );
   };
 
   const containers = document.querySelectorAll('.image-container img, .product-image img, .image-box img, div[class*="image"] img, img.img-fluid, .product-image-container img');
   for (const img of containers) {
     if (img) {
+      if (img.width > 0 && img.width < 30) continue; // Skip tiny icons
       const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-original') || img.getAttribute('srcset');
       if (isCardImage(src)) return src;
     }
@@ -71,6 +90,7 @@ function getCardImageUrl() {
 
   const allImgs = document.querySelectorAll('img');
   for (const img of allImgs) {
+    if (img.width > 0 && img.width < 30) continue; // Skip tiny icons
     const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-original') || img.getAttribute('data-lazy') || img.getAttribute('srcset');
     if (isCardImage(src)) return src;
   }
