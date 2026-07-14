@@ -149,7 +149,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return sendResponse({ error: "UNAUTHENTICATED" });
         }
 
-        const { tcg, cardId, condition, language, sellerCountry, currentPrice, comment, force } = message;
+        const { tcg, cardId, condition, language, sellerCountry, currentPrice, comment, force, matchedCondition, matchedLanguage, matchedCountry } = message;
         const accessToken = session.access_token;
         const userId = session.user.id;
 
@@ -195,6 +195,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         // 2. Perform upload if triggered
         if (shouldUpload) {
+          // Embed specific match details as metadata prefix in the comment column
+          const metadataPrefix = `[${matchedLanguage || ''}|${matchedCountry || ''}|${matchedCondition || ''}]`;
+          const dbComment = comment ? `${metadataPrefix} ${comment}` : metadataPrefix;
+
           const newRecordData = {
             tcg: tcg,
             card_id: cardId,
@@ -202,7 +206,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             condition: condition,
             language: language,
             seller_country: sellerCountry,
-            comment: comment || null,
+            comment: dbComment,
             user_id: userId
           };
 

@@ -13,6 +13,32 @@ function formatRemainingTime(ms) {
   return `${minutes} Min.`;
 }
 
+function parseHistoryItem(item) {
+  let matchedLang = item.language;
+  let matchedCountry = item.seller_country;
+  let matchedCond = item.condition;
+  let cleanComment = item.comment || '';
+
+  if (item.comment && item.comment.startsWith('[')) {
+    const match = item.comment.match(/^\[([^|]*)\|([^|]*)\|([^\]]*)\](?:\s*(.*))?$/);
+    if (match) {
+      matchedLang = match[1] || item.language;
+      matchedCountry = match[2] || item.seller_country;
+      matchedCond = match[3] || item.condition;
+      cleanComment = match[4] || '';
+    }
+  }
+
+  return {
+    ...item,
+    price: parseFloat(item.price),
+    matchedLanguage: matchedLang,
+    matchedCountry: matchedCountry,
+    matchedCondition: matchedCond,
+    comment: cleanComment
+  };
+}
+
 // Standardize condition mapping
 const CONDITION_NAMES = {
   "MT": "Mint",
@@ -1236,12 +1262,15 @@ async function runScan(force = false) {
       action: "scanCard",
       tcg: tcg,
       cardId: cardId,
-      condition: match.condition,
-      language: match.language,
-      sellerCountry: match.sellerCountry,
+      condition: savedCondition,
+      language: savedLanguage,
+      sellerCountry: savedLocation,
       currentPrice: match.price,
       comment: match.comment,
-      force: force
+      force: force,
+      matchedCondition: match.condition,
+      matchedLanguage: match.language,
+      matchedCountry: match.sellerCountry
     }, (dbResponse) => {
       if (chrome.runtime.lastError || !dbResponse) {
         console.error("Database connection failed:", chrome.runtime.lastError);
@@ -1267,7 +1296,8 @@ async function runScan(force = false) {
         return;
       }
 
-      const history = dbResponse.history || [];
+      let history = dbResponse.history || [];
+      history = history.map(parseHistoryItem);
       const firstRecord = history.length > 0 ? history[0] : null;
 
       updateOverlay('success', {
@@ -1277,13 +1307,13 @@ async function runScan(force = false) {
         availableLanguages: availableLangs,
         currentPrice: match.price,
         history: history,
-        firstPrice: firstRecord ? parseFloat(firstRecord.price) : null,
+        firstPrice: firstRecord ? firstRecord.price : null,
         firstScannedAt: firstRecord ? firstRecord.scanned_at : null,
         firstUserId: firstRecord ? firstRecord.user_id : null,
         firstComment: firstRecord ? firstRecord.comment : null,
-        firstCondition: firstRecord ? firstRecord.condition : null,
-        firstLanguage: firstRecord ? firstRecord.language : null,
-        firstCountry: firstRecord ? firstRecord.seller_country : null,
+        firstCondition: firstRecord ? firstRecord.matchedCondition : null,
+        firstLanguage: firstRecord ? firstRecord.matchedLanguage : null,
+        firstCountry: firstRecord ? firstRecord.matchedCountry : null,
         matchedLanguage: match.language,
         matchedCountry: match.sellerCountry,
         matchedCondition: match.condition,
