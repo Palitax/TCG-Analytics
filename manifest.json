@@ -11,7 +11,8 @@
   ],
   "host_permissions": [
     "https://*.cardmarket.com/*",
-    "https://pjorjwwhiinaaebxvhhi.supabase.co/*"
+    "https://pjorjwwhiinaaebxvhhi.supabase.co/*",
+    "<all_urls>"
   ],
   "action": {
     "default_popup": "popup/popup.html"
