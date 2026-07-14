@@ -51,14 +51,20 @@ function parseHistoryItem(item) {
 
 function getCardImageUrl() {
   const imgEl = document.querySelector('.image-container img, .product-image img, .image-box img, div[class*="image"] img, img.img-fluid');
-  if (imgEl && imgEl.src && imgEl.src.includes('static.cardmarket.com')) {
+  if (imgEl && imgEl.src && imgEl.src.includes('cardmarket.com')) {
     return imgEl.src;
   }
   const allImgs = document.querySelectorAll('img');
   for (const img of allImgs) {
-    if (img.src && (img.src.includes('/cards/') || img.src.includes('/specimens/') || img.src.includes('/img/'))) {
-      if (img.src.includes('static.cardmarket.com')) {
-        return img.src;
+    if (img.src && img.src.includes('cardmarket.com')) {
+      const src = img.src;
+      if (
+        src.includes('/cards/') || 
+        src.includes('/specimens/') || 
+        src.includes('/products/') || 
+        src.includes('product-images')
+      ) {
+        return src;
       }
     }
   }
