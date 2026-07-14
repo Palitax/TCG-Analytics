@@ -297,6 +297,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
       }
       
+      else if (message.action === "captureTab") {
+        chrome.tabs.captureVisibleTab(null, { format: "png" }, (dataUrl) => {
+          if (chrome.runtime.lastError) {
+            sendResponse({ success: false, error: chrome.runtime.lastError.message });
+          } else {
+            sendResponse({ success: true, dataUrl: dataUrl });
+          }
+        });
+      }
+      
       else if (message.action === "toggleBookmark") {
         const session = await getSession();
         if (!session) {
