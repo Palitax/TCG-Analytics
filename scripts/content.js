@@ -165,10 +165,7 @@ function getSidebarState() {
     "8": "KO"
   };
 
-  const activeLangs = langParams.map(id => languageMap[id]).filter(Boolean);
-  const activeLocation = isDeFiltered ? 'DE' : 'ALL';
-
-  const conditionMap = {
+  const URL_CONDITION_MAP = {
     "1": "MT",
     "2": "NM",
     "3": "EX",
@@ -177,7 +174,10 @@ function getSidebarState() {
     "6": "PL",
     "7": "PO"
   };
-  const activeCondition = conditionMap[minConditionParam] || 'NM';
+
+  const activeLangs = langParams.map(id => languageMap[id]).filter(Boolean);
+  const activeLocation = isDeFiltered ? 'DE' : 'ALL';
+  const activeCondition = URL_CONDITION_MAP[minConditionParam] || null;
 
   console.log(`getSidebarState (URL): Location = ${activeLocation}, Languages = [${activeLangs.join(', ')}], Condition = ${activeCondition}`);
 
@@ -208,28 +208,7 @@ async function applySidebarFilter(newPrefs) {
     changed = true;
   }
 
-  // 2. Sync condition (minCondition)
-  const currentConditionParam = params.get('minCondition');
-  const conditionMap = {
-    "MT": "1",
-    "NM": "2",
-    "EX": "3",
-    "GD": "4",
-    "LP": "5",
-    "PL": "6",
-    "PO": "7"
-  };
-  const targetConditionParam = conditionMap[newPrefs.condition] || null;
-  if (currentConditionParam !== targetConditionParam) {
-    if (targetConditionParam) {
-      params.set('minCondition', targetConditionParam);
-    } else {
-      params.delete('minCondition');
-    }
-    changed = true;
-  }
-
-  // 3. Sync languages
+  // 2. Sync languages
   const languageMap = {
     "EN": "1",
     "FR": "2",
@@ -267,12 +246,29 @@ async function applySidebarFilter(newPrefs) {
   if (!langsMatch) {
     params.delete('language');
     params.delete('language[]');
-    if (targetLangs.length === 1) {
-      params.set('language', targetLangs[0]);
+    for (const id of targetLangs) {
+      params.append('language[]', id);
+    }
+    changed = true;
+  }
+
+  // 3. Sync minCondition
+  const CONDITION_URL_MAP = {
+    "MT": "1",
+    "NM": "2",
+    "EX": "3",
+    "GD": "4",
+    "LP": "5",
+    "PL": "6",
+    "PO": "7"
+  };
+  const currentMinConditionParam = params.get('minCondition');
+  const targetMinConditionParam = CONDITION_URL_MAP[newPrefs.condition] || null;
+  if (currentMinConditionParam !== targetMinConditionParam) {
+    if (targetMinConditionParam) {
+      params.set('minCondition', targetMinConditionParam);
     } else {
-      for (const id of targetLangs) {
-        params.append('language[]', id);
-      }
+      params.delete('minCondition');
     }
     changed = true;
   }
@@ -786,7 +782,7 @@ async function runScan() {
     currentUserId = response.user.id;
     const storageKey = 'preferences_' + currentUserId;
 
-        // Load saved settings
+    // Load saved settings
     const { [storageKey]: prefs } = await chrome.storage.local.get(storageKey);
     let savedCondition = prefs?.condition || 'NM';
     let savedLocation = prefs?.location || 'DE';
@@ -808,10 +804,6 @@ async function runScan() {
       savedLocation = sidebar.location;
       prefsUpdated = true;
     }
-    if (hasUrlCondition && savedCondition !== sidebar.condition) {
-      savedCondition = sidebar.condition;
-      prefsUpdated = true;
-    }
     if (hasUrlLanguages) {
       const sortedSaved = [...savedLanguages].sort();
       const sortedSidebar = [...sidebar.languages].sort();
@@ -821,6 +813,10 @@ async function runScan() {
         savedLanguages = sidebar.languages;
         prefsUpdated = true;
       }
+    }
+    if (hasUrlCondition && sidebar.condition && savedCondition !== sidebar.condition) {
+      savedCondition = sidebar.condition;
+      prefsUpdated = true;
     }
 
     if (prefsUpdated) {
@@ -833,7 +829,7 @@ async function runScan() {
       console.log("Updated saved preferences from URL state:", newPrefs);
     }
 
-    // Verify if sidebar checkboxes match our user-saved preferences.
+    // Verify if sidebar checkboxes/conditions match our user-saved preferences.
     const matchesLocation = (sidebar.location === savedLocation);
     const matchesLanguages = (sidebar.languages.length === savedLanguages.length && 
                               sidebar.languages.every(lang => savedLanguages.includes(lang)));
