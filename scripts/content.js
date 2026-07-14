@@ -1198,101 +1198,6 @@ function attachListeners() {
     });
   }
 
-  // Crop the card image from the viewport screenshot
-  function cropCardImage(viewportDataUrl, callback) {
-    const isCardImage = (url) => {
-      if (!url) return false;
-      const cleanUrl = url.toLowerCase();
-      if (
-        cleanUrl.includes('/flags/') || 
-        cleanUrl.includes('flagcdn.com') ||
-        cleanUrl.includes('/payment/') ||
-        cleanUrl.includes('/rarity/') ||
-        cleanUrl.includes('/avatar/') ||
-        cleanUrl.includes('logo') ||
-        cleanUrl.includes('facebook') ||
-        cleanUrl.includes('twitter') ||
-        cleanUrl.includes('instagram') ||
-        cleanUrl.includes('youtube') ||
-        cleanUrl.includes('star')
-      ) {
-        return false;
-      }
-      return (
-        cleanUrl.includes('.jpg') ||
-        cleanUrl.includes('.jpeg') ||
-        cleanUrl.includes('.png') ||
-        cleanUrl.includes('.webp')
-      );
-    };
-
-    let img = null;
-    const containers = document.querySelectorAll('.image-container img, .product-image img, .image-box img, div[class*="image"] img, img.img-fluid, .product-image-container img');
-    for (const el of containers) {
-      if (el && el.width > 30) {
-        const src = el.src || el.getAttribute('data-src') || el.getAttribute('data-original');
-        if (isCardImage(src)) {
-          img = el;
-          break;
-        }
-      }
-    }
-
-    if (!img) {
-      const allImgs = document.querySelectorAll('img');
-      for (const el of allImgs) {
-        if (el && el.width > 30) {
-          const src = el.src || el.getAttribute('data-src') || el.getAttribute('data-original') || el.getAttribute('data-lazy');
-          if (isCardImage(src)) {
-            img = el;
-            break;
-          }
-        }
-      }
-    }
-
-    if (!img) {
-      return callback(null);
-    }
-
-    try {
-      const rect = img.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      const ctx = canvas.getContext('2d');
-
-      const tempImg = new Image();
-      tempImg.onload = () => {
-        try {
-          ctx.drawImage(
-            tempImg,
-            rect.left * dpr,
-            rect.top * dpr,
-            rect.width * dpr,
-            rect.height * dpr,
-            0,
-            0,
-            rect.width * dpr,
-            rect.height * dpr
-          );
-          const croppedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
-          callback(croppedDataUrl);
-        } catch (e) {
-          console.error("Cropping failed:", e);
-          callback(null);
-        }
-      };
-      tempImg.onerror = () => callback(null);
-      tempImg.src = viewportDataUrl;
-    } catch (err) {
-      console.error("Setup crop failed:", err);
-      callback(null);
-    }
-  }
-
   // Bookmark button click binding
   const btnBookmark = document.getElementById('cm-btn-bookmark');
   if (btnBookmark) {
@@ -1303,37 +1208,18 @@ function attachListeners() {
       if (!tcg || !cardId) return;
 
       btnBookmark.style.pointerEvents = 'none';
-      const shouldMark = !isMarked;
-
-      const performToggle = (imageUrlToSend) => {
-        chrome.runtime.sendMessage({
-          action: "toggleBookmark",
-          tcg: tcg,
-          cardId: cardId,
-          imageUrl: imageUrlToSend,
-          shouldMark: shouldMark
-        }, (response) => {
-          btnBookmark.style.pointerEvents = 'auto';
-          if (response && response.success) {
-            runScan();
-          }
-        });
-      };
-
-      if (shouldMark) {
-        chrome.runtime.sendMessage({ action: "captureTab" }, (response) => {
-          if (response && response.success && response.dataUrl) {
-            cropCardImage(response.dataUrl, (croppedBase64) => {
-              performToggle(croppedBase64 || getCardImageUrl());
-            });
-          } else {
-            console.warn("Screenshot capture failed, falling back to scraped URL:", response?.error);
-            performToggle(getCardImageUrl());
-          }
-        });
-      } else {
-        performToggle(null);
-      }
+      chrome.runtime.sendMessage({
+        action: "toggleBookmark",
+        tcg: tcg,
+        cardId: cardId,
+        imageUrl: getCardImageUrl(),
+        shouldMark: !isMarked
+      }, (response) => {
+        btnBookmark.style.pointerEvents = 'auto';
+        if (response && response.success) {
+          runScan();
+        }
+      });
     });
   }
 

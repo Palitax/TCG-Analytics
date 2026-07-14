@@ -1,6 +1,38 @@
 const SUPABASE_URL = "https://pjorjwwhiinaaebxvhhi.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqb3Jqd3doaWluYWFlYnh2aGhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5MjQ4NzEsImV4cCI6MjA5OTUwMDg3MX0.T8Gs9JaF9X-DbEgx0fSN9VeSEUPsV6nlFMd0RRW2hOs";
 
+// Fetch remote image and convert to Base64 in service worker background thread
+async function fetchAndConvertToBase64(url) {
+  if (!url) return null;
+  if (url.startsWith('data:')) return url;
+  
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      }
+    });
+    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+    
+    const blob = await response.blob();
+    const buffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    
+    const base64 = btoa(binary);
+    const mimeType = blob.type || 'image/jpeg';
+    return `data:${mimeType};base64,${base64}`;
+  } catch (err) {
+    console.error("Failed to convert image to base64:", err);
+    return url; // Fallback to raw URL if download fails
+  }
+}
+
 // Robust base64url decoder to decode JWT payload safely
 function decodeJWT(token) {
   try {
@@ -266,19 +298,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
             // Auto-backport image URL to existing bookmarks!
             if (isMarked && bookmarks[0] && !bookmarks[0].image_url && imageUrl) {
-              const patchResponse = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?id=eq.${bookmarks[0].id}`, {
-                method: "PATCH",
-                headers: {
-                  "apikey": SUPABASE_ANON_KEY,
-                  "Authorization": `Bearer ${accessToken}`,
-                  "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ image_url: imageUrl })
-              });
-              if (patchResponse.ok) {
-                console.log(`Auto-backported image URL to bookmark ID ${bookmarks[0].id}: ${imageUrl}`);
-              } else {
-                console.error("Failed to backport image URL:", patchResponse.statusText);
+              const base64Image = await fetchAndConvertToBase64(imageUrl);
+              if (base64Image) {
+                const patchResponse = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?id=eq.${bookmarks[0].id}`, {
+                  method: "PATCH",
+                  headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${accessToken}`,
+                    "Content-Type": "application/json"
+                  },
+                  body: JSON.stringify({ image_url: base64Image })
+                });
+                if (patchResponse.ok) {
+                  console.log(`Auto-backported base64 image to bookmark ID ${bookmarks[0].id}`);
+                } else {
+                  console.error("Failed to backport image URL:", patchResponse.statusText);
+                }
               }
             }
           }
@@ -297,16 +332,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
       }
       
-      else if (message.action === "captureTab") {
-        chrome.tabs.captureVisibleTab({ format: "png" }, (dataUrl) => {
-          if (chrome.runtime.lastError) {
-            sendResponse({ success: false, error: chrome.runtime.lastError.message });
-          } else {
-            sendResponse({ success: true, dataUrl: dataUrl });
-          }
-        });
-      }
-      
       else if (message.action === "toggleBookmark") {
         const session = await getSession();
         if (!session) {
@@ -318,11 +343,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const userId = session.user.id;
 
         if (shouldMark) {
+          const base64Image = await fetchAndConvertToBase64(imageUrl);
           const bookmarkData = {
             user_id: userId,
             tcg: tcg,
             card_id: cardId,
-            image_url: imageUrl || null
+            image_url: base64Image || null
           };
 
           const postRes = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards`, {

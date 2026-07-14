@@ -6,13 +6,11 @@
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApzQHO6IbsgjtVCelA5wlSl73asxbQryPROJpwcSrbQjqb4AxbHtz1jBVJaUGOYm3oLfZmNknF8Eeh5ebD8htkAe/I9TfhRb33sJ/TLEpk8Q62FEJy/nb03rjjdX/p3tUvjP4ZibujSLcj456WL15P3Fz3bhpPl1cd33d6pI6KSKxOkSF28X2TNjGzi+yYZh+2p1bd6qMFvxH3YIjxss8mKwWL9daxBhNwQlUYA9XLDNCocLYEOuhdR25BiZ7E31RiS1aFDoPOoFzfTZDoJaa6PSxLjRAbPdMBW0DB2HfTm0mV86IZE34N3e78jnE2Dui4NbzJ37cXJgHHodlC7PedwIDAQAB",
   "permissions": [
     "storage",
-    "identity",
-    "activeTab"
+    "identity"
   ],
   "host_permissions": [
     "https://*.cardmarket.com/*",
-    "https://pjorjwwhiinaaebxvhhi.supabase.co/*",
-    "<all_urls>"
+    "https://pjorjwwhiinaaebxvhhi.supabase.co/*"
   ],
   "action": {
     "default_popup": "popup/popup.html"
