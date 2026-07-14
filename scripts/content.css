@@ -722,17 +722,54 @@
 }
 
 /* Axis Labels styling */
-.cm-chart-axis-text {
-  fill: rgba(255, 255, 255, 0.45);
-  font-size: 0.65rem;
+.cm-chart-layout-wrapper {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.cm-chart-y-axis {
+  position: relative;
+  width: 50px;
+  height: 100px;
+}
+
+.cm-chart-y-axis .cm-chart-axis-label {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  text-align: right;
+}
+
+.cm-chart-y-axis .cm-chart-axis-label:nth-child(1) { top: 10%; } /* Max aligns to y=10 */
+.cm-chart-y-axis .cm-chart-axis-label:nth-child(2) { top: 50%; } /* Mid aligns to y=50 */
+.cm-chart-y-axis .cm-chart-axis-label:nth-child(3) { top: 90%; } /* Min aligns to y=90 */
+
+.cm-chart-main-area {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.cm-chart-x-axis {
+  position: relative;
+  width: 100%;
+  height: 16px;
+  margin-top: 6px;
+}
+
+.cm-chart-x-axis .cm-chart-axis-label {
+  position: absolute;
+}
+
+.cm-chart-x-axis .cm-chart-axis-label:nth-child(1) { left: 0; }
+.cm-chart-x-axis .cm-chart-axis-label:nth-child(2) { right: 0; }
+
+.cm-chart-axis-label {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 0.7rem;
   font-weight: 500;
   font-family: system-ui, -apple-system, sans-serif;
-}
-
-.cm-text-right {
-  text-anchor: end;
-}
-
-.cm-text-left {
-  text-anchor: start;
+  line-height: 1;
+  white-space: nowrap;
 }

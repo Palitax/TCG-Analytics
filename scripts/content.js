@@ -733,11 +733,7 @@ function updateOverlay(status, details = {}) {
               <span class="cm-comment-quote">"${lastComment}"</span>
             </div>
           ` : ''}
-        </div>
-      `;
-    }
-
-    // Render the interactive line chart
+        // Render the interactive line chart
     let chartHtml = '';
     if (history.length >= 2) {
       // Map historical prices and timestamps
@@ -775,19 +771,18 @@ function updateOverlay(status, details = {}) {
       }
       const yRange = yMax - yMin || 1.0;
 
-      // Map SVG points (viewBox 0 0 320 130)
-      // Left Y-axis margin = 45px, Right margin = 15px (total width mapping = 260px)
-      // Top margin = 10px, Bottom X-axis margin = 30px (total height mapping = 90px)
+      // Map SVG points (viewBox 0 0 100 100)
+      // Height spans 10 to 90 (giving 10% margin top/bottom)
       const svgPoints = points.map(pt => {
-        const x = 45 + ((pt.time - minTime) / timeRange) * 260;
-        const y = 100 - ((pt.price - yMin) / yRange) * 90;
+        const x = ((pt.time - minTime) / timeRange) * 100;
+        const y = 90 - ((pt.price - yMin) / yRange) * 80;
         return { x, y, price: pt.price, dateText: pt.dateText };
       });
 
       // Generate polyline path
       const pathData = svgPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-      // Generate gradient area path (extend to bottom grid y=100)
-      const areaData = `${pathData} L ${svgPoints[svgPoints.length - 1].x.toFixed(1)} 100 L ${svgPoints[0].x.toFixed(1)} 100 Z`;
+      // Generate gradient area path (extend to bottom grid y=90)
+      const areaData = `${pathData} L ${svgPoints[svgPoints.length - 1].x.toFixed(1)} 90 L ${svgPoints[0].x.toFixed(1)} 90 Z`;
 
       // Format boundary dates for X axis
       const firstDateStr = new Date(minTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
@@ -796,44 +791,54 @@ function updateOverlay(status, details = {}) {
       chartHtml = `
         <div class="cm-tracker-chart-container">
           <div class="cm-chart-title">Preisentwicklung (${selectedLanguage === 'ALL' ? 'Alle Sprachen' : LANGUAGE_NAMES_GERMAN[selectedLanguage]})</div>
-          <div class="cm-chart-canvas-wrapper" id="cm-chart-wrapper">
-            <svg class="cm-chart-svg" viewBox="0 0 320 130" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="cm-chart-grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.25"/>
-                  <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.0"/>
-                </linearGradient>
-              </defs>
-              
-              <!-- Grid lines -->
-              <line x1="45" y1="10" x2="305" y2="10" class="cm-chart-grid-line" />
-              <line x1="45" y1="55" x2="305" y2="55" class="cm-chart-grid-line" />
-              <line x1="45" y1="100" x2="305" y2="100" class="cm-chart-grid-line" />
-              
-              <!-- Y-Axis Labels (Left) -->
-              <text x="38" y="13" class="cm-chart-axis-text cm-text-right">${yMax.toFixed(2)} €</text>
-              <text x="38" y="58" class="cm-chart-axis-text cm-text-right">${avgPrice.toFixed(2)} €</text>
-              <text x="38" y="103" class="cm-chart-axis-text cm-text-right">${yMin.toFixed(2)} €</text>
-              
-              <!-- X-Axis Labels (Bottom) -->
-              <text x="45" y="120" class="cm-chart-axis-text cm-text-left">${firstDateStr}</text>
-              <text x="305" y="120" class="cm-chart-axis-text cm-text-right">${lastDateStr}</text>
-              
-              <!-- Gradient Area -->
-              <path d="${areaData}" fill="url(#cm-chart-grad)" />
-              
-              <!-- Line Path -->
-              <path d="${pathData}" class="cm-chart-line-path" />
-              
-              <!-- Interactive Hover Vertical line -->
-              <line id="cm-chart-hover-line" x1="0" y1="10" x2="0" y2="100" class="cm-chart-hover-line" style="display: none;" />
-              
-              <!-- Interactive Hover Point -->
-              <circle id="cm-chart-hover-dot" r="4.5" class="cm-chart-hover-dot" style="display: none;" />
-            </svg>
-            
-            <!-- Float HTML Tooltip -->
-            <div id="cm-chart-tooltip" class="cm-chart-tooltip" style="display: none;"></div>
+          
+          <div class="cm-chart-layout-wrapper">
+            <!-- Left Y-Axis (HTML) -->
+            <div class="cm-chart-y-axis">
+              <span class="cm-chart-axis-label">${yMax.toFixed(2)} €</span>
+              <span class="cm-chart-axis-label">${avgPrice.toFixed(2)} €</span>
+              <span class="cm-chart-axis-label">${yMin.toFixed(2)} €</span>
+            </div>
+
+            <!-- Right Area (Canvas + X-Axis) -->
+            <div class="cm-chart-main-area">
+              <div class="cm-chart-canvas-wrapper" id="cm-chart-wrapper">
+                <svg class="cm-chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="cm-chart-grad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.25"/>
+                      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.0"/>
+                    </linearGradient>
+                  </defs>
+                  
+                  <!-- Grid lines -->
+                  <line x1="0" y1="10" x2="100" y2="10" class="cm-chart-grid-line" />
+                  <line x1="0" y1="50" x2="100" y2="50" class="cm-chart-grid-line" />
+                  <line x1="0" y1="90" x2="100" y2="90" class="cm-chart-grid-line" />
+                  
+                  <!-- Gradient Area -->
+                  <path d="${areaData}" fill="url(#cm-chart-grad)" />
+                  
+                  <!-- Line Path -->
+                  <path d="${pathData}" class="cm-chart-line-path" />
+                  
+                  <!-- Interactive Hover Vertical line -->
+                  <line id="cm-chart-hover-line" x1="0" y1="10" x2="0" y2="90" class="cm-chart-hover-line" style="display: none;" />
+                  
+                  <!-- Interactive Hover Point -->
+                  <circle id="cm-chart-hover-dot" r="4.5" class="cm-chart-hover-dot" style="display: none;" />
+                </svg>
+                
+                <!-- Float HTML Tooltip -->
+                <div id="cm-chart-tooltip" class="cm-chart-tooltip" style="display: none;"></div>
+              </div>
+
+              <!-- Bottom X-Axis (HTML) -->
+              <div class="cm-chart-x-axis">
+                <span class="cm-chart-axis-label">${firstDateStr}</span>
+                <span class="cm-chart-axis-label">${lastDateStr}</span>
+              </div>
+            </div>
           </div>
           
           <!-- Data points reference hidden JSON for JS hover handler -->
@@ -922,8 +927,8 @@ function updateOverlay(status, details = {}) {
 
     wrapper.addEventListener('mousemove', (e) => {
       const rect = wrapper.getBoundingClientRect();
-      // Mouse X coordinate mapped into SVG 0-320 space
-      const mouseX = ((e.clientX - rect.left) / rect.width) * 320;
+      // Mouse X coordinate mapped into SVG 0-100 space
+      const mouseX = ((e.clientX - rect.left) / rect.width) * 100;
       
       // Find closest point by X coordinate distance
       let closestPt = null;
