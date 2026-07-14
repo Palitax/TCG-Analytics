@@ -758,37 +758,46 @@ function updateOverlay(status, details = {}) {
       const minTime = Math.min(...times);
       const maxTime = Math.max(...times);
 
-      const priceRange = maxPrice - minPrice || 1.0;
+      const priceRange = maxPrice - minPrice;
       const timeRange = maxTime - minTime || 1.0;
 
-      // Add a 15% padding to top/bottom of Y axis so the curve sits nicely in the middle
-      const yMin = minPrice - priceRange * 0.15;
-      const yMax = maxPrice + priceRange * 0.15;
+      // Enforce a minimum price delta of 1.0 € or 10% of the price to prevent flat prices or tiny shifts from scaling vertically
+      const avgPrice = (minPrice + maxPrice) / 2 || 1.0;
+      const minDelta = Math.max(1.0, avgPrice * 0.1);
+      
+      let yMin, yMax;
+      if (priceRange < minDelta) {
+        yMin = avgPrice - minDelta / 2;
+        yMax = avgPrice + minDelta / 2;
+      } else {
+        yMin = minPrice - priceRange * 0.15;
+        yMax = maxPrice + priceRange * 0.15;
+      }
       const yRange = yMax - yMin || 1.0;
 
-      // Map SVG points (viewBox 0 0 300 100)
-      // Left/right padding = 15px, Top/bottom padding = 10px
+      // Map SVG points (viewBox 0 0 320 130)
+      // Left Y-axis margin = 45px, Right margin = 15px (total width mapping = 260px)
+      // Top margin = 10px, Bottom X-axis margin = 30px (total height mapping = 90px)
       const svgPoints = points.map(pt => {
-        const x = 15 + ((pt.time - minTime) / timeRange) * 270;
-        const y = 90 - ((pt.price - yMin) / yRange) * 80;
+        const x = 45 + ((pt.time - minTime) / timeRange) * 260;
+        const y = 100 - ((pt.price - yMin) / yRange) * 90;
         return { x, y, price: pt.price, dateText: pt.dateText };
       });
 
       // Generate polyline path
       const pathData = svgPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-      // Generate gradient area path (extend to bottom y=100)
+      // Generate gradient area path (extend to bottom grid y=100)
       const areaData = `${pathData} L ${svgPoints[svgPoints.length - 1].x.toFixed(1)} 100 L ${svgPoints[0].x.toFixed(1)} 100 Z`;
 
-      // Generate horizontal grid lines at 25%, 50%, 75% height
-      const yGrid25 = 10 + 0.25 * 80;
-      const yGrid50 = 10 + 0.50 * 80;
-      const yGrid75 = 10 + 0.75 * 80;
+      // Format boundary dates for X axis
+      const firstDateStr = new Date(minTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+      const lastDateStr = new Date(maxTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
 
       chartHtml = `
         <div class="cm-tracker-chart-container">
           <div class="cm-chart-title">Preisentwicklung (${selectedLanguage === 'ALL' ? 'Alle Sprachen' : LANGUAGE_NAMES_GERMAN[selectedLanguage]})</div>
           <div class="cm-chart-canvas-wrapper" id="cm-chart-wrapper">
-            <svg class="cm-chart-svg" viewBox="0 0 300 100" preserveAspectRatio="none">
+            <svg class="cm-chart-svg" viewBox="0 0 320 130" preserveAspectRatio="none">
               <defs>
                 <linearGradient id="cm-chart-grad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.25"/>
@@ -797,9 +806,18 @@ function updateOverlay(status, details = {}) {
               </defs>
               
               <!-- Grid lines -->
-              <line x1="15" y1="${yGrid25.toFixed(1)}" x2="285" y2="${yGrid25.toFixed(1)}" class="cm-chart-grid-line" />
-              <line x1="15" y1="${yGrid50.toFixed(1)}" x2="285" y2="${yGrid50.toFixed(1)}" class="cm-chart-grid-line" />
-              <line x1="15" y1="${yGrid75.toFixed(1)}" x2="285" y2="${yGrid75.toFixed(1)}" class="cm-chart-grid-line" />
+              <line x1="45" y1="10" x2="305" y2="10" class="cm-chart-grid-line" />
+              <line x1="45" y1="55" x2="305" y2="55" class="cm-chart-grid-line" />
+              <line x1="45" y1="100" x2="305" y2="100" class="cm-chart-grid-line" />
+              
+              <!-- Y-Axis Labels (Left) -->
+              <text x="38" y="13" class="cm-chart-axis-text cm-text-right">${yMax.toFixed(2)} €</text>
+              <text x="38" y="58" class="cm-chart-axis-text cm-text-right">${avgPrice.toFixed(2)} €</text>
+              <text x="38" y="103" class="cm-chart-axis-text cm-text-right">${yMin.toFixed(2)} €</text>
+              
+              <!-- X-Axis Labels (Bottom) -->
+              <text x="45" y="120" class="cm-chart-axis-text cm-text-left">${firstDateStr}</text>
+              <text x="305" y="120" class="cm-chart-axis-text cm-text-right">${lastDateStr}</text>
               
               <!-- Gradient Area -->
               <path d="${areaData}" fill="url(#cm-chart-grad)" />
@@ -808,10 +826,10 @@ function updateOverlay(status, details = {}) {
               <path d="${pathData}" class="cm-chart-line-path" />
               
               <!-- Interactive Hover Vertical line -->
-              <line id="cm-chart-hover-line" x1="0" y1="5" x2="0" y2="95" class="cm-chart-hover-line" style="display: none;" />
+              <line id="cm-chart-hover-line" x1="0" y1="10" x2="0" y2="100" class="cm-chart-hover-line" style="display: none;" />
               
               <!-- Interactive Hover Point -->
-              <circle id="cm-chart-hover-dot" r="4" class="cm-chart-hover-dot" style="display: none;" />
+              <circle id="cm-chart-hover-dot" r="4.5" class="cm-chart-hover-dot" style="display: none;" />
             </svg>
             
             <!-- Float HTML Tooltip -->
@@ -904,8 +922,8 @@ function updateOverlay(status, details = {}) {
 
     wrapper.addEventListener('mousemove', (e) => {
       const rect = wrapper.getBoundingClientRect();
-      // Mouse X coordinate mapped into SVG 0-300 space
-      const mouseX = ((e.clientX - rect.left) / rect.width) * 300;
+      // Mouse X coordinate mapped into SVG 0-320 space
+      const mouseX = ((e.clientX - rect.left) / rect.width) * 320;
       
       // Find closest point by X coordinate distance
       let closestPt = null;

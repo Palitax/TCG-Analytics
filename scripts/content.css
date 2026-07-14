@@ -720,3 +720,19 @@
   color: rgba(255, 255, 255, 0.4);
   padding: 12px;
 }
+
+/* Axis Labels styling */
+.cm-chart-axis-text {
+  fill: rgba(255, 255, 255, 0.45);
+  font-size: 0.65rem;
+  font-weight: 500;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.cm-text-right {
+  text-anchor: end;
+}
+
+.cm-text-left {
+  text-anchor: start;
+}
