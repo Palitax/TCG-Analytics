@@ -388,27 +388,25 @@ function renderWatchlistTab(container) {
     return;
   }
 
-  const grid = document.createElement('div');
-  grid.className = 'marked-grid';
-  dashboard.appendChild(grid);
+  const list = document.createElement('div');
+  list.className = 'watchlist-list';
+  dashboard.appendChild(list);
 
   for (const card of markedCards) {
     const cardEl = document.createElement('div');
-    cardEl.className = 'marked-card glass-panel';
+    cardEl.className = 'watchlist-item glass-panel';
     cardEl.innerHTML = `
-      <div class="card-img-wrapper">
-        <img class="card-img" src="${card.image_url || '/logo.png'}" onerror="this.src='/logo.png'">
+      <img class="watchlist-item-img" src="${card.image_url || '/logo.png'}" onerror="this.src='/logo.png'">
+      <div class="watchlist-item-info">
+        <span class="watchlist-item-tcg">${card.tcg}</span>
+        <span class="watchlist-item-name">${card.card_id}</span>
       </div>
-      <div class="card-info">
-        <span class="card-tcg-label">${card.tcg}</span>
-        <span class="card-name">${card.card_id}</span>
-      </div>
-      <div class="card-price-row">
-        <span class="card-price" id="price-${card.id}">-- €</span>
+      <div class="watchlist-item-price-col">
+        <span class="watchlist-item-price" id="price-${card.id}">-- €</span>
         <span class="diff-badge" id="diff-${card.id}">...</span>
       </div>
     `;
-    grid.appendChild(cardEl);
+    list.appendChild(cardEl);
 
     cardEl.addEventListener('click', () => {
       loadCardDetails(card.card_id, card.tcg);
