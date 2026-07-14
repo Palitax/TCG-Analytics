@@ -61,7 +61,7 @@ function cleanCardName(cardId) {
 // Resolve Cardmarket S3 images through Vercel serverless proxy to bypass hotlinking blocks
 function getProxiedImageUrl(url) {
   if (!url) return '/logo.png';
-  if (url.startsWith('/') || url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) {
+  if (url.startsWith('data:') || url.startsWith('/') || url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) {
     return url;
   }
   return `/api/image-proxy?url=${encodeURIComponent(url)}`;
