@@ -263,6 +263,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (bookmarkResponse.ok) {
             const bookmarks = await bookmarkResponse.json();
             isMarked = bookmarks.length > 0;
+
+            // Auto-backport image URL to existing bookmarks!
+            if (isMarked && bookmarks[0] && !bookmarks[0].image_url && imageUrl) {
+              const patchResponse = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?id=eq.${bookmarks[0].id}`, {
+                method: "PATCH",
+                headers: {
+                  "apikey": SUPABASE_ANON_KEY,
+                  "Authorization": `Bearer ${accessToken}`,
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ image_url: imageUrl })
+              });
+              if (patchResponse.ok) {
+                console.log(`Auto-backported image URL to bookmark ID ${bookmarks[0].id}: ${imageUrl}`);
+              } else {
+                console.error("Failed to backport image URL:", patchResponse.statusText);
+              }
+            }
           }
         } catch (err) {
           console.error("Failed to query marked status:", err);

@@ -1353,6 +1353,12 @@ async function runScan(force = false) {
 
     currentMatchedElement = match.element; // Save matched row reference
 
+    let imageUrl = getCardImageUrl();
+    if (!imageUrl) {
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      imageUrl = getCardImageUrl();
+    }
+
     chrome.runtime.sendMessage({
       action: "scanCard",
       tcg: tcg,
@@ -1366,7 +1372,7 @@ async function runScan(force = false) {
       matchedCondition: match.condition,
       matchedLanguage: match.language,
       matchedCountry: match.sellerCountry,
-      imageUrl: getCardImageUrl()
+      imageUrl: imageUrl
     }, (dbResponse) => {
       if (chrome.runtime.lastError || !dbResponse) {
         console.error("Database connection failed:", chrome.runtime.lastError);

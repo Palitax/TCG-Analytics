@@ -289,7 +289,7 @@ async function renderDashboard(container) {
 
         divResults.innerHTML = uniqueCards.map(c => `
           <div class="search-result-item glass-panel" data-card="${c.card_id}" data-tcg="${c.tcg}">
-            <img class="search-result-img" src="${c.imageUrl || '/logo.png'}" onerror="this.src='/logo.png'">
+            <img class="search-result-img" src="${c.imageUrl || '/logo.png'}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
             <div class="search-result-info">
               <span class="search-result-name">${cleanCardName(c.card_id)}</span>
               <span class="search-result-tcg">${c.tcg}</span>
@@ -407,7 +407,7 @@ function renderWatchlistTab(container) {
     cardEl.className = 'watchlist-item glass-panel';
     cardEl.setAttribute('data-card-id', card.id);
     cardEl.innerHTML = `
-      <img class="watchlist-item-img" src="${card.image_url || '/logo.png'}" onerror="this.src='/logo.png'">
+      <img class="watchlist-item-img" src="${card.image_url || '/logo.png'}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
       <div class="watchlist-item-info">
         <span class="watchlist-item-tcg">${card.tcg}</span>
         <span class="watchlist-item-name">${cleanCardName(card.card_id)}</span>
@@ -695,7 +695,7 @@ function renderDetail(container) {
   detailBody.innerHTML = `
     <div class="card-hero-section">
       <div class="hero-img-wrapper">
-        <img class="hero-img" src="${details.imageUrl || '/logo.png'}" onerror="this.src='/logo.png'">
+        <img class="hero-img" src="${details.imageUrl || '/logo.png'}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
       </div>
       <div class="hero-meta">
         <span class="hero-tcg">${details.tcg}</span>
