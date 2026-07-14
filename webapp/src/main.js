@@ -58,13 +58,38 @@ function cleanCardName(cardId) {
   return clean;
 }
 
-// Resolve Cardmarket S3 images through Vercel serverless proxy to bypass hotlinking blocks
+// Compress and resize base64 image using canvas to save storage
+function compressImage(base64Str, maxWidth = 200) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      ctx.drawImage(img, 0, 0, width, height);
+      const compressed = canvas.toDataURL('image/jpeg', 0.75);
+      resolve(compressed);
+    };
+    img.onerror = () => resolve(base64Str);
+    img.src = base64Str;
+  });
+}
+
+// Return stored image URL directly (Base64 or standard asset link)
 function getProxiedImageUrl(url) {
   if (!url) return '/logo.png';
-  if (url.startsWith('data:') || url.startsWith('/') || url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) {
-    return url;
-  }
-  return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+  return url;
 }
 
 // Robust comment and metadata extractor matching extension parser
@@ -705,11 +730,12 @@ function renderDetail(container) {
     <div class="card-hero-section">
       <div class="hero-img-wrapper" style="position: relative; display: inline-block;">
         <img class="hero-img" src="${getProxiedImageUrl(details.imageUrl)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
-        <button id="btn-edit-image" class="app-btn-edit-image" style="position: absolute; bottom: 8px; right: 8px; font-size: 0.65rem; padding: 4px 8px; border-radius: 4px; background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.15); color: #fff; cursor: pointer; display: flex; align-items: center; gap: 4px; z-index: 10;">
+        <input type="file" id="input-card-file" accept="image/*" style="display: none;">
+        <button id="btn-upload-image" class="app-btn-edit-image" style="position: absolute; bottom: 8px; right: 8px; font-size: 0.65rem; padding: 4px 8px; border-radius: 4px; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.2); color: #fff; cursor: pointer; display: flex; align-items: center; gap: 4px; z-index: 10;">
           <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
           </svg>
-          Bild URL ändern
+          Bild hochladen
         </button>
       </div>
       <div class="hero-meta">
@@ -721,43 +747,57 @@ function renderDetail(container) {
   `;
   container.appendChild(detailBody);
 
-  const btnEditImage = detailBody.querySelector('#btn-edit-image');
-  if (btnEditImage) {
-    btnEditImage.addEventListener('click', async (e) => {
+  const btnUploadImage = detailBody.querySelector('#btn-upload-image');
+  const inputCardFile = detailBody.querySelector('#input-card-file');
+
+  if (btnUploadImage && inputCardFile) {
+    btnUploadImage.addEventListener('click', (e) => {
       e.stopPropagation();
-      const newUrl = prompt("Bild-URL von Cardmarket einfügen (Rechtsklick auf Cardmarket-Bild -> 'Bildadresse kopieren'):", details.imageUrl || "");
-      if (newUrl === null) return; // Cancel
-      const cleanUrl = newUrl.trim();
+      inputCardFile.click();
+    });
+
+    inputCardFile.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
 
       try {
-        btnEditImage.disabled = true;
-        btnEditImage.textContent = "Speichert...";
+        btnUploadImage.disabled = true;
+        btnUploadImage.textContent = "Lädt...";
+
+        const base64Raw = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = (err) => reject(err);
+          reader.readAsDataURL(file);
+        });
+
+        // Compress to Max Width 200px (ideal thumbnail resolution)
+        const compressedBase64 = await compressImage(base64Raw, 200);
 
         const { error } = await supabase
           .from('marked_cards')
-          .update({ image_url: cleanUrl || null })
+          .update({ image_url: compressedBase64 })
           .eq('card_id', details.cardId)
           .eq('user_id', currentUser.id);
 
         if (error) throw error;
 
-        details.imageUrl = cleanUrl || null;
-
+        details.imageUrl = compressedBase64;
         const heroImg = detailBody.querySelector('.hero-img');
         if (heroImg) {
-          heroImg.src = getProxiedImageUrl(cleanUrl);
+          heroImg.src = compressedBase64;
         }
 
-        alert("Bild erfolgreich aktualisiert!");
+        alert("Bild erfolgreich hochgeladen und gespeichert!");
       } catch (err) {
-        alert("Fehler beim Aktualisieren: " + err.message);
+        alert("Fehler beim Hochladen: " + err.message);
       } finally {
-        btnEditImage.disabled = false;
-        btnEditImage.innerHTML = `
+        btnUploadImage.disabled = false;
+        btnUploadImage.innerHTML = `
           <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
           </svg>
-          Bild URL ändern
+          Bild hochladen
         `;
       }
     });

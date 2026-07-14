@@ -179,7 +179,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return sendResponse({ error: "UNAUTHENTICATED" });
         }
 
-        const { tcg, cardId, condition, language, sellerCountry, currentPrice, comment, force, matchedCondition, matchedLanguage, matchedCountry, imageUrl } = message;
+        const { tcg, cardId, condition, language, sellerCountry, currentPrice, comment, force, matchedCondition, matchedLanguage, matchedCountry } = message;
         const accessToken = session.access_token;
         const userId = session.user.id;
 
@@ -239,7 +239,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // 2. Perform upload if triggered
         if (shouldUpload) {
           // Embed specific match details as metadata prefix in the comment column
-          const metadataPrefix = `[${matchedLanguage || ''}|${matchedCountry || ''}|${matchedCondition || ''}|${imageUrl || ''}]`;
+          const metadataPrefix = `[${matchedLanguage || ''}|${matchedCountry || ''}|${matchedCondition || ''}]`;
           const dbComment = comment ? `${metadataPrefix} ${comment}` : metadataPrefix;
 
           const newRecordData = {
@@ -293,27 +293,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (bookmarkResponse.ok) {
             const bookmarks = await bookmarkResponse.json();
             isMarked = bookmarks.length > 0;
-
-            // Auto-backport image URL to existing bookmarks!
-            if (isMarked && bookmarks[0] && !bookmarks[0].image_url && imageUrl) {
-              const base64Image = await fetchAndConvertToBase64(imageUrl);
-              if (base64Image) {
-                const patchResponse = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?id=eq.${bookmarks[0].id}`, {
-                  method: "PATCH",
-                  headers: {
-                    "apikey": SUPABASE_ANON_KEY,
-                    "Authorization": `Bearer ${accessToken}`,
-                    "Content-Type": "application/json"
-                  },
-                  body: JSON.stringify({ image_url: base64Image })
-                });
-                if (patchResponse.ok) {
-                  console.log(`Auto-backported base64 image to bookmark ID ${bookmarks[0].id}`);
-                } else {
-                  console.error("Failed to backport image URL:", patchResponse.statusText);
-                }
-              }
-            }
           }
         } catch (err) {
           console.error("Failed to query marked status:", err);
@@ -336,17 +315,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return sendResponse({ error: "UNAUTHENTICATED" });
         }
 
-        const { tcg, cardId, imageUrl, shouldMark } = message;
+        const { tcg, cardId, shouldMark } = message;
         const accessToken = session.access_token;
         const userId = session.user.id;
 
         if (shouldMark) {
-          const base64Image = await fetchAndConvertToBase64(imageUrl);
           const bookmarkData = {
             user_id: userId,
             tcg: tcg,
             card_id: cardId,
-            image_url: base64Image || null
+            image_url: null
           };
 
           const postRes = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards`, {
