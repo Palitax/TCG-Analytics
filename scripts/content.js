@@ -2,6 +2,16 @@
 let activeOverlay = null;
 let currentUserId = null;
 let currentMatchedElement = null; // Store reference to scroll to the matched seller row
+let activeOverlayDetails = null;
+
+function formatRemainingTime(ms) {
+  const hours = Math.floor(ms / 3600000);
+  const minutes = Math.floor((ms % 3600000) / 60000);
+  if (hours > 0) {
+    return `${hours} Std. ${minutes} Min.`;
+  }
+  return `${minutes} Min.`;
+}
 
 // Standardize condition mapping
 const CONDITION_NAMES = {
@@ -560,6 +570,7 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
 
 // Inject interactive dropdowns and status results in the page overlay
 function updateOverlay(status, details = {}) {
+  activeOverlayDetails = details;
   const header = document.querySelector('.page-title-container, .d-flex.align-items-center.page-title, h1');
   if (!header) return;
 
@@ -595,19 +606,41 @@ function updateOverlay(status, details = {}) {
     availableLanguages = [],
     currentPrice = null,
     history = [],
-    lastPrice = null,
-    lastScannedAt = null,
-    lastUserId = null,
-    lastComment = null,
-    lastCondition = null,
-    lastLanguage = null,
-    lastCountry = null,
+    firstPrice = null,
+    firstScannedAt = null,
+    firstUserId = null,
+    firstComment = null,
+    firstCondition = null,
+    firstLanguage = null,
+    firstCountry = null,
     matchedLanguage = null,
     matchedCountry = null,
+    matchedCondition = null,
     comment = null,
     noMatch = false,
-    errorText = null
+    errorText = null,
+    blocked = false,
+    remainingTime = 0,
+    forceSyncRemaining = 0,
+    forceSyncKey = null
   } = details;
+
+  const dotClass = blocked ? 'blocked' : 'active';
+  const dotTitle = blocked ? 'Automatische Scans blockiert (1 Scan pro Tag)' : 'Automatische Scans aktiv';
+  
+  let blockIndicatorHtml = '';
+  if (blocked && remainingTime > 0) {
+    const timeFormatted = formatRemainingTime(remainingTime);
+    blockIndicatorHtml = `<span class="cm-tracker-block-badge" title="Scans sind auf einmal pro Tag begrenzt. Nächster automatischer Scan erst nach Ablauf der Sperre.">Sperre aktiv (noch ${timeFormatted})</span>`;
+  }
+
+  const headerHtml = `
+    <div class="cm-tracker-header">
+      <span class="cm-tracker-dot ${dotClass}" title="${dotTitle}"></span>
+      <span class="cm-tracker-title">Cardmarket Price Tracker Pro</span>
+      ${blockIndicatorHtml}
+    </div>
+  `;
 
   let resultHtml = '';
   if (status === 'error') {
@@ -633,27 +666,19 @@ function updateOverlay(status, details = {}) {
     let diffBadge = '';
     let statusText = '';
 
-    const dateStr = lastScannedAt ? new Date(lastScannedAt).toLocaleDateString('de-DE', {
-      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
-    }) : '';
-
-    // Retrieve high-fidelity flags to replace "DE | DE" text representation
-    const sellerFlag = getFlagHtml('seller', matchedCountry);
-    const langFlag = getFlagHtml('language', matchedLanguage);
-
     // Baseline calculation: compare current price to first scan ever in history
     if (history.length <= 1) {
       diffBadge = `<span class="cm-tracker-diff-badge first">Erster Scan</span>`;
       statusText = `<span class="cm-tracker-status-desc">Dieser Preis wurde als Startwert in der Datenbank gesichert.</span>`;
     } else {
       const firstRecord = history[0];
-      const firstPrice = parseFloat(firstRecord.price);
+      const initialPrice = parseFloat(firstRecord.price);
       const firstDateStr = new Date(firstRecord.scanned_at).toLocaleDateString('de-DE', {
         day: '2-digit', month: '2-digit', year: 'numeric'
       });
       const firstAuthorText = firstRecord.user_id === currentUserId ? 'dir selbst' : 'einem anderen Nutzer';
 
-      const diffPercent = ((currentPrice - firstPrice) / firstPrice) * 100;
+      const diffPercent = ((currentPrice - initialPrice) / initialPrice) * 100;
       const formattedDiff = diffPercent.toFixed(2);
 
       // User tracks value, so UP is GREEN (gain) and DOWN is RED (loss)
@@ -661,7 +686,7 @@ function updateOverlay(status, details = {}) {
       const diffSign = diffPercent > 0 ? '+' : '';
 
       diffBadge = `<span class="cm-tracker-diff-badge ${diffClass}">${diffSign}${formattedDiff}%</span>`;
-      statusText = `<span class="cm-tracker-status-desc">${diffPercent > 0 ? 'Gestiegen' : diffPercent < 0 ? 'Günstiger' : 'Unverändert'} seit erstem Scan am ${firstDateStr} von ${firstAuthorText} (${firstPrice.toFixed(2)} €)</span>`;
+      statusText = `<span class="cm-tracker-status-desc">${diffPercent > 0 ? 'Gestiegen' : diffPercent < 0 ? 'Günstiger' : 'Unverändert'} seit erstem Scan am ${firstDateStr} von ${firstAuthorText} (${initialPrice.toFixed(2)} €)</span>`;
     }
 
     // Render current offer as a card/tile
@@ -674,11 +699,17 @@ function updateOverlay(status, details = {}) {
       `;
     }
 
+    const sellerFlag = getFlagHtml('seller', matchedCountry);
+    const langFlag = getFlagHtml('language', matchedLanguage);
+    const displayMatchedCondition = matchedCondition || 'Unbekannt';
+
     const currentTileHtml = `
-      <div class="cm-tracker-tile cm-current-tile">
+      <div class="cm-tracker-tile cm-current-tile" title="Klicke hier, um zum Verkäufer in der Liste zu springen">
         <div class="cm-tile-header">
-          <span class="cm-tile-tag cm-tag-current">Aktuelles Angebot</span>
-          ${diffBadge}
+          <div class="cm-tile-header-left">
+            <span class="cm-tile-tag cm-tag-current">Aktuelles Angebot</span>
+            ${diffBadge}
+          </div>
         </div>
         <div class="cm-tile-body">
           <div class="cm-tile-price-section">
@@ -689,9 +720,10 @@ function updateOverlay(status, details = {}) {
               <span class="cm-tile-meta-label">Verkäufer:</span>
               <span class="cm-tile-meta-value">${sellerFlag} (${matchedCountry})</span>
             </div>
-            <div class="cm-tile-meta-item" title="Sprache der Karte">
+            <div class="cm-tile-meta-item" title="Sprache und Zustand der Karte">
               <span class="cm-tile-meta-label">Karte:</span>
               <span class="cm-tile-meta-value">${langFlag} (${matchedLanguage})</span>
+              <span class="cm-tile-meta-cond cm-tracker-badge cm-cond-${displayMatchedCondition}">${displayMatchedCondition}</span>
             </div>
           </div>
         </div>
@@ -700,55 +732,67 @@ function updateOverlay(status, details = {}) {
       </div>
     `;
 
-    // Render last scan row if there was a previous scan, also as a card/tile
-    let lastTileHtml = '';
-    if (lastPrice !== null) {
-      const lastSellerFlag = getFlagHtml('seller', lastCountry);
-      const lastLangFlag = getFlagHtml('language', lastLanguage);
-      const displayLastCondition = lastCondition || 'Unbekannt';
-      
-      lastTileHtml = `
-        <div class="cm-tracker-tile cm-last-tile">
+    // Render first scan row if there was a previous scan, also as a card/tile
+    let firstTileHtml = '';
+    if (history.length >= 2 && firstPrice !== null) {
+      const firstSellerFlag = getFlagHtml('seller', firstCountry);
+      const firstLangFlag = getFlagHtml('language', firstLanguage);
+      const displayFirstCondition = firstCondition || 'Unbekannt';
+      const firstDateStr = firstScannedAt ? new Date(firstScannedAt).toLocaleDateString('de-DE', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+      }) : '';
+
+      firstTileHtml = `
+        <div class="cm-tracker-tile cm-first-tile">
           <div class="cm-tile-header">
-            <span class="cm-tile-tag cm-tag-last">Letzter Scan (${dateStr})</span>
+            <span class="cm-tile-tag cm-tag-last">Erster Scan (${firstDateStr})</span>
           </div>
           <div class="cm-tile-body">
             <div class="cm-tile-price-section">
-              <span class="cm-tile-price">${lastPrice.toFixed(2)} €</span>
+              <span class="cm-tile-price">${firstPrice.toFixed(2)} €</span>
             </div>
             <div class="cm-tile-meta-section">
-              <div class="cm-tile-meta-item" title="Verkäufer beim letzten Scan">
+              <div class="cm-tile-meta-item" title="Verkäufer beim ersten Scan">
                 <span class="cm-tile-meta-label">Verkäufer:</span>
-                <span class="cm-tile-meta-value">${lastSellerFlag} (${lastCountry})</span>
+                <span class="cm-tile-meta-value">${firstSellerFlag} (${firstCountry})</span>
               </div>
-              <div class="cm-tile-meta-item" title="Kartensprache und Zustand beim letzten Scan">
+              <div class="cm-tile-meta-item" title="Kartensprache und Zustand beim ersten Scan">
                 <span class="cm-tile-meta-label">Karte:</span>
-                <span class="cm-tile-meta-value">${lastLangFlag} (${lastLanguage})</span>
-                <span class="cm-tile-meta-cond cm-tracker-badge">${displayLastCondition}</span>
+                <span class="cm-tile-meta-value">${firstLangFlag} (${firstLanguage})</span>
+                <span class="cm-tile-meta-cond cm-tracker-badge cm-cond-${displayFirstCondition}">${displayFirstCondition}</span>
               </div>
             </div>
           </div>
-          ${lastComment ? `
+          ${firstComment ? `
             <div class="cm-last-comment-row">
-              <span class="cm-comment-quote">"${lastComment}"</span>
+              <span class="cm-comment-quote">"${firstComment}"</span>
             </div>
           ` : ''}
         </div>
       `;
     }
 
-    // Render the interactive line chart
+    // Render the interactive line chart grouped day-by-day
     let chartHtml = '';
-    if (history.length >= 2) {
-      // Map historical prices and timestamps
-      const points = history.map(item => ({
+
+    // Group prices day-by-day, taking the latest scan of each day
+    const dailyMap = new Map();
+    for (const item of history) {
+      const dateKey = new Date(item.scanned_at).toLocaleDateString('de-DE', {
+        year: 'numeric', month: '2-digit', day: '2-digit'
+      });
+      dailyMap.set(dateKey, item);
+    }
+    
+    const points = Array.from(dailyMap.entries()).map(([dateStr, item]) => {
+      return {
         price: parseFloat(item.price),
         time: new Date(item.scanned_at).getTime(),
-        dateText: new Date(item.scanned_at).toLocaleString('de-DE', {
-          day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit'
-        })
-      }));
+        dateText: dateStr
+      };
+    });
 
+    if (points.length >= 2) {
       // Find min/max values to scale the axes
       const prices = points.map(p => p.price);
       const times = points.map(p => p.time);
@@ -792,9 +836,17 @@ function updateOverlay(status, details = {}) {
       const firstDateStr = new Date(minTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
       const lastDateStr = new Date(maxTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
 
+      // Determine flag next to Preisentwicklung instead of text
+      const flagHtml = selectedLanguage !== 'ALL' ? getFlagHtml('language', selectedLanguage) : '';
+      const condBadgeHtml = `<span class="cm-tile-meta-cond cm-tracker-badge cm-cond-${selectedCondition}" style="margin-left: 8px; vertical-align: middle;">${selectedCondition}</span>`;
+
       chartHtml = `
         <div class="cm-tracker-chart-container">
-          <div class="cm-chart-title">Preisentwicklung (${selectedLanguage === 'ALL' ? 'Alle Sprachen' : LANGUAGE_NAMES_GERMAN[selectedLanguage]})</div>
+          <div class="cm-chart-title" style="display: flex; align-items: center; gap: 6px;">
+            <span>Preisentwicklung</span>
+            ${flagHtml}
+            ${condBadgeHtml}
+          </div>
           
           <div class="cm-chart-layout-wrapper">
             <!-- Left Y-Axis (HTML) -->
@@ -852,9 +904,16 @@ function updateOverlay(status, details = {}) {
         </div>
       `;
     } else {
+      const flagHtml = selectedLanguage !== 'ALL' ? getFlagHtml('language', selectedLanguage) : '';
+      const condBadgeHtml = `<span class="cm-tile-meta-cond cm-tracker-badge cm-cond-${selectedCondition}" style="margin-left: 8px; vertical-align: middle;">${selectedCondition}</span>`;
+      
       chartHtml = `
         <div class="cm-tracker-chart-container empty-chart">
-          <div class="cm-chart-title">Preisentwicklung (${selectedLanguage === 'ALL' ? 'Alle Sprachen' : LANGUAGE_NAMES_GERMAN[selectedLanguage]})</div>
+          <div class="cm-chart-title" style="display: flex; align-items: center; gap: 6px;">
+            <span>Preisentwicklung</span>
+            ${flagHtml}
+            ${condBadgeHtml}
+          </div>
           <div class="cm-chart-empty-message">Sammle mehr Preisdaten durch zukünftige Scans, um die Kurve anzuzeigen.</div>
         </div>
       `;
@@ -863,17 +922,38 @@ function updateOverlay(status, details = {}) {
     resultHtml = `
       <div class="cm-tracker-results">
         ${currentTileHtml}
-        ${lastTileHtml}
+        ${firstTileHtml}
         ${chartHtml}
       </div>
     `;
   }
 
+  let forceSyncBtnHtml = '';
+  if (currentPrice !== null && !noMatch) {
+    if (forceSyncRemaining > 0) {
+      const timeFormatted = formatRemainingTime(forceSyncRemaining);
+      forceSyncBtnHtml = `
+        <div class="cm-control-item">
+          <label>&nbsp;</label>
+          <button id="cm-btn-force-sync" class="cm-btn-force-sync" disabled title="Ein erzwungener Sync ist nur einmal alle 24 Std. möglich. Nächster Sync in ${timeFormatted}.">
+            Force Sync
+          </button>
+        </div>
+      `;
+    } else {
+      forceSyncBtnHtml = `
+        <div class="cm-control-item">
+          <label>&nbsp;</label>
+          <button id="cm-btn-force-sync" class="cm-btn-force-sync" title="Erzwinge einen sofortigen Preis-Sync mit der Datenbank (1x in 24 Std. möglich).">
+            Force Sync
+          </button>
+        </div>
+      `;
+    }
+  }
+
   activeOverlay.innerHTML = `
-    <div class="cm-tracker-header">
-      <span class="cm-tracker-dot active"></span>
-      <span class="cm-tracker-title">Cardmarket Price Tracker Pro</span>
-    </div>
+    ${headerHtml}
     <div class="cm-tracker-body">
       <!-- Injected Dropdown Controls -->
       <div class="cm-tracker-controls">
@@ -913,6 +993,7 @@ function updateOverlay(status, details = {}) {
           <label>&nbsp;</label>
           <button id="cm-btn-apply-filters" class="cm-btn-apply">Anwenden</button>
         </div>
+        ${forceSyncBtnHtml}
       </div>
       
       <!-- Scan Result Output -->
@@ -931,10 +1012,8 @@ function updateOverlay(status, details = {}) {
 
     wrapper.addEventListener('mousemove', (e) => {
       const rect = wrapper.getBoundingClientRect();
-      // Mouse X coordinate mapped into SVG 0-100 space
       const mouseX = ((e.clientX - rect.left) / rect.width) * 100;
       
-      // Find closest point by X coordinate distance
       let closestPt = null;
       let minDiff = Infinity;
       for (const pt of svgPoints) {
@@ -946,7 +1025,6 @@ function updateOverlay(status, details = {}) {
       }
 
       if (closestPt) {
-        // Draw vertical guide line and hover dot (HTML elements using %)
         hoverLine.style.left = closestPt.x.toFixed(1) + '%';
         hoverLine.style.display = 'block';
 
@@ -954,7 +1032,6 @@ function updateOverlay(status, details = {}) {
         hoverDot.style.top = closestPt.y.toFixed(1) + '%';
         hoverDot.style.display = 'block';
 
-        // Position floating tooltip block
         const tooltipX = e.clientX - rect.left + 12;
         const tooltipY = e.clientY - rect.top - 40;
         tooltip.style.left = tooltipX + 'px';
@@ -1001,7 +1078,7 @@ function attachListeners() {
       languages: [newPrefs.language]
     });
     if (!isReloading) {
-      runScan(); // If no page reload is needed, run scanner locally instantly
+      runScan();
     }
   };
 
@@ -1010,10 +1087,24 @@ function attachListeners() {
     btnApply.addEventListener('click', saveAndRefresh);
   }
 
-  // Seller click and highlight event binding (Duration set to 5000ms / 5s)
-  const clickableSeller = document.querySelector('.cm-clickable-seller');
-  if (clickableSeller && currentMatchedElement) {
-    clickableSeller.addEventListener('click', () => {
+  // Force Sync button click binding
+  const btnForceSync = document.getElementById('cm-btn-force-sync');
+  if (btnForceSync && !btnForceSync.disabled && activeOverlayDetails?.forceSyncKey) {
+    btnForceSync.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const key = activeOverlayDetails.forceSyncKey;
+      await chrome.storage.local.set({ [key]: Date.now() });
+      runScan(true);
+    });
+  }
+
+  // Current offer tile click to scroll to matched seller row
+  const currentTile = document.querySelector('.cm-current-tile');
+  if (currentTile && currentMatchedElement) {
+    currentTile.addEventListener('click', (e) => {
+      if (e.target.closest('button') || e.target.closest('select') || e.target.closest('a')) {
+        return;
+      }
       currentMatchedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
       currentMatchedElement.classList.add('cm-highlight-row');
       setTimeout(() => {
@@ -1026,7 +1117,7 @@ function attachListeners() {
 }
 
 // Execute active scan sequence matching interactive selection criteria
-async function runScan() {
+async function runScan(force = false) {
   chrome.runtime.sendMessage({ action: "getSession" }, async (response) => {
     if (chrome.runtime.lastError) {
       console.error("Message passing error:", chrome.runtime.lastError);
@@ -1162,7 +1253,8 @@ async function runScan() {
       language: match.language,
       sellerCountry: match.sellerCountry,
       currentPrice: match.price,
-      comment: match.comment
+      comment: match.comment,
+      force: force
     }, (dbResponse) => {
       if (chrome.runtime.lastError || !dbResponse) {
         console.error("Database connection failed:", chrome.runtime.lastError);
@@ -1189,25 +1281,44 @@ async function runScan() {
       }
 
       const history = dbResponse.history || [];
-      const record = dbResponse.latestRecordBeforeScan;
+      const firstRecord = history.length > 0 ? history[0] : null;
 
-      updateOverlay('success', {
-        selectedCondition: savedCondition,
-        selectedLocation: savedLocation,
-        selectedLanguage: savedLanguage,
-        availableLanguages: availableLangs,
-        currentPrice: match.price,
-        history: history,
-        lastPrice: record ? parseFloat(record.price) : null,
-        lastScannedAt: record ? record.scanned_at : null,
-        lastUserId: record ? record.user_id : null,
-        lastComment: record ? record.comment : null,
-        lastCondition: record ? record.condition : null,
-        lastLanguage: record ? record.language : null,
-        lastCountry: record ? record.seller_country : null,
-        matchedLanguage: match.language,
-        matchedCountry: match.sellerCountry,
-        comment: match.comment
+      // Calculate Force Sync countdown details
+      const forceSyncKey = `force_sync_${currentUserId}_${cardId}_${savedCondition}_${savedLocation}_${savedLanguage}`;
+      
+      chrome.storage.local.get(forceSyncKey, (storageRes) => {
+        const lastForceSyncTime = storageRes[forceSyncKey];
+        let forceSyncRemaining = 0;
+        if (lastForceSyncTime) {
+          const elapsed = Date.now() - lastForceSyncTime;
+          if (elapsed < 86400000) {
+            forceSyncRemaining = 86400000 - elapsed;
+          }
+        }
+
+        updateOverlay('success', {
+          selectedCondition: savedCondition,
+          selectedLocation: savedLocation,
+          selectedLanguage: savedLanguage,
+          availableLanguages: availableLangs,
+          currentPrice: match.price,
+          history: history,
+          firstPrice: firstRecord ? parseFloat(firstRecord.price) : null,
+          firstScannedAt: firstRecord ? firstRecord.scanned_at : null,
+          firstUserId: firstRecord ? firstRecord.user_id : null,
+          firstComment: firstRecord ? firstRecord.comment : null,
+          firstCondition: firstRecord ? firstRecord.condition : null,
+          firstLanguage: firstRecord ? firstRecord.language : null,
+          firstCountry: firstRecord ? firstRecord.seller_country : null,
+          matchedLanguage: match.language,
+          matchedCountry: match.sellerCountry,
+          matchedCondition: match.condition,
+          comment: match.comment,
+          blocked: dbResponse.blocked || false,
+          remainingTime: dbResponse.remainingTime || 0,
+          forceSyncRemaining: forceSyncRemaining,
+          forceSyncKey: forceSyncKey
+        });
       });
     });
   });

@@ -149,7 +149,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return sendResponse({ error: "UNAUTHENTICATED" });
         }
 
-        const { tcg, cardId, condition, language, sellerCountry, currentPrice, comment } = message;
+        const { tcg, cardId, condition, language, sellerCountry, currentPrice, comment, force } = message;
         const accessToken = session.access_token;
         const userId = session.user.id;
 
@@ -174,19 +174,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const latestRecordBeforeScan = history.length > 0 ? history[history.length - 1] : null;
 
         let shouldUpload = false;
+        let blocked = false;
+        let remainingTime = 0;
         
         if (!latestRecordBeforeScan) {
           // No history exists for this specific combination
           shouldUpload = true;
         } else {
-          const lastPrice = parseFloat(latestRecordBeforeScan.price);
           const timeSinceLastScan = Date.now() - new Date(latestRecordBeforeScan.scanned_at).getTime();
-          const lastComment = latestRecordBeforeScan.comment || '';
-          const currentComment = comment || '';
           
-          // Upload if the price differs, the comment differs, OR if the last scan is older than 1 hour (3600000 ms)
-          if (lastPrice !== currentPrice || lastComment !== currentComment || timeSinceLastScan > 3600000) {
+          if (force === true) {
             shouldUpload = true;
+          } else if (timeSinceLastScan >= 86400000) {
+            shouldUpload = true;
+          } else {
+            blocked = true;
+            remainingTime = 86400000 - timeSinceLastScan;
           }
         }
 
@@ -233,7 +236,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           success: true,
           history: history,
           latestRecordBeforeScan: latestRecordBeforeScan,
-          currentUserId: userId
+          currentUserId: userId,
+          blocked: blocked,
+          remainingTime: remainingTime
         });
       }
     } catch (err) {

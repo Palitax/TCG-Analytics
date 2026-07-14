@@ -210,21 +210,24 @@
 }
 
 .cm-dropdown {
-  background: rgba(255, 255, 255, 0.06);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background: rgba(255, 255, 255, 0.06) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(255,255,255,0.6)' d='M0 0l5 5 5-5z'/></svg>") no-repeat right 12px center;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   color: #fff;
-  padding: 6px 10px;
+  padding: 6px 32px 6px 12px;
   font-size: 0.82rem;
   font-weight: 500;
   outline: none;
   cursor: pointer;
-  min-width: 110px;
+  min-width: 135px;
   transition: border-color 0.2s, background 0.2s;
 }
 
 .cm-dropdown:hover, .cm-dropdown:focus {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.1) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(255,255,255,0.9)' d='M0 0l5 5 5-5z'/></svg>") no-repeat right 12px center;
   border-color: rgba(255, 255, 255, 0.2);
 }
 
@@ -782,4 +785,105 @@
   font-family: system-ui, -apple-system, sans-serif;
   line-height: 1;
   white-space: nowrap;
+}
+
+/* Custom additions for Block Indicators, Force Sync, Condition Color mappings, and clickable Current Offer Tile */
+
+.cm-tracker-dot.blocked {
+  background-color: #f59e0b; /* amber/orange */
+  box-shadow: 0 0 8px #f59e0b;
+  animation: cm-dot-pulse 2s infinite ease-in-out;
+}
+
+.cm-tracker-block-badge {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: #fbbf24;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+  margin-left: 8px;
+}
+
+.cm-btn-force-sync {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.2);
+  align-self: flex-end;
+  height: 31px;
+}
+
+.cm-btn-force-sync:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+  background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%);
+}
+
+.cm-btn-force-sync:disabled {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.cm-current-tile {
+  cursor: pointer;
+  position: relative;
+}
+
+.cm-current-tile:hover {
+  outline: 1.5px solid rgba(59, 130, 246, 0.4);
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15) !important;
+}
+
+.cm-tile-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Glassmorphic mappings for Cardmarket Card condition colors */
+.cm-tile-meta-cond.cm-cond-MT, .cm-tile-meta-cond.cm-cond-NM {
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: #34d399 !important;
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+}
+.cm-tile-meta-cond.cm-cond-EX {
+  background: rgba(101, 163, 13, 0.2) !important;
+  color: #a3e635 !important;
+  border: 1px solid rgba(101, 163, 13, 0.35) !important;
+}
+.cm-tile-meta-cond.cm-cond-GD {
+  background: rgba(234, 179, 8, 0.15) !important;
+  color: #facc15 !important;
+  border: 1px solid rgba(234, 179, 8, 0.3) !important;
+}
+.cm-tile-meta-cond.cm-cond-LP {
+  background: rgba(249, 115, 22, 0.15) !important;
+  color: #fb923c !important;
+  border: 1px solid rgba(249, 115, 22, 0.3) !important;
+}
+.cm-tile-meta-cond.cm-cond-PL {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #f87171 !important;
+  border: 1px solid rgba(239, 68, 68, 0.3) !important;
+}
+.cm-tile-meta-cond.cm-cond-PO {
+  background: rgba(17, 24, 39, 0.5) !important;
+  color: #9ca3af !important;
+  border: 1px solid rgba(156, 163, 175, 0.3) !important;
 }
