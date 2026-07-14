@@ -149,7 +149,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return sendResponse({ error: "UNAUTHENTICATED" });
         }
 
-        const { tcg, cardId, condition, language, sellerCountry, currentPrice, comment, force, matchedCondition, matchedLanguage, matchedCountry } = message;
+        const { tcg, cardId, condition, language, sellerCountry, currentPrice, comment, force, matchedCondition, matchedLanguage, matchedCountry, imageUrl } = message;
         const accessToken = session.access_token;
         const userId = session.user.id;
 
@@ -209,7 +209,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // 2. Perform upload if triggered
         if (shouldUpload) {
           // Embed specific match details as metadata prefix in the comment column
-          const metadataPrefix = `[${matchedLanguage || ''}|${matchedCountry || ''}|${matchedCondition || ''}]`;
+          const metadataPrefix = `[${matchedLanguage || ''}|${matchedCountry || ''}|${matchedCondition || ''}|${imageUrl || ''}]`;
           const dbComment = comment ? `${metadataPrefix} ${comment}` : metadataPrefix;
 
           const newRecordData = {
@@ -249,14 +249,86 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         }
 
+        // 3. Query marked state from the database
+        let isMarked = false;
+        try {
+          const bookmarkUrl = `${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}`;
+          const bookmarkResponse = await fetch(bookmarkUrl, {
+            method: "GET",
+            headers: {
+              "apikey": SUPABASE_ANON_KEY,
+              "Authorization": `Bearer ${accessToken}`
+            }
+          });
+          if (bookmarkResponse.ok) {
+            const bookmarks = await bookmarkResponse.json();
+            isMarked = bookmarks.length > 0;
+          }
+        } catch (err) {
+          console.error("Failed to query marked status:", err);
+        }
+
         sendResponse({
           success: true,
           history: history,
           latestRecordBeforeScan: latestRecordBeforeScan,
           currentUserId: userId,
           blocked: blocked,
-          remainingTime: remainingTime
+          remainingTime: remainingTime,
+          isMarked: isMarked
         });
+      }
+      
+      else if (message.action === "toggleBookmark") {
+        const session = await getSession();
+        if (!session) {
+          return sendResponse({ error: "UNAUTHENTICATED" });
+        }
+
+        const { tcg, cardId, imageUrl, shouldMark } = message;
+        const accessToken = session.access_token;
+        const userId = session.user.id;
+
+        if (shouldMark) {
+          const bookmarkData = {
+            user_id: userId,
+            tcg: tcg,
+            card_id: cardId,
+            image_url: imageUrl || null
+          };
+
+          const postRes = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards`, {
+            method: "POST",
+            headers: {
+              "apikey": SUPABASE_ANON_KEY,
+              "Authorization": `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+              "Prefer": "return=representation"
+            },
+            body: JSON.stringify(bookmarkData)
+          });
+
+          if (!postRes.ok) {
+            const errTxt = await postRes.text();
+            throw new Error(`Failed to bookmark card: ${postRes.statusText} - ${errTxt}`);
+          }
+        } else {
+          const deleteUrl = `${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}`;
+          const deleteRes = await fetch(deleteUrl, {
+            method: "DELETE",
+            headers: {
+              "apikey": SUPABASE_ANON_KEY,
+              "Authorization": `Bearer ${accessToken}`
+            }
+          });
+
+          if (!deleteRes.ok) {
+            const errTxt = await deleteRes.text();
+            throw new Error(`Failed to remove bookmark: ${deleteRes.statusText} - ${errTxt}`);
+          }
+        }
+
+        sendResponse({ success: true });
       }
     } catch (err) {
       console.error("Error handling message:", err);

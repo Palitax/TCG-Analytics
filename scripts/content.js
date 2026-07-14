@@ -17,15 +17,24 @@ function parseHistoryItem(item) {
   let matchedLang = item.language;
   let matchedCountry = item.seller_country;
   let matchedCond = item.condition;
+  let imageUrl = null;
   let cleanComment = item.comment || '';
 
   if (item.comment && item.comment.startsWith('[')) {
-    const match = item.comment.match(/^\[([^|]*)\|([^|]*)\|([^\]]*)\](?:\s*(.*))?$/);
-    if (match) {
-      matchedLang = match[1] || item.language;
-      matchedCountry = match[2] || item.seller_country;
-      matchedCond = match[3] || item.condition;
-      cleanComment = match[4] || '';
+    const closeBracketIdx = item.comment.indexOf(']');
+    if (closeBracketIdx > 1) {
+      const metaContent = item.comment.slice(1, closeBracketIdx);
+      cleanComment = item.comment.slice(closeBracketIdx + 1).trim();
+      
+      const parts = metaContent.split('|');
+      if (parts.length >= 3) {
+        matchedLang = parts[0] || item.language;
+        matchedCountry = parts[1] || item.seller_country;
+        matchedCond = parts[2] || item.condition;
+        if (parts.length >= 4) {
+          imageUrl = parts[3] || null;
+        }
+      }
     }
   }
 
@@ -35,8 +44,25 @@ function parseHistoryItem(item) {
     matchedLanguage: matchedLang,
     matchedCountry: matchedCountry,
     matchedCondition: matchedCond,
+    imageUrl: imageUrl,
     comment: cleanComment
   };
+}
+
+function getCardImageUrl() {
+  const imgEl = document.querySelector('.image-container img, .product-image img, .image-box img, div[class*="image"] img, img.img-fluid');
+  if (imgEl && imgEl.src && imgEl.src.includes('static.cardmarket.com')) {
+    return imgEl.src;
+  }
+  const allImgs = document.querySelectorAll('img');
+  for (const img of allImgs) {
+    if (img.src && (img.src.includes('/cards/') || img.src.includes('/specimens/') || img.src.includes('/img/'))) {
+      if (img.src.includes('static.cardmarket.com')) {
+        return img.src;
+      }
+    }
+  }
+  return null;
 }
 
 // Standardize condition mapping
@@ -648,7 +674,8 @@ function updateOverlay(status, details = {}) {
     blocked = false,
     remainingTime = 0,
     forceSyncRemaining = 0,
-    forceSyncKey = null
+    forceSyncKey = null,
+    isMarked = false
   } = details;
 
   const dotClass = blocked ? 'blocked' : 'active';
@@ -660,11 +687,26 @@ function updateOverlay(status, details = {}) {
     blockIndicatorHtml = `<span class="cm-tracker-block-badge" title="Scans sind auf einmal pro Tag begrenzt. Nächster automatischer Scan erst nach Ablauf der Sperre.">Sperre aktiv (noch ${timeFormatted})</span>`;
   }
 
+  const starTitle = isMarked ? 'Karte von Merkliste entfernen' : 'Karte auf Merkliste speichern';
+  const starClass = isMarked ? 'cm-btn-bookmark marked' : 'cm-btn-bookmark';
+  const starSvg = isMarked 
+    ? `<svg class="cm-star-icon" viewBox="0 0 24 24" fill="#facc15" stroke="#facc15" stroke-width="2">
+         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+       </svg>`
+    : `<svg class="cm-star-icon" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2">
+         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+       </svg>`;
+
   const headerHtml = `
-    <div class="cm-tracker-header">
-      <span class="cm-tracker-dot ${dotClass}" title="${dotTitle}"></span>
-      <span class="cm-tracker-title">TCG Card Tracker</span>
-      ${blockIndicatorHtml}
+    <div class="cm-tracker-header" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="cm-tracker-dot ${dotClass}" title="${dotTitle}"></span>
+        <span class="cm-tracker-title">TCG Card Tracker</span>
+        ${blockIndicatorHtml}
+      </div>
+      <button id="cm-btn-bookmark" class="${starClass}" title="${starTitle}">
+        ${starSvg}
+      </button>
     </div>
   `;
 
@@ -1108,6 +1150,31 @@ function attachListeners() {
     });
   }
 
+  // Bookmark button click binding
+  const btnBookmark = document.getElementById('cm-btn-bookmark');
+  if (btnBookmark) {
+    btnBookmark.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const isMarked = btnBookmark.classList.contains('marked');
+      const { tcg, cardId } = getTcgAndCardId();
+      if (!tcg || !cardId) return;
+
+      btnBookmark.style.pointerEvents = 'none';
+      chrome.runtime.sendMessage({
+        action: "toggleBookmark",
+        tcg: tcg,
+        cardId: cardId,
+        imageUrl: getCardImageUrl(),
+        shouldMark: !isMarked
+      }, (response) => {
+        btnBookmark.style.pointerEvents = 'auto';
+        if (response && response.success) {
+          runScan();
+        }
+      });
+    });
+  }
+
   // Current offer tile click to scroll to matched seller row
   const currentTile = document.querySelector('.cm-current-tile');
   if (currentTile && currentMatchedElement) {
@@ -1267,7 +1334,8 @@ async function runScan(force = false) {
       force: force,
       matchedCondition: match.condition,
       matchedLanguage: match.language,
-      matchedCountry: match.sellerCountry
+      matchedCountry: match.sellerCountry,
+      imageUrl: getCardImageUrl()
     }, (dbResponse) => {
       if (chrome.runtime.lastError || !dbResponse) {
         console.error("Database connection failed:", chrome.runtime.lastError);
@@ -1316,7 +1384,8 @@ async function runScan(force = false) {
         matchedCondition: match.condition,
         comment: match.comment,
         blocked: dbResponse.blocked || false,
-        remainingTime: dbResponse.remainingTime || 0
+        remainingTime: dbResponse.remainingTime || 0,
+        isMarked: dbResponse.isMarked || false
       });
     });
   });

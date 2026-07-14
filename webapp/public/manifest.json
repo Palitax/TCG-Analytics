@@ -1,0 +1,17 @@
+{
+  "name": "TCG Card Tracker",
+  "short_name": "Card Tracker",
+  "description": "Mobile TCG Card tracker dashboard and search tool",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#090d16",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ]
+}

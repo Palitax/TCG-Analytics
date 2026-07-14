@@ -889,3 +889,31 @@
   color: #9ca3af !important;
   border: 1px solid rgba(156, 163, 175, 0.3) !important;
 }
+
+/* Bookmark star icon button styles */
+.cm-btn-bookmark {
+  border-radius: 50%;
+  padding: 4px;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cm-btn-bookmark:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(1.1);
+}
+
+.cm-btn-bookmark svg {
+  width: 18px;
+  height: 18px;
+  transition: all 0.2s ease;
+}
+
+.cm-btn-bookmark.marked svg {
+  filter: drop-shadow(0 0 4px rgba(250, 204, 21, 0.4));
+}
