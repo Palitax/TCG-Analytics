@@ -745,7 +745,8 @@ function updateOverlay(status, details = {}) {
       firstTileHtml = `
         <div class="cm-tracker-tile cm-first-tile">
           <div class="cm-tile-header">
-            <span class="cm-tile-tag cm-tag-last">Erster Scan (${firstDateStr})</span>
+            <span class="cm-tile-tag cm-tag-last">Erster Scan</span>
+            <span class="cm-tile-date" style="font-size: 0.72rem; color: rgba(255, 255, 255, 0.45); font-weight: 500;">${firstDateStr}</span>
           </div>
           <div class="cm-tile-body">
             <div class="cm-tile-price-section">
@@ -930,26 +931,14 @@ function updateOverlay(status, details = {}) {
 
   let forceSyncBtnHtml = '';
   if (currentPrice !== null && !noMatch) {
-    if (forceSyncRemaining > 0) {
-      const timeFormatted = formatRemainingTime(forceSyncRemaining);
-      forceSyncBtnHtml = `
-        <div class="cm-control-item">
-          <label>&nbsp;</label>
-          <button id="cm-btn-force-sync" class="cm-btn-force-sync" disabled title="Ein erzwungener Sync ist nur einmal alle 24 Std. möglich. Nächster Sync in ${timeFormatted}.">
-            Force Sync
-          </button>
-        </div>
-      `;
-    } else {
-      forceSyncBtnHtml = `
-        <div class="cm-control-item">
-          <label>&nbsp;</label>
-          <button id="cm-btn-force-sync" class="cm-btn-force-sync" title="Erzwinge einen sofortigen Preis-Sync mit der Datenbank (1x in 24 Std. möglich).">
-            Force Sync
-          </button>
-        </div>
-      `;
-    }
+    forceSyncBtnHtml = `
+      <div class="cm-control-item">
+        <label>&nbsp;</label>
+        <button id="cm-btn-force-sync" class="cm-btn-force-sync" title="Erzwinge einen sofortigen Preis-Sync mit der Datenbank (umgeht die 24 Std. Sperre).">
+          Force Sync
+        </button>
+      </div>
+    `;
   }
 
   activeOverlay.innerHTML = `
@@ -1089,11 +1078,9 @@ function attachListeners() {
 
   // Force Sync button click binding
   const btnForceSync = document.getElementById('cm-btn-force-sync');
-  if (btnForceSync && !btnForceSync.disabled && activeOverlayDetails?.forceSyncKey) {
+  if (btnForceSync && !btnForceSync.disabled) {
     btnForceSync.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const key = activeOverlayDetails.forceSyncKey;
-      await chrome.storage.local.set({ [key]: Date.now() });
       runScan(true);
     });
   }
@@ -1283,42 +1270,26 @@ async function runScan(force = false) {
       const history = dbResponse.history || [];
       const firstRecord = history.length > 0 ? history[0] : null;
 
-      // Calculate Force Sync countdown details
-      const forceSyncKey = `force_sync_${currentUserId}_${cardId}_${savedCondition}_${savedLocation}_${savedLanguage}`;
-      
-      chrome.storage.local.get(forceSyncKey, (storageRes) => {
-        const lastForceSyncTime = storageRes[forceSyncKey];
-        let forceSyncRemaining = 0;
-        if (lastForceSyncTime) {
-          const elapsed = Date.now() - lastForceSyncTime;
-          if (elapsed < 86400000) {
-            forceSyncRemaining = 86400000 - elapsed;
-          }
-        }
-
-        updateOverlay('success', {
-          selectedCondition: savedCondition,
-          selectedLocation: savedLocation,
-          selectedLanguage: savedLanguage,
-          availableLanguages: availableLangs,
-          currentPrice: match.price,
-          history: history,
-          firstPrice: firstRecord ? parseFloat(firstRecord.price) : null,
-          firstScannedAt: firstRecord ? firstRecord.scanned_at : null,
-          firstUserId: firstRecord ? firstRecord.user_id : null,
-          firstComment: firstRecord ? firstRecord.comment : null,
-          firstCondition: firstRecord ? firstRecord.condition : null,
-          firstLanguage: firstRecord ? firstRecord.language : null,
-          firstCountry: firstRecord ? firstRecord.seller_country : null,
-          matchedLanguage: match.language,
-          matchedCountry: match.sellerCountry,
-          matchedCondition: match.condition,
-          comment: match.comment,
-          blocked: dbResponse.blocked || false,
-          remainingTime: dbResponse.remainingTime || 0,
-          forceSyncRemaining: forceSyncRemaining,
-          forceSyncKey: forceSyncKey
-        });
+      updateOverlay('success', {
+        selectedCondition: savedCondition,
+        selectedLocation: savedLocation,
+        selectedLanguage: savedLanguage,
+        availableLanguages: availableLangs,
+        currentPrice: match.price,
+        history: history,
+        firstPrice: firstRecord ? parseFloat(firstRecord.price) : null,
+        firstScannedAt: firstRecord ? firstRecord.scanned_at : null,
+        firstUserId: firstRecord ? firstRecord.user_id : null,
+        firstComment: firstRecord ? firstRecord.comment : null,
+        firstCondition: firstRecord ? firstRecord.condition : null,
+        firstLanguage: firstRecord ? firstRecord.language : null,
+        firstCountry: firstRecord ? firstRecord.seller_country : null,
+        matchedLanguage: match.language,
+        matchedCountry: match.sellerCountry,
+        matchedCondition: match.condition,
+        comment: match.comment,
+        blocked: dbResponse.blocked || false,
+        remainingTime: dbResponse.remainingTime || 0
       });
     });
   });
