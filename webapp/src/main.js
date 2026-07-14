@@ -717,7 +717,7 @@ function renderDetail(container) {
         if (error) throw error;
         details.isMarked = true;
       }
-      await loadBookmarks(); // Refresh markedCards local copy from database!
+      await fetchMarkedCards(); // Refresh markedCards local copy from database!
       updateStarIconStyle();
     } catch (err) {
       console.error('Bookmark toggle failed:', err.message);
@@ -785,7 +785,7 @@ function renderDetail(container) {
 
         if (error) throw error;
 
-        await loadBookmarks(); // Refresh local watchlist copy in memory!
+        await fetchMarkedCards(); // Refresh local watchlist copy in memory!
 
         details.imageUrl = compressedBase64;
         const heroImg = detailBody.querySelector('.hero-img');
