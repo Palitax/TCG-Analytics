@@ -733,7 +733,11 @@ function updateOverlay(status, details = {}) {
               <span class="cm-comment-quote">"${lastComment}"</span>
             </div>
           ` : ''}
-        // Render the interactive line chart
+        </div>
+      `;
+    }
+
+    // Render the interactive line chart
     let chartHtml = '';
     if (history.length >= 2) {
       // Map historical prices and timestamps
