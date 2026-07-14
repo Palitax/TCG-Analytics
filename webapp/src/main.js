@@ -618,7 +618,9 @@ async function loadCardDetails(cardId, tcg) {
     const languages = Array.from(new Set(parsedHistory.map(h => h.language)));
 
     // Read initial bookmarked state for details toggle state
-    const isCurrentlyMarked = markedCards.some(m => m.card_id === cardId);
+    const bookmarkRecord = markedCards.find(m => m.card_id === cardId);
+    const isCurrentlyMarked = !!bookmarkRecord;
+    const bookmarkImageUrl = bookmarkRecord ? bookmarkRecord.image_url : null;
 
     activeCardDetails = {
       cardId,
@@ -628,7 +630,7 @@ async function loadCardDetails(cardId, tcg) {
       locations: locations.sort(),
       languages: languages.sort(),
       isMarked: isCurrentlyMarked,
-      imageUrl: parsedHistory.length > 0 ? parsedHistory[0].imageUrl : null,
+      imageUrl: bookmarkImageUrl || (parsedHistory.length > 0 ? parsedHistory[0].imageUrl : null),
       
       // Default initial local filters: matching first scanned entry configuration
       selectedCondition: conditions[0] || 'NM',
@@ -715,6 +717,7 @@ function renderDetail(container) {
         if (error) throw error;
         details.isMarked = true;
       }
+      await loadBookmarks(); // Refresh markedCards local copy from database!
       updateStarIconStyle();
     } catch (err) {
       console.error('Bookmark toggle failed:', err.message);
@@ -781,6 +784,8 @@ function renderDetail(container) {
           .eq('user_id', currentUser.id);
 
         if (error) throw error;
+
+        await loadBookmarks(); // Refresh local watchlist copy in memory!
 
         details.imageUrl = compressedBase64;
         const heroImg = detailBody.querySelector('.hero-img');
