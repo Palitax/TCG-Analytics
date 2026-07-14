@@ -153,8 +153,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const accessToken = session.access_token;
         const userId = session.user.id;
 
-        // 1. Fetch latest historical price from Supabase using composite columns
-        const getUrl = `${SUPABASE_URL}/rest/v1/price_history?tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}&condition=eq.${encodeURIComponent(condition)}&language=eq.${encodeURIComponent(language)}&seller_country=eq.${encodeURIComponent(sellerCountry)}&order=scanned_at.desc&limit=1`;
+        // 1. Fetch full historical price list from Supabase sorted ascending (oldest first)
+        const getUrl = `${SUPABASE_URL}/rest/v1/price_history?tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}&condition=eq.${encodeURIComponent(condition)}&language=eq.${encodeURIComponent(language)}&seller_country=eq.${encodeURIComponent(sellerCountry)}&order=scanned_at.asc`;
         
         const getResponse = await fetch(getUrl, {
           method: "GET",
@@ -169,17 +169,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         const history = await getResponse.json();
-        const latestRecord = history.length > 0 ? history[0] : null;
+        
+        // The latest record before the scan is the last element in the historical list
+        const latestRecordBeforeScan = history.length > 0 ? history[history.length - 1] : null;
 
         let shouldUpload = false;
         
-        if (!latestRecord) {
+        if (!latestRecordBeforeScan) {
           // No history exists for this specific combination
           shouldUpload = true;
         } else {
-          const lastPrice = parseFloat(latestRecord.price);
-          const timeSinceLastScan = Date.now() - new Date(latestRecord.scanned_at).getTime();
-          const lastComment = latestRecord.comment || '';
+          const lastPrice = parseFloat(latestRecordBeforeScan.price);
+          const timeSinceLastScan = Date.now() - new Date(latestRecordBeforeScan.scanned_at).getTime();
+          const lastComment = latestRecordBeforeScan.comment || '';
           const currentComment = comment || '';
           
           // Upload if the price differs, the comment differs, OR if the last scan is older than 1 hour (3600000 ms)
@@ -190,6 +192,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         // 2. Perform upload if triggered
         if (shouldUpload) {
+          const newRecordData = {
+            tcg: tcg,
+            card_id: cardId,
+            price: currentPrice,
+            condition: condition,
+            language: language,
+            seller_country: sellerCountry,
+            comment: comment || null,
+            user_id: userId
+          };
+
           const postResponse = await fetch(`${SUPABASE_URL}/rest/v1/price_history`, {
             method: "POST",
             headers: {
@@ -198,16 +211,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               "Content-Type": "application/json",
               "Prefer": "return=representation"
             },
-            body: JSON.stringify({
-              tcg: tcg,
-              card_id: cardId,
-              price: currentPrice,
-              condition: condition,
-              language: language,
-              seller_country: sellerCountry,
-              comment: comment || null,
-              user_id: userId
-            })
+            body: JSON.stringify(newRecordData)
           });
 
           if (!postResponse.ok) {
@@ -215,12 +219,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.error("Failed to upload new scan to Supabase:", postResponse.status, postResponse.statusText, errText);
           } else {
             console.log(`Successfully uploaded scan: ${tcg} | ${cardId} (${condition} | ${language} | ${sellerCountry}) = ${currentPrice} € (Comment: "${comment || ''}")`);
+            
+            // Push representation of new record with mock/actual timestamp to history array for graph visualization
+            const createdRecord = {
+              ...newRecordData,
+              scanned_at: new Date().toISOString()
+            };
+            history.push(createdRecord);
           }
         }
 
         sendResponse({
           success: true,
-          latestRecord: latestRecord,
+          history: history,
+          latestRecordBeforeScan: latestRecordBeforeScan,
           currentUserId: userId
         });
       }

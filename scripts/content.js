@@ -594,6 +594,7 @@ function updateOverlay(status, details = {}) {
     selectedLanguage = 'ALL',
     availableLanguages = [],
     currentPrice = null,
+    history = [],
     lastPrice = null,
     lastScannedAt = null,
     lastUserId = null,
@@ -636,29 +637,31 @@ function updateOverlay(status, details = {}) {
       day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
     }) : '';
 
-    const authorText = lastUserId === currentUserId ? 'dir selbst' : 'einem anderen Nutzer';
-
     // Retrieve high-fidelity flags to replace "DE | DE" text representation
     const sellerFlag = getFlagHtml('seller', matchedCountry);
     const langFlag = getFlagHtml('language', matchedLanguage);
 
-    if (lastPrice === null || lastPrice === undefined) {
+    // Baseline calculation: compare current price to first scan ever in history
+    if (history.length <= 1) {
       diffBadge = `<span class="cm-tracker-diff-badge first">Erster Scan</span>`;
       statusText = `<span class="cm-tracker-status-desc">Dieser Preis wurde als Startwert in der Datenbank gesichert.</span>`;
     } else {
-      const diffPercent = ((currentPrice - lastPrice) / lastPrice) * 100;
-      const formattedDiff = diffPercent.toFixed(2);
+      const firstRecord = history[0];
+      const firstPrice = parseFloat(firstRecord.price);
+      const firstDateStr = new Date(firstRecord.scanned_at).toLocaleDateString('de-DE', {
+        day: '2-digit', month: '2-digit', year: 'numeric'
+      });
+      const firstAuthorText = firstRecord.user_id === currentUserId ? 'dir selbst' : 'einem anderen Nutzer';
 
-      const changeStr = diffPercent > 0 ? `Gestiegen seit Scan am ${dateStr} von ${authorText} (${lastPrice.toFixed(2)} €)` :
-                        diffPercent < 0 ? `Günstiger seit Scan am ${dateStr} von ${authorText} (${lastPrice.toFixed(2)} €)` :
-                        `Unverändert seit Scan am ${dateStr} von ${authorText}`;
+      const diffPercent = ((currentPrice - firstPrice) / firstPrice) * 100;
+      const formattedDiff = diffPercent.toFixed(2);
 
       // User tracks value, so UP is GREEN (gain) and DOWN is RED (loss)
       const diffClass = diffPercent > 0 ? 'gain' : diffPercent < 0 ? 'loss' : 'stable';
       const diffSign = diffPercent > 0 ? '+' : '';
 
       diffBadge = `<span class="cm-tracker-diff-badge ${diffClass}">${diffSign}${formattedDiff}%</span>`;
-      statusText = `<span class="cm-tracker-status-desc">${changeStr}</span>`;
+      statusText = `<span class="cm-tracker-status-desc">${diffPercent > 0 ? 'Gestiegen' : diffPercent < 0 ? 'Günstiger' : 'Unverändert'} seit erstem Scan am ${firstDateStr} von ${firstAuthorText} (${firstPrice.toFixed(2)} €)</span>`;
     }
 
     // Render current offer as a card/tile
@@ -734,10 +737,107 @@ function updateOverlay(status, details = {}) {
       `;
     }
 
+    // Render the interactive line chart
+    let chartHtml = '';
+    if (history.length >= 2) {
+      // Map historical prices and timestamps
+      const points = history.map(item => ({
+        price: parseFloat(item.price),
+        time: new Date(item.scanned_at).getTime(),
+        dateText: new Date(item.scanned_at).toLocaleString('de-DE', {
+          day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit'
+        })
+      }));
+
+      // Find min/max values to scale the axes
+      const prices = points.map(p => p.price);
+      const times = points.map(p => p.time);
+
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
+      const minTime = Math.min(...times);
+      const maxTime = Math.max(...times);
+
+      const priceRange = maxPrice - minPrice || 1.0;
+      const timeRange = maxTime - minTime || 1.0;
+
+      // Add a 15% padding to top/bottom of Y axis so the curve sits nicely in the middle
+      const yMin = minPrice - priceRange * 0.15;
+      const yMax = maxPrice + priceRange * 0.15;
+      const yRange = yMax - yMin || 1.0;
+
+      // Map SVG points (viewBox 0 0 300 100)
+      // Left/right padding = 15px, Top/bottom padding = 10px
+      const svgPoints = points.map(pt => {
+        const x = 15 + ((pt.time - minTime) / timeRange) * 270;
+        const y = 90 - ((pt.price - yMin) / yRange) * 80;
+        return { x, y, price: pt.price, dateText: pt.dateText };
+      });
+
+      // Generate polyline path
+      const pathData = svgPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+      // Generate gradient area path (extend to bottom y=100)
+      const areaData = `${pathData} L ${svgPoints[svgPoints.length - 1].x.toFixed(1)} 100 L ${svgPoints[0].x.toFixed(1)} 100 Z`;
+
+      // Generate horizontal grid lines at 25%, 50%, 75% height
+      const yGrid25 = 10 + 0.25 * 80;
+      const yGrid50 = 10 + 0.50 * 80;
+      const yGrid75 = 10 + 0.75 * 80;
+
+      chartHtml = `
+        <div class="cm-tracker-chart-container">
+          <div class="cm-chart-title">Preisentwicklung (${selectedLanguage === 'ALL' ? 'Alle Sprachen' : LANGUAGE_NAMES_GERMAN[selectedLanguage]})</div>
+          <div class="cm-chart-canvas-wrapper" id="cm-chart-wrapper">
+            <svg class="cm-chart-svg" viewBox="0 0 300 100" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="cm-chart-grad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.25"/>
+                  <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.0"/>
+                </linearGradient>
+              </defs>
+              
+              <!-- Grid lines -->
+              <line x1="15" y1="${yGrid25.toFixed(1)}" x2="285" y2="${yGrid25.toFixed(1)}" class="cm-chart-grid-line" />
+              <line x1="15" y1="${yGrid50.toFixed(1)}" x2="285" y2="${yGrid50.toFixed(1)}" class="cm-chart-grid-line" />
+              <line x1="15" y1="${yGrid75.toFixed(1)}" x2="285" y2="${yGrid75.toFixed(1)}" class="cm-chart-grid-line" />
+              
+              <!-- Gradient Area -->
+              <path d="${areaData}" fill="url(#cm-chart-grad)" />
+              
+              <!-- Line Path -->
+              <path d="${pathData}" class="cm-chart-line-path" />
+              
+              <!-- Interactive Hover Vertical line -->
+              <line id="cm-chart-hover-line" x1="0" y1="5" x2="0" y2="95" class="cm-chart-hover-line" style="display: none;" />
+              
+              <!-- Interactive Hover Point -->
+              <circle id="cm-chart-hover-dot" r="4" class="cm-chart-hover-dot" style="display: none;" />
+            </svg>
+            
+            <!-- Float HTML Tooltip -->
+            <div id="cm-chart-tooltip" class="cm-chart-tooltip" style="display: none;"></div>
+          </div>
+          
+          <!-- Data points reference hidden JSON for JS hover handler -->
+          <script type="application/json" id="cm-chart-points-data">
+            ${JSON.stringify(svgPoints)}
+          </script>
+        </div>
+      `;
+    } else {
+      chartHtml = `
+        <div class="cm-tracker-chart-container empty-chart">
+          <div class="cm-chart-title">Preisentwicklung (${selectedLanguage === 'ALL' ? 'Alle Sprachen' : LANGUAGE_NAMES_GERMAN[selectedLanguage]})</div>
+          <div class="cm-chart-empty-message">Sammle mehr Preisdaten durch zukünftige Scans, um die Kurve anzuzeigen.</div>
+        </div>
+      `;
+    }
+
     resultHtml = `
       <div class="cm-tracker-results">
         ${currentTileHtml}
         ${lastTileHtml}
+        ${chartHtml}
       </div>
     `;
   }
@@ -792,6 +892,61 @@ function updateOverlay(status, details = {}) {
       ${resultHtml}
     </div>
   `;
+
+  // Bind chart hover listeners if the chart element is present
+  const wrapper = document.getElementById('cm-chart-wrapper');
+  const pointsDataEl = document.getElementById('cm-chart-points-data');
+  if (wrapper && pointsDataEl) {
+    const svgPoints = JSON.parse(pointsDataEl.textContent);
+    const hoverLine = document.getElementById('cm-chart-hover-line');
+    const hoverDot = document.getElementById('cm-chart-hover-dot');
+    const tooltip = document.getElementById('cm-chart-tooltip');
+
+    wrapper.addEventListener('mousemove', (e) => {
+      const rect = wrapper.getBoundingClientRect();
+      // Mouse X coordinate mapped into SVG 0-300 space
+      const mouseX = ((e.clientX - rect.left) / rect.width) * 300;
+      
+      // Find closest point by X coordinate distance
+      let closestPt = null;
+      let minDiff = Infinity;
+      for (const pt of svgPoints) {
+        const diff = Math.abs(pt.x - mouseX);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestPt = pt;
+        }
+      }
+
+      if (closestPt) {
+        // Draw vertical guide line and hover dot
+        hoverLine.setAttribute('x1', closestPt.x.toFixed(1));
+        hoverLine.setAttribute('x2', closestPt.x.toFixed(1));
+        hoverLine.style.display = 'block';
+
+        hoverDot.setAttribute('cx', closestPt.x.toFixed(1));
+        hoverDot.setAttribute('cy', closestPt.y.toFixed(1));
+        hoverDot.style.display = 'block';
+
+        // Position floating tooltip block
+        const tooltipX = e.clientX - rect.left + 12;
+        const tooltipY = e.clientY - rect.top - 40;
+        tooltip.style.left = tooltipX + 'px';
+        tooltip.style.top = tooltipY + 'px';
+        tooltip.style.display = 'block';
+        tooltip.innerHTML = `
+          <div class="cm-tooltip-price">${closestPt.price.toFixed(2)} €</div>
+          <div class="cm-tooltip-date">${closestPt.dateText}</div>
+        `;
+      }
+    });
+
+    wrapper.addEventListener('mouseleave', () => {
+      hoverLine.style.display = 'none';
+      hoverDot.style.display = 'none';
+      tooltip.style.display = 'none';
+    });
+  }
 
   attachListeners();
 }
@@ -1007,7 +1162,8 @@ async function runScan() {
         return;
       }
 
-      const record = dbResponse.latestRecord;
+      const history = dbResponse.history || [];
+      const record = dbResponse.latestRecordBeforeScan;
 
       updateOverlay('success', {
         selectedCondition: savedCondition,
@@ -1015,6 +1171,7 @@ async function runScan() {
         selectedLanguage: savedLanguage,
         availableLanguages: availableLangs,
         currentPrice: match.price,
+        history: history,
         lastPrice: record ? parseFloat(record.price) : null,
         lastScannedAt: record ? record.scanned_at : null,
         lastUserId: record ? record.user_id : null,
