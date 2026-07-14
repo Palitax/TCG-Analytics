@@ -159,7 +159,7 @@ function renderLogin(container) {
   const div = document.createElement('div');
   div.className = 'login-panel';
   div.innerHTML = `
-    <img class="login-logo" src="/favicon.svg" alt="Logo">
+    <img class="login-logo" src="/logo.png" alt="Logo">
     <h1 class="login-title">TCG Card Tracker</h1>
     <p class="login-desc">Melde dich mit deinem Account an, um deine Merkliste zu synchronisieren und Preisverläufe abzufragen.</p>
     <button id="btn-login" class="gsi-material-button">
@@ -197,7 +197,7 @@ async function renderDashboard(container) {
   header.className = 'app-header';
   header.innerHTML = `
     <div class="header-logo">
-      <img src="/favicon.svg" alt="Logo">
+      <img src="/logo.png" alt="Logo">
       <span class="header-title">TCG Card Tracker</span>
     </div>
     <button id="btn-logout" class="btn-logout" title="Ausloggen">
@@ -279,7 +279,7 @@ async function renderDashboard(container) {
 
         divResults.innerHTML = uniqueCards.map(c => `
           <div class="search-result-item glass-panel" data-card="${c.card_id}" data-tcg="${c.tcg}">
-            <img class="search-result-img" src="${c.imageUrl || '/favicon.svg'}" onerror="this.src='/favicon.svg'">
+            <img class="search-result-img" src="${c.imageUrl || '/logo.png'}" onerror="this.src='/logo.png'">
             <div class="search-result-info">
               <span class="search-result-name">${c.card_id}</span>
               <span class="search-result-tcg">${c.tcg}</span>
@@ -320,7 +320,7 @@ async function renderDashboard(container) {
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499c.151-.377.728-.377.879 0l2.09 5.011 5.4 1.018a.5.5 0 01.29.839l-3.834 3.738 1.05 5.378a.5.5 0 01-.707.567L12 17.766l-4.664 2.483a.5.5 0 01-.707-.567l1.05-5.378-3.834-3.738a.5.5 0 01.29-.839l5.4-1.018 2.09-5.011z" />
         </svg>
-        Watchlist
+        Watchlist (${markedCards.length})
       </button>
       <button id="btn-tab-analytics" class="cm-landing-btn ${activeDashboardTab === 'analytics' ? 'active' : ''}">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -373,7 +373,7 @@ async function renderDashboard(container) {
 function renderWatchlistTab(container) {
   const dashboard = document.createElement('div');
   dashboard.className = 'dashboard-content';
-  dashboard.innerHTML = `<h2 class="section-title">Deine Watchlist</h2>`;
+  dashboard.innerHTML = '';
   container.appendChild(dashboard);
 
   if (markedCards.length === 0) {
@@ -397,7 +397,7 @@ function renderWatchlistTab(container) {
     cardEl.className = 'marked-card glass-panel';
     cardEl.innerHTML = `
       <div class="card-img-wrapper">
-        <img class="card-img" src="${card.image_url || '/favicon.svg'}" onerror="this.src='/favicon.svg'">
+        <img class="card-img" src="${card.image_url || '/logo.png'}" onerror="this.src='/logo.png'">
       </div>
       <div class="card-info">
         <span class="card-tcg-label">${card.tcg}</span>
@@ -422,25 +422,18 @@ function renderWatchlistTab(container) {
 function renderAnalyticsTab(container) {
   const dashboard = document.createElement('div');
   dashboard.className = 'dashboard-content analytics-tab-view';
-  dashboard.innerHTML = `<h2 class="section-title">Analytics & Verlauf</h2>`;
+  dashboard.innerHTML = '';
   container.appendChild(dashboard);
-
-  const historyCard = document.createElement('div');
-  historyCard.className = 'glass-panel';
-  historyCard.style.padding = '16px';
-  dashboard.appendChild(historyCard);
-
-  historyCard.innerHTML = `<h3 style="font-size: 0.9rem; margin-bottom: 12px; font-weight: 600; color: var(--text-secondary);">Zuletzt gesucht (Letzte 5 Suchen)</h3>`;
 
   const recentSearches = searchHistory.slice(0, 5);
 
   if (recentSearches.length === 0) {
-    historyCard.innerHTML += `
-      <div class="empty-state" style="padding: 16px 0;">
+    dashboard.innerHTML += `
+      <div class="empty-state glass-panel" style="padding: 32px 16px;">
         <svg class="empty-state-icon" style="width: 32px; height: 32px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
-        <p style="font-size: 0.85rem;">Kein Suchverlauf vorhanden. Nutze das obere Suchfeld, um Karten zu suchen.</p>
+        <p style="font-size: 0.85rem; margin-top: 8px;">Kein Suchverlauf vorhanden. Nutze das obere Suchfeld, um Karten zu suchen.</p>
       </div>
     `;
     return;
@@ -448,7 +441,7 @@ function renderAnalyticsTab(container) {
 
   const list = document.createElement('div');
   list.className = 'analytics-history-list';
-  historyCard.appendChild(list);
+  dashboard.appendChild(list);
 
   recentSearches.forEach((item, idx) => {
     const cardId = typeof item === 'object' ? item.cardId : item;
@@ -675,7 +668,7 @@ function renderDetail(container) {
   detailBody.innerHTML = `
     <div class="card-hero-section">
       <div class="hero-img-wrapper">
-        <img class="hero-img" src="${details.imageUrl || '/favicon.svg'}" onerror="this.src='/favicon.svg'">
+        <img class="hero-img" src="${details.imageUrl || '/logo.png'}" onerror="this.src='/logo.png'">
       </div>
       <div class="hero-meta">
         <span class="hero-tcg">${details.tcg}</span>
