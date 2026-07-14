@@ -807,7 +807,8 @@ function updateOverlay(status, details = {}) {
       time: new Date(item.scanned_at).getTime(),
       dateText: new Date(item.scanned_at).toLocaleString('de-DE', {
         day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit'
-      })
+      }),
+      comment: item.comment || ''
     }));
 
     if (points.length >= 2) {
@@ -842,7 +843,7 @@ function updateOverlay(status, details = {}) {
       const svgPoints = points.map(pt => {
         const x = ((pt.time - minTime) / timeRange) * 100;
         const y = 90 - ((pt.price - yMin) / yRange) * 80;
-        return { x, y, price: pt.price, dateText: pt.dateText };
+        return { x, y, price: pt.price, dateText: pt.dateText, comment: pt.comment };
       });
 
       // Generate polyline path
@@ -1043,9 +1044,14 @@ function updateOverlay(status, details = {}) {
         tooltip.style.left = tooltipX + 'px';
         tooltip.style.top = tooltipY + 'px';
         tooltip.style.display = 'block';
+        const commentHtml = closestPt.comment
+          ? `<div class="cm-tooltip-comment" style="margin-top: 4px; font-size: 0.7rem; color: rgba(255, 255, 255, 0.6); font-style: italic; max-width: 180px; white-space: normal; word-break: break-word;">"${closestPt.comment}"</div>`
+          : '';
+
         tooltip.innerHTML = `
           <div class="cm-tooltip-price">${closestPt.price.toFixed(2)} €</div>
           <div class="cm-tooltip-date">${closestPt.dateText}</div>
+          ${commentHtml}
         `;
       }
     });
