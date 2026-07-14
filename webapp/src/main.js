@@ -58,6 +58,15 @@ function cleanCardName(cardId) {
   return clean;
 }
 
+// Resolve Cardmarket S3 images through Vercel serverless proxy to bypass hotlinking blocks
+function getProxiedImageUrl(url) {
+  if (!url) return '/logo.png';
+  if (url.startsWith('/') || url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) {
+    return url;
+  }
+  return `/api/image-proxy?url=${encodeURIComponent(url)}`;
+}
+
 // Robust comment and metadata extractor matching extension parser
 function parseHistoryItem(item) {
   let matchedLang = item.language;
@@ -289,7 +298,7 @@ async function renderDashboard(container) {
 
         divResults.innerHTML = uniqueCards.map(c => `
           <div class="search-result-item glass-panel" data-card="${c.card_id}" data-tcg="${c.tcg}">
-            <img class="search-result-img" src="${c.imageUrl || '/logo.png'}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+            <img class="search-result-img" src="${getProxiedImageUrl(c.imageUrl)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
             <div class="search-result-info">
               <span class="search-result-name">${cleanCardName(c.card_id)}</span>
               <span class="search-result-tcg">${c.tcg}</span>
@@ -407,7 +416,7 @@ function renderWatchlistTab(container) {
     cardEl.className = 'watchlist-item glass-panel';
     cardEl.setAttribute('data-card-id', card.id);
     cardEl.innerHTML = `
-      <img class="watchlist-item-img" src="${card.image_url || '/logo.png'}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+      <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
       <div class="watchlist-item-info">
         <span class="watchlist-item-tcg">${card.tcg}</span>
         <span class="watchlist-item-name">${cleanCardName(card.card_id)}</span>
@@ -531,7 +540,7 @@ async function loadLatestPriceForDashboard(card) {
       if (foundImageUrl) {
         const imgEl = document.querySelector(`.watchlist-item[data-card-id="${card.id}"] .watchlist-item-img`);
         if (imgEl) {
-          imgEl.src = foundImageUrl;
+          imgEl.src = getProxiedImageUrl(foundImageUrl);
         }
       }
 
@@ -695,7 +704,7 @@ function renderDetail(container) {
   detailBody.innerHTML = `
     <div class="card-hero-section">
       <div class="hero-img-wrapper" style="position: relative; display: inline-block;">
-        <img class="hero-img" src="${details.imageUrl || '/logo.png'}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+        <img class="hero-img" src="${getProxiedImageUrl(details.imageUrl)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
         <button id="btn-edit-image" class="app-btn-edit-image" style="position: absolute; bottom: 8px; right: 8px; font-size: 0.65rem; padding: 4px 8px; border-radius: 4px; background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.15); color: #fff; cursor: pointer; display: flex; align-items: center; gap: 4px; z-index: 10;">
           <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -736,7 +745,7 @@ function renderDetail(container) {
 
         const heroImg = detailBody.querySelector('.hero-img');
         if (heroImg) {
-          heroImg.src = cleanUrl || '/logo.png';
+          heroImg.src = getProxiedImageUrl(cleanUrl);
         }
 
         alert("Bild erfolgreich aktualisiert!");
