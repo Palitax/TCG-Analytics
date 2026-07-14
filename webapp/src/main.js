@@ -777,11 +777,21 @@ function renderDetail(container) {
         // Compress to Max Width 200px (ideal thumbnail resolution)
         const compressedBase64 = await compressImage(base64Raw, 200);
 
-        const { error } = await supabase
+        // Use delete-then-insert workaround to bypass potential Supabase RLS UPDATE policy restrictions
+        await supabase
           .from('marked_cards')
-          .update({ image_url: compressedBase64 })
+          .delete()
           .eq('card_id', details.cardId)
           .eq('user_id', currentUser.id);
+
+        const { error } = await supabase
+          .from('marked_cards')
+          .insert({
+            user_id: currentUser.id,
+            tcg: details.tcg,
+            card_id: details.cardId,
+            image_url: compressedBase64
+          });
 
         if (error) throw error;
 
