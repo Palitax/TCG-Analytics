@@ -368,19 +368,42 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
       continue;
     }
 
-    // 2. Verify card condition matches target
+    // 2. Verify card condition matches target (minimum condition logic: target or better)
+    const CONDITION_RANK = {
+      "MT": 1,
+      "NM": 2,
+      "EX": 3,
+      "GD": 4,
+      "LP": 5,
+      "PL": 6,
+      "PO": 7
+    };
     const conditionElements = row.querySelectorAll('.article-condition, .condition, .badge, span, a');
     let conditionMatches = false;
+    let foundConditionCode = null;
+
     for (const el of conditionElements) {
       const text = el.textContent.trim().toUpperCase();
-      if (
-        text === targetCondition ||
-        text.startsWith(targetCondition + ' ') ||
-        text.startsWith(targetCondition + '(') ||
-        text.split(/[^A-Z]/)[0] === targetCondition
-      ) {
+      const codes = ["MT", "NM", "EX", "GD", "LP", "PL", "PO"];
+      for (const code of codes) {
+        if (
+          text === code ||
+          text.startsWith(code + ' ') ||
+          text.startsWith(code + '(') ||
+          text.split(/[^A-Z]/)[0] === code
+        ) {
+          foundConditionCode = code;
+          break;
+        }
+      }
+      if (foundConditionCode) break;
+    }
+
+    if (foundConditionCode) {
+      const targetVal = CONDITION_RANK[targetCondition] || 7;
+      const foundVal = CONDITION_RANK[foundConditionCode] || 7;
+      if (foundVal <= targetVal) {
         conditionMatches = true;
-        break;
       }
     }
 
@@ -640,7 +663,7 @@ function updateOverlay(status, details = {}) {
       <!-- Injected Dropdown Controls -->
       <div class="cm-tracker-controls">
         <div class="cm-control-item">
-          <label>Zustand:</label>
+          <label>Min. Zustand:</label>
           <select id="cm-select-condition" class="cm-dropdown">
             <option value="MT" ${selectedCondition === 'MT' ? 'selected' : ''}>MT (Mint)</option>
             <option value="NM" ${selectedCondition === 'NM' ? 'selected' : ''}>NM (Near Mint)</option>
