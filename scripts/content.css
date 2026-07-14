@@ -378,7 +378,7 @@
 .cm-tracker-comments-container {
   margin-top: 10px;
   background: rgba(255, 255, 255, 0.03);
-  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   padding-top: 8px;
   display: flex;
   flex-direction: column;
@@ -488,13 +488,11 @@
 .cm-tracker-last-scan-row {
   margin-top: 8px;
   background: rgba(255, 255, 255, 0.02);
-  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding-top: 6px;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .cm-last-scan-label {
@@ -540,4 +538,22 @@
   height: 11px !important;
   display: inline-block !important;
   vertical-align: middle !important;
+}
+
+.cm-last-comment-row {
+  font-size: 0.76rem;
+  color: rgba(255, 255, 255, 0.55);
+  font-style: italic;
+  padding-left: 6px;
+  border-left: 2px solid rgba(255, 255, 255, 0.1);
+  margin-top: 2px;
+}
+
+.cm-current-comment-row {
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-style: italic;
+  padding-left: 6px;
+  border-left: 2px solid rgba(255, 255, 255, 0.2);
 }

@@ -629,37 +629,31 @@ function updateOverlay(status, details = {}) {
       
       lastScanRowHtml = `
         <div class="cm-tracker-last-scan-row">
-          <span class="cm-last-scan-label">Letzter Scan (${dateStr}):</span>
-          <div class="cm-last-scan-details">
-            <span class="cm-last-scan-price">${lastPrice.toFixed(2)} €</span>
-            <span class="cm-last-scan-cond cm-tracker-badge">${displayLastCondition}</span>
-            <div class="cm-last-scan-flags">
-              <span title="Verkäufer beim letzten Scan">${lastSellerFlag}</span>
-              <span title="Kartensprache beim letzten Scan">${lastLangFlag}</span>
+          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 8px;">
+            <span class="cm-last-scan-label">Letzter Scan (${dateStr}):</span>
+            <div class="cm-last-scan-details">
+              <span class="cm-last-scan-price">${lastPrice.toFixed(2)} €</span>
+              <span class="cm-last-scan-cond cm-tracker-badge">${displayLastCondition}</span>
+              <div class="cm-last-scan-flags">
+                <span title="Verkäufer beim letzten Scan">${lastSellerFlag}</span>
+                <span title="Kartensprache beim letzten Scan">${lastLangFlag}</span>
+              </div>
             </div>
           </div>
+          ${lastComment ? `
+            <div class="cm-last-comment-row">
+              <span class="cm-comment-quote">"${lastComment}"</span>
+            </div>
+          ` : ''}
         </div>
       `;
     }
 
-    // Comment field block layout inside the overlay
-    let commentBlockHtml = '';
-    if (comment || lastComment) {
-      commentBlockHtml = `
-        <div class="cm-tracker-comments-container">
-          <span class="cm-comments-title">Kommentare:</span>
-          ${comment ? `
-            <div class="cm-comment-row">
-              <span class="cm-comment-label">Dieses Angebot:</span>
-              <span class="cm-comment-val">"${comment}"</span>
-            </div>
-          ` : ''}
-          ${lastComment ? `
-            <div class="cm-comment-row">
-              <span class="cm-comment-label">Letzter Scan-Wert:</span>
-              <span class="cm-comment-val">"${lastComment}"</span>
-            </div>
-          ` : ''}
+    let currentCommentHtml = '';
+    if (comment) {
+      currentCommentHtml = `
+        <div class="cm-current-comment-row">
+          <span class="cm-comment-quote">"${comment}"</span>
         </div>
       `;
     }
@@ -682,9 +676,9 @@ function updateOverlay(status, details = {}) {
             </div>
           </div>
         </div>
+        ${currentCommentHtml}
         ${statusText}
         ${lastScanRowHtml}
-        ${commentBlockHtml}
       </div>
     `;
   }
@@ -736,7 +730,8 @@ function updateOverlay(status, details = {}) {
           </details>
         </div>
 
-        <div class="cm-control-item" style="justify-content: flex-end;">
+        <div class="cm-control-item">
+          <label>&nbsp;</label>
           <button id="cm-btn-apply-filters" class="cm-btn-apply">Anwenden</button>
         </div>
       </div>
