@@ -780,9 +780,9 @@ function updateOverlay(status, details = {}) {
       });
 
       // Generate polyline path
-      const pathData = svgPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+      const pathData = svgPoints.map((p, i) => (i === 0 ? 'M' : 'L') + ' ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ');
       // Generate gradient area path (extend to bottom grid y=90)
-      const areaData = `${pathData} L ${svgPoints[svgPoints.length - 1].x.toFixed(1)} 90 L ${svgPoints[0].x.toFixed(1)} 90 Z`;
+      const areaData = pathData + ' L ' + svgPoints[svgPoints.length - 1].x.toFixed(1) + ' 90 L ' + svgPoints[0].x.toFixed(1) + ' 90 Z';
 
       // Format boundary dates for X axis
       const firstDateStr = new Date(minTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
