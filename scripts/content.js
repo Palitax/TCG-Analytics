@@ -26,6 +26,17 @@ const LANGUAGE_LABELS = {
   "KO": ["Koreanisch", "Korean"]
 };
 
+const LANGUAGE_NAMES_GERMAN = {
+  "DE": "Deutsch",
+  "EN": "Englisch",
+  "ES": "Spanisch",
+  "FR": "Französisch",
+  "IT": "Italienisch",
+  "JP": "Japanisch",
+  "ZH": "Chinesisch",
+  "KO": "Koreanisch"
+};
+
 const COUNTRY_NAMES = {
   "DE": ["Deutschland", "Germany", "Allemagne", "Alemania", "Germania"],
   "ES": ["Spanien", "Spain", "Espagne", "España", "Spagna"],
@@ -58,6 +69,37 @@ function getTcgAndCardId() {
   const tcg = parts.length > 0 ? parts[0] : 'Magic';
   const cardId = '/' + parts.join('/');
   return { tcg, cardId };
+}
+
+// Scrape available languages from the Cardmarket filter sidebar checkboxes
+function getAvailableLanguages() {
+  const checkboxes = document.querySelectorAll('aside input[name="language"], aside input[name="language[]"], #searchFilterForm input[name="language"], #searchFilterForm input[name="language[]"], .filter-sidebar input[name="language"], .filter-sidebar input[name="language[]"]');
+  
+  if (checkboxes.length === 0) {
+    // Fallback if sidebar is not loaded or classes changed: return all standard languages
+    return ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
+  }
+  
+  const languageMap = {
+    "1": "EN",
+    "2": "FR",
+    "3": "DE",
+    "4": "ES",
+    "5": "IT",
+    "7": "JP",
+    "8": "ZH",
+    "10": "KO"
+  };
+  
+  const available = [];
+  checkboxes.forEach(cb => {
+    const langCode = languageMap[cb.value];
+    if (langCode && !available.includes(langCode)) {
+      available.push(langCode);
+    }
+  });
+  
+  return available.length > 0 ? available : ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
 }
 
 // Helper to find a checkbox input by its label keywords globally
@@ -549,7 +591,8 @@ function updateOverlay(status, details = {}) {
   const {
     selectedCondition = 'NM',
     selectedLocation = 'DE',
-    selectedLanguages = ['ALL'],
+    selectedLanguage = 'ALL',
+    availableLanguages = [],
     currentPrice = null,
     lastPrice = null,
     lastScannedAt = null,
@@ -564,8 +607,6 @@ function updateOverlay(status, details = {}) {
     noMatch = false,
     errorText = null
   } = details;
-
-  const summaryText = selectedLanguages.includes('ALL') ? 'Alle' : selectedLanguages.join(', ');
 
   let resultHtml = '';
   if (status === 'error') {
@@ -620,23 +661,67 @@ function updateOverlay(status, details = {}) {
       statusText = `<span class="cm-tracker-status-desc">${changeStr}</span>`;
     }
 
-    // Render last scan row if there was a previous scan
-    let lastScanRowHtml = '';
+    // Render current offer as a card/tile
+    let currentCommentHtml = '';
+    if (comment) {
+      currentCommentHtml = `
+        <div class="cm-current-comment-row">
+          <span class="cm-comment-quote">"${comment}"</span>
+        </div>
+      `;
+    }
+
+    const currentTileHtml = `
+      <div class="cm-tracker-tile cm-current-tile">
+        <div class="cm-tile-header">
+          <span class="cm-tile-tag cm-tag-current">Aktuelles Angebot</span>
+          ${diffBadge}
+        </div>
+        <div class="cm-tile-body">
+          <div class="cm-tile-price-section">
+            <span class="cm-tile-price">${currentPrice.toFixed(2)} €</span>
+          </div>
+          <div class="cm-tile-meta-section">
+            <div class="cm-tile-meta-item cm-clickable-seller" title="Klicke hier, um zum Verkäufer in der Liste zu springen">
+              <span class="cm-tile-meta-label">Verkäufer:</span>
+              <span class="cm-tile-meta-value">${sellerFlag} (${matchedCountry})</span>
+            </div>
+            <div class="cm-tile-meta-item" title="Sprache der Karte">
+              <span class="cm-tile-meta-label">Karte:</span>
+              <span class="cm-tile-meta-value">${langFlag} (${matchedLanguage})</span>
+            </div>
+          </div>
+        </div>
+        ${currentCommentHtml}
+        ${statusText}
+      </div>
+    `;
+
+    // Render last scan row if there was a previous scan, also as a card/tile
+    let lastTileHtml = '';
     if (lastPrice !== null) {
       const lastSellerFlag = getFlagHtml('seller', lastCountry);
       const lastLangFlag = getFlagHtml('language', lastLanguage);
       const displayLastCondition = lastCondition || 'Unbekannt';
       
-      lastScanRowHtml = `
-        <div class="cm-tracker-last-scan-row">
-          <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 8px;">
-            <span class="cm-last-scan-label">Letzter Scan (${dateStr}):</span>
-            <div class="cm-last-scan-details">
-              <span class="cm-last-scan-price">${lastPrice.toFixed(2)} €</span>
-              <span class="cm-last-scan-cond cm-tracker-badge">${displayLastCondition}</span>
-              <div class="cm-last-scan-flags">
-                <span title="Verkäufer beim letzten Scan">${lastSellerFlag}</span>
-                <span title="Kartensprache beim letzten Scan">${lastLangFlag}</span>
+      lastTileHtml = `
+        <div class="cm-tracker-tile cm-last-tile">
+          <div class="cm-tile-header">
+            <span class="cm-tile-tag cm-tag-last">Letzter Scan (${dateStr})</span>
+          </div>
+          <div class="cm-tile-body">
+            <div class="cm-tile-price-section">
+              <span class="cm-tile-price">${lastPrice.toFixed(2)} €</span>
+            </div>
+            <div class="cm-tile-meta-section">
+              <div class="cm-tile-meta-item" title="Verkäufer beim letzten Scan">
+                <span class="cm-tile-meta-label">Verkäufer:</span>
+                <span class="cm-tile-meta-value">${lastSellerFlag} (${lastCountry})</span>
+              </div>
+              <div class="cm-tile-meta-item" title="Kartensprache und Zustand beim letzten Scan">
+                <span class="cm-tile-meta-label">Karte:</span>
+                <span class="cm-tile-meta-value">${lastLangFlag} (${lastLanguage})</span>
+                <span class="cm-tile-meta-cond cm-tracker-badge">${displayLastCondition}</span>
               </div>
             </div>
           </div>
@@ -649,36 +734,10 @@ function updateOverlay(status, details = {}) {
       `;
     }
 
-    let currentCommentHtml = '';
-    if (comment) {
-      currentCommentHtml = `
-        <div class="cm-current-comment-row">
-          <span class="cm-comment-quote">"${comment}"</span>
-        </div>
-      `;
-    }
-
     resultHtml = `
       <div class="cm-tracker-results">
-        <div class="cm-tracker-row">
-          <div class="cm-tracker-price-box">
-            <span class="cm-tracker-price-value">${currentPrice.toFixed(2)} €</span>
-            ${diffBadge}
-          </div>
-          <div class="cm-tracker-meta-flags">
-            <div class="cm-flag-group cm-clickable-seller" title="Klicke hier, um zum Verkäufer in der Liste zu springen">
-              <span class="cm-flag-group-label">Verkäufer:</span>
-              ${sellerFlag}
-            </div>
-            <div class="cm-flag-group" title="Sprache der Karte">
-              <span class="cm-flag-group-label">Karte:</span>
-              ${langFlag}
-            </div>
-          </div>
-        </div>
-        ${currentCommentHtml}
-        ${statusText}
-        ${lastScanRowHtml}
+        ${currentTileHtml}
+        ${lastTileHtml}
       </div>
     `;
   }
@@ -713,21 +772,14 @@ function updateOverlay(status, details = {}) {
         </div>
 
         <div class="cm-control-item">
-          <label>Sprachen:</label>
-          <details class="cm-multiselect-details" id="cm-select-languages-details">
-            <summary id="cm-languages-summary">${summaryText}</summary>
-            <div class="cm-multiselect-options">
-              <label><input type="checkbox" value="ALL" id="cm-lang-all" ${selectedLanguages.includes('ALL') ? 'checked' : ''}> Alle</label>
-              <label><input type="checkbox" value="DE" class="cm-lang-check" ${selectedLanguages.includes('DE') ? 'checked' : ''}> Deutsch</label>
-              <label><input type="checkbox" value="EN" class="cm-lang-check" ${selectedLanguages.includes('EN') ? 'checked' : ''}> Englisch</label>
-              <label><input type="checkbox" value="ES" class="cm-lang-check" ${selectedLanguages.includes('ES') ? 'checked' : ''}> Spanisch</label>
-              <label><input type="checkbox" value="FR" class="cm-lang-check" ${selectedLanguages.includes('FR') ? 'checked' : ''}> Französisch</label>
-              <label><input type="checkbox" value="IT" class="cm-lang-check" ${selectedLanguages.includes('IT') ? 'checked' : ''}> Italienisch</label>
-              <label><input type="checkbox" value="JP" class="cm-lang-check" ${selectedLanguages.includes('JP') ? 'checked' : ''}> Japanisch</label>
-              <label><input type="checkbox" value="ZH" class="cm-lang-check" ${selectedLanguages.includes('ZH') ? 'checked' : ''}> Chinesisch</label>
-              <label><input type="checkbox" value="KO" class="cm-lang-check" ${selectedLanguages.includes('KO') ? 'checked' : ''}> Koreanisch</label>
-            </div>
-          </details>
+          <label>Sprache:</label>
+          <select id="cm-select-language" class="cm-dropdown">
+            <option value="ALL" ${selectedLanguage === 'ALL' ? 'selected' : ''}>Alle Sprachen</option>
+            ${availableLanguages.map(lang => {
+              const label = LANGUAGE_NAMES_GERMAN[lang] || lang;
+              return `<option value="${lang}" ${selectedLanguage === lang ? 'selected' : ''}>${label}</option>`;
+            }).join('')}
+          </select>
         </div>
 
         <div class="cm-control-item">
@@ -748,74 +800,29 @@ function updateOverlay(status, details = {}) {
 function attachListeners() {
   const selectCondition = document.getElementById('cm-select-condition');
   const selectLocation = document.getElementById('cm-select-location');
-  const langAll = document.getElementById('cm-lang-all');
-  const langChecks = document.querySelectorAll('.cm-lang-check');
-  const selectLanguagesDetails = document.getElementById('cm-select-languages-details');
-
-  if (!selectCondition || !selectLocation) return;
+  const selectLanguage = document.getElementById('cm-select-language');
+ 
+  if (!selectCondition || !selectLocation || !selectLanguage) return;
 
   const saveAndRefresh = async () => {
-    let checkedLangs = [];
-    if (langAll.checked) {
-      checkedLangs = ['ALL'];
-    } else {
-      langChecks.forEach(cb => {
-        if (cb.checked) checkedLangs.push(cb.value);
-      });
-      if (checkedLangs.length === 0) {
-        checkedLangs = ['ALL'];
-        langAll.checked = true;
-      }
-    }
-
     const newPrefs = {
       condition: selectCondition.value,
       location: selectLocation.value,
-      languages: checkedLangs
+      language: selectLanguage.value
     };
 
     const storageKey = 'preferences_' + currentUserId;
     await chrome.storage.local.set({ [storageKey]: newPrefs });
 
-    const isReloading = await applySidebarFilter(newPrefs);
+    const isReloading = await applySidebarFilter({
+      condition: newPrefs.condition,
+      location: newPrefs.location,
+      languages: [newPrefs.language]
+    });
     if (!isReloading) {
       runScan(); // If no page reload is needed, run scanner locally instantly
     }
   };
-
-  const updateLanguagesSummary = () => {
-    const summaryEl = document.getElementById('cm-languages-summary');
-    if (!summaryEl) return;
-    let checkedLangs = [];
-    if (langAll.checked) {
-      checkedLangs = ['ALL'];
-    } else {
-      langChecks.forEach(cb => {
-        if (cb.checked) checkedLangs.push(cb.value);
-      });
-      if (checkedLangs.length === 0) {
-        checkedLangs = ['ALL'];
-        langAll.checked = true;
-      }
-    }
-    summaryEl.textContent = checkedLangs.includes('ALL') ? 'Alle' : checkedLangs.join(', ');
-  };
-
-  langAll.addEventListener('change', (e) => {
-    if (e.target.checked) {
-      langChecks.forEach(cb => cb.checked = false);
-    }
-    updateLanguagesSummary();
-  });
-
-  langChecks.forEach(cb => {
-    cb.addEventListener('change', (e) => {
-      if (e.target.checked) {
-        langAll.checked = false;
-      }
-      updateLanguagesSummary();
-    });
-  });
 
   const btnApply = document.getElementById('cm-btn-apply-filters');
   if (btnApply) {
@@ -835,12 +842,6 @@ function attachListeners() {
       }, 5000);
     });
   }
-
-  document.addEventListener('click', (e) => {
-    if (selectLanguagesDetails && !selectLanguagesDetails.contains(e.target)) {
-      selectLanguagesDetails.removeAttribute('open');
-    }
-  });
 }
 
 // Execute active scan sequence matching interactive selection criteria
@@ -863,15 +864,34 @@ async function runScan() {
     const { [storageKey]: prefs } = await chrome.storage.local.get(storageKey);
     let savedCondition = prefs?.condition || 'NM';
     let savedLocation = prefs?.location || 'DE';
-    let savedLanguages = prefs?.languages || ['ALL'];
+    
+    // Support migrating from array layout to single string layout:
+    let savedLanguage = prefs?.language || (prefs?.languages && prefs.languages[0]) || 'ALL';
+
+    // Get available languages on the current page
+    const availableLangs = getAvailableLanguages();
+
+    // Verify if savedLanguage is available, if not reset to ALL
+    if (savedLanguage !== 'ALL' && !availableLangs.includes(savedLanguage)) {
+      console.log(`Saved language "${savedLanguage}" is not available for this card. Resetting language to "ALL".`);
+      savedLanguage = 'ALL';
+      // Save the updated preference immediately
+      const newPrefs = {
+        condition: savedCondition,
+        location: savedLocation,
+        language: savedLanguage
+      };
+      await chrome.storage.local.set({ [storageKey]: newPrefs });
+    }
 
     // Read the current state from the URL query parameters
     const sidebar = getSidebarState();
+    const sidebarLanguage = sidebar.languages.includes('ALL') ? 'ALL' : sidebar.languages[0];
     const { tcg, cardId } = getTcgAndCardId();
 
     const urlParams = new URLSearchParams(window.location.search);
     const hasUrlLocation = urlParams.has('sellerCountry');
-    const hasUrlLanguages = urlParams.has('language') || urlParams.has('language[]');
+    const hasUrlLanguage = urlParams.has('language');
     const hasUrlCondition = urlParams.has('minCondition');
 
     let prefsUpdated = false;
@@ -881,15 +901,9 @@ async function runScan() {
       savedLocation = sidebar.location;
       prefsUpdated = true;
     }
-    if (hasUrlLanguages) {
-      const sortedSaved = [...savedLanguages].sort();
-      const sortedSidebar = [...sidebar.languages].sort();
-      const match = (sortedSaved.length === sortedSidebar.length && 
-                     sortedSaved.every((val, index) => val === sortedSidebar[index]));
-      if (!match) {
-        savedLanguages = sidebar.languages;
-        prefsUpdated = true;
-      }
+    if (hasUrlLanguage && savedLanguage !== sidebarLanguage) {
+      savedLanguage = sidebarLanguage;
+      prefsUpdated = true;
     }
     if (hasUrlCondition && sidebar.condition && savedCondition !== sidebar.condition) {
       savedCondition = sidebar.condition;
@@ -900,7 +914,7 @@ async function runScan() {
       const newPrefs = {
         condition: savedCondition,
         location: savedLocation,
-        languages: savedLanguages
+        language: savedLanguage
       };
       await chrome.storage.local.set({ [storageKey]: newPrefs });
       console.log("Updated saved preferences from URL state:", newPrefs);
@@ -908,14 +922,13 @@ async function runScan() {
 
     // Verify if sidebar checkboxes/conditions match our user-saved preferences.
     const matchesLocation = (sidebar.location === savedLocation);
-    const matchesLanguages = (sidebar.languages.length === savedLanguages.length && 
-                              sidebar.languages.every(lang => savedLanguages.includes(lang)));
+    const matchesLanguage = (sidebarLanguage === savedLanguage);
     const matchesCondition = (sidebar.condition === savedCondition);
 
     // Verify if the sidebar container is present in the DOM before attempting to reload
     const filterContainer = document.querySelector('aside, .sidebar, #sidebar, #searchFilterForm, .filter-sidebar, #filter-sidebar');
 
-    if (filterContainer && (!matchesLocation || !matchesLanguages || !matchesCondition)) {
+    if (filterContainer && (!matchesLocation || !matchesLanguage || !matchesCondition)) {
       const sessionKey = 'cm_reload_' + cardId;
       const reloadCount = parseInt(sessionStorage.getItem(sessionKey) || '0', 10);
 
@@ -925,7 +938,7 @@ async function runScan() {
         const isReloading = await applySidebarFilter({
           condition: savedCondition,
           location: savedLocation,
-          languages: savedLanguages
+          languages: [savedLanguage]
         });
         if (isReloading) return; // Wait for the page to reload
       } else {
@@ -940,17 +953,19 @@ async function runScan() {
     updateOverlay('loading', {
       selectedCondition: savedCondition,
       selectedLocation: savedLocation,
-      selectedLanguages: savedLanguages
+      selectedLanguage: savedLanguage,
+      availableLanguages: availableLangs
     });
 
     // Since Cardmarket filtered the page, we simply scrape the matching condition row
-    const match = scrapePrice(savedCondition, savedLocation, savedLanguages);
+    const match = scrapePrice(savedCondition, savedLocation, [savedLanguage]);
     if (!match) {
       currentMatchedElement = null;
       updateOverlay('success', {
         selectedCondition: savedCondition,
         selectedLocation: savedLocation,
-        selectedLanguages: savedLanguages,
+        selectedLanguage: savedLanguage,
+        availableLanguages: availableLangs,
         noMatch: true
       });
       return;
@@ -973,7 +988,8 @@ async function runScan() {
         updateOverlay('error', {
           selectedCondition: savedCondition,
           selectedLocation: savedLocation,
-          selectedLanguages: savedLanguages,
+          selectedLanguage: savedLanguage,
+          availableLanguages: availableLangs,
           errorText: "Verbindung zur Extension fehlgeschlagen."
         });
         return;
@@ -984,7 +1000,8 @@ async function runScan() {
         updateOverlay('error', {
           selectedCondition: savedCondition,
           selectedLocation: savedLocation,
-          selectedLanguages: savedLanguages,
+          selectedLanguage: savedLanguage,
+          availableLanguages: availableLangs,
           errorText: `Datenbank-Fehler: ${dbResponse.error}`
         });
         return;
@@ -995,7 +1012,8 @@ async function runScan() {
       updateOverlay('success', {
         selectedCondition: savedCondition,
         selectedLocation: savedLocation,
-        selectedLanguages: savedLanguages,
+        selectedLanguage: savedLanguage,
+        availableLanguages: availableLangs,
         currentPrice: match.price,
         lastPrice: record ? parseFloat(record.price) : null,
         lastScannedAt: record ? record.scanned_at : null,
