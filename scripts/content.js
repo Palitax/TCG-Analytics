@@ -143,6 +143,7 @@ function getFlagHtml(type, code) {
 function getSidebarState() {
   const urlParams = new URLSearchParams(window.location.search);
   const sellerCountryParam = urlParams.get('sellerCountry');
+  const minConditionParam = urlParams.get('minCondition');
   
   const langParams = [];
   urlParams.forEach((value, key) => {
@@ -167,11 +168,23 @@ function getSidebarState() {
   const activeLangs = langParams.map(id => languageMap[id]).filter(Boolean);
   const activeLocation = isDeFiltered ? 'DE' : 'ALL';
 
-  console.log(`getSidebarState (URL): Location = ${activeLocation}, Languages = [${activeLangs.join(', ')}]`);
+  const conditionMap = {
+    "1": "MT",
+    "2": "NM",
+    "3": "EX",
+    "4": "GD",
+    "5": "LP",
+    "6": "PL",
+    "7": "PO"
+  };
+  const activeCondition = conditionMap[minConditionParam] || 'NM';
+
+  console.log(`getSidebarState (URL): Location = ${activeLocation}, Languages = [${activeLangs.join(', ')}], Condition = ${activeCondition}`);
 
   return {
     location: activeLocation,
-    languages: activeLangs.length === 0 ? ['ALL'] : activeLangs
+    languages: activeLangs.length === 0 ? ['ALL'] : activeLangs,
+    condition: activeCondition
   };
 }
 
@@ -195,7 +208,28 @@ async function applySidebarFilter(newPrefs) {
     changed = true;
   }
 
-  // 2. Sync languages
+  // 2. Sync condition (minCondition)
+  const currentConditionParam = params.get('minCondition');
+  const conditionMap = {
+    "MT": "1",
+    "NM": "2",
+    "EX": "3",
+    "GD": "4",
+    "LP": "5",
+    "PL": "6",
+    "PO": "7"
+  };
+  const targetConditionParam = conditionMap[newPrefs.condition] || null;
+  if (currentConditionParam !== targetConditionParam) {
+    if (targetConditionParam) {
+      params.set('minCondition', targetConditionParam);
+    } else {
+      params.delete('minCondition');
+    }
+    changed = true;
+  }
+
+  // 3. Sync languages
   const languageMap = {
     "EN": "1",
     "FR": "2",
@@ -233,8 +267,12 @@ async function applySidebarFilter(newPrefs) {
   if (!langsMatch) {
     params.delete('language');
     params.delete('language[]');
-    for (const id of targetLangs) {
-      params.append('language[]', id);
+    if (targetLangs.length === 1) {
+      params.set('language', targetLangs[0]);
+    } else {
+      for (const id of targetLangs) {
+        params.append('language[]', id);
+      }
     }
     changed = true;
   }
@@ -748,9 +786,9 @@ async function runScan() {
     currentUserId = response.user.id;
     const storageKey = 'preferences_' + currentUserId;
 
-    // Load saved settings
+        // Load saved settings
     const { [storageKey]: prefs } = await chrome.storage.local.get(storageKey);
-    const savedCondition = prefs?.condition || 'NM';
+    let savedCondition = prefs?.condition || 'NM';
     let savedLocation = prefs?.location || 'DE';
     let savedLanguages = prefs?.languages || ['ALL'];
 
@@ -761,12 +799,17 @@ async function runScan() {
     const urlParams = new URLSearchParams(window.location.search);
     const hasUrlLocation = urlParams.has('sellerCountry');
     const hasUrlLanguages = urlParams.has('language') || urlParams.has('language[]');
+    const hasUrlCondition = urlParams.has('minCondition');
 
     let prefsUpdated = false;
 
     // Bidirectional sync: if the URL contains active filters, we save them as the active preference!
     if (hasUrlLocation && savedLocation !== sidebar.location) {
       savedLocation = sidebar.location;
+      prefsUpdated = true;
+    }
+    if (hasUrlCondition && savedCondition !== sidebar.condition) {
+      savedCondition = sidebar.condition;
       prefsUpdated = true;
     }
     if (hasUrlLanguages) {
@@ -794,11 +837,12 @@ async function runScan() {
     const matchesLocation = (sidebar.location === savedLocation);
     const matchesLanguages = (sidebar.languages.length === savedLanguages.length && 
                               sidebar.languages.every(lang => savedLanguages.includes(lang)));
+    const matchesCondition = (sidebar.condition === savedCondition);
 
     // Verify if the sidebar container is present in the DOM before attempting to reload
     const filterContainer = document.querySelector('aside, .sidebar, #sidebar, #searchFilterForm, .filter-sidebar, #filter-sidebar');
 
-    if (filterContainer && (!matchesLocation || !matchesLanguages)) {
+    if (filterContainer && (!matchesLocation || !matchesLanguages || !matchesCondition)) {
       const sessionKey = 'cm_reload_' + cardId;
       const reloadCount = parseInt(sessionStorage.getItem(sessionKey) || '0', 10);
 
@@ -806,6 +850,7 @@ async function runScan() {
         console.log("Overlay preferences do not match page filters. Auto-syncing...");
         sessionStorage.setItem(sessionKey, (reloadCount + 1).toString());
         const isReloading = await applySidebarFilter({
+          condition: savedCondition,
           location: savedLocation,
           languages: savedLanguages
         });
