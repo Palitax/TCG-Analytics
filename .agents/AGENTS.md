@@ -1,4 +1,4 @@
-# Custom Rules for Cardmarket Price Tracker Pro
+# Custom Rules for TCG Card Tracker
 
 ## Git Auto-Commit & Push Rule
 - **Rule**: After completing any implementation phase, code modification, or bug fix, the agent MUST automatically perform the following steps:

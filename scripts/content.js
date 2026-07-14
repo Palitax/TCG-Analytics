@@ -1,4 +1,4 @@
-// Cardmarket Price Tracker Pro - Content Script
+// TCG Card Tracker - Content Script
 let activeOverlay = null;
 let currentUserId = null;
 let currentMatchedElement = null; // Store reference to scroll to the matched seller row
@@ -616,7 +616,7 @@ function updateOverlay(status, details = {}) {
     activeOverlay.innerHTML = `
       <div class="cm-tracker-header">
         <span class="cm-tracker-dot inactive"></span>
-        <span class="cm-tracker-title">Cardmarket Price Tracker Pro</span>
+        <span class="cm-tracker-title">TCG Card Tracker</span>
       </div>
       <div class="cm-tracker-body">
         <span class="cm-tracker-text warning">Bitte im Popup der Erweiterung einloggen!</span>
@@ -663,7 +663,7 @@ function updateOverlay(status, details = {}) {
   const headerHtml = `
     <div class="cm-tracker-header">
       <span class="cm-tracker-dot ${dotClass}" title="${dotTitle}"></span>
-      <span class="cm-tracker-title">Cardmarket Price Tracker Pro</span>
+      <span class="cm-tracker-title">TCG Card Tracker</span>
       ${blockIndicatorHtml}
     </div>
   `;

@@ -16,7 +16,7 @@ function showPanel(panel) {
   panel.classList.add('active');
 }
 
-// Refresh scanning indicator on the active Cardmarket tab
+// Refresh scanning indicator on the active tab
 async function triggerTabScan() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
