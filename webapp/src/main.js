@@ -984,3 +984,5 @@ function renderDetail(container) {
 
 // Start PWA Router
 init();
+
+// Trigger Vercel Webhook Sync
