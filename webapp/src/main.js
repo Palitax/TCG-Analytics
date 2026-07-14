@@ -3,6 +3,7 @@ import { supabase } from './supabase.js';
 // Global state variables
 let currentUser = null;
 let currentView = 'loading'; // 'loading', 'login', 'dashboard', 'detail'
+let activeDashboardTab = 'watchlist'; // 'watchlist' or 'analytics'
 let markedCards = [];
 let searchHistory = JSON.parse(localStorage.getItem('search_history') || '[]');
 let activeCardDetails = null; // Holds detail view data
@@ -211,57 +212,23 @@ async function renderDashboard(container) {
     await supabase.auth.signOut();
   });
 
-  // Search Container
+  // Search Container (Quick Search is always persistent at the top)
   const searchSection = document.createElement('div');
   searchSection.className = 'search-container';
   searchSection.innerHTML = `
     <div class="search-input-wrapper">
       <input type="text" id="inp-search" class="search-input" placeholder="Kartennummer suchen (z.B. OP15-119)..." autocomplete="off">
     </div>
-    <div id="search-history" class="search-history-dropdown" style="display: none;"></div>
     <div id="search-results" class="search-results-overlay" style="display: none;"></div>
   `;
   container.appendChild(searchSection);
 
   const inpSearch = searchSection.querySelector('#inp-search');
-  const divHistory = searchSection.querySelector('#search-history');
   const divResults = searchSection.querySelector('#search-results');
 
-  // Load search history dropdown list
-  const updateHistoryDropdown = () => {
-    if (searchHistory.length === 0) {
-      divHistory.style.display = 'none';
-      return;
-    }
-    divHistory.innerHTML = searchHistory.map(item => `
-      <div class="history-item" data-val="${item}">
-        <span class="history-text">${item}</span>
-        <button class="btn-delete-history" data-val="${item}">
-          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="16">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-    `).join('');
-  };
-
-  inpSearch.addEventListener('focus', () => {
-    if (inpSearch.value.trim() === '') {
-      updateHistoryDropdown();
-      if (searchHistory.length > 0) divHistory.style.display = 'block';
-    }
-  });
-
-  document.addEventListener('click', (e) => {
-    if (!searchSection.contains(e.target)) {
-      divHistory.style.display = 'none';
-    }
-  });
-
-  // Handle Search Input Ttyping
+  // Handle Search Input Typing
   let searchTimeout = null;
   inpSearch.addEventListener('input', () => {
-    divHistory.style.display = 'none';
     clearTimeout(searchTimeout);
     const query = inpSearch.value.trim();
 
@@ -279,7 +246,6 @@ async function renderDashboard(container) {
       `;
 
       try {
-        // Query price history rows matching card ID query target
         const { data, error } = await supabase
           .from('price_history')
           .select('card_id, tcg, comment')
@@ -288,7 +254,6 @@ async function renderDashboard(container) {
 
         if (error) throw error;
 
-        // Group results to avoid duplicate card IDs in list
         const uniqueCards = [];
         const seen = new Set();
         for (const row of data || []) {
@@ -326,7 +291,7 @@ async function renderDashboard(container) {
           item.addEventListener('click', async () => {
             const cardId = item.dataset.card;
             const tcg = item.dataset.tcg;
-            addToHistory(cardId);
+            addToHistory(cardId, tcg);
             divResults.style.display = 'none';
             inpSearch.value = '';
             await loadCardDetails(cardId, tcg);
@@ -339,54 +304,76 @@ async function renderDashboard(container) {
     }, 400);
   });
 
-  // Event delegation inside search dropdown
-  divHistory.addEventListener('click', async (e) => {
-    const item = e.target.closest('.history-item');
-    const deleteBtn = e.target.closest('.btn-delete-history');
-
-    if (deleteBtn) {
-      e.stopPropagation();
-      const val = deleteBtn.dataset.val;
-      searchHistory = searchHistory.filter(h => h !== val);
-      localStorage.setItem('search_history', JSON.stringify(searchHistory));
-      updateHistoryDropdown();
-      if (searchHistory.length === 0) divHistory.style.display = 'none';
-      return;
-    }
-
-    if (item) {
-      const val = item.dataset.val;
-      divHistory.style.display = 'none';
-      inpSearch.value = '';
-      
-      // Perform a fresh lookup based on card ID
-      divResults.style.display = 'block';
-      divResults.innerHTML = `<div class="spinner-box" style="height: 100px;"><div class="spinner" style="width: 24px; height: 24px;"></div></div>`;
-      
-      try {
-        const { data, error } = await supabase
-          .from('price_history')
-          .select('card_id, tcg, comment')
-          .eq('card_id', val)
-          .limit(1);
-
-        if (error) throw error;
-        if (data && data.length > 0) {
-          await loadCardDetails(data[0].card_id, data[0].tcg);
-          divResults.style.display = 'none';
-        } else {
-          divResults.innerHTML = `<p style="color: #f87171; padding: 16px;">Karte nicht mehr gefunden.</p>`;
-        }
-      } catch (err) {
-        divResults.innerHTML = `<p style="color: #f87171; padding: 16px;">Fehler: ${err.message}</p>`;
-      }
+  // Hide search overlay if clicked outside
+  document.addEventListener('click', (e) => {
+    if (!searchSection.contains(e.target)) {
+      divResults.style.display = 'none';
     }
   });
 
-  // Marked Cards Section
+  // Render 2 Landing Buttons for Tab toggles below the search input
+  const buttonsSection = document.createElement('div');
+  buttonsSection.className = 'cm-landing-buttons-container';
+  buttonsSection.innerHTML = `
+    <div class="cm-landing-buttons">
+      <button id="btn-tab-watchlist" class="cm-landing-btn ${activeDashboardTab === 'watchlist' ? 'active' : ''}">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499c.151-.377.728-.377.879 0l2.09 5.011 5.4 1.018a.5.5 0 01.29.839l-3.834 3.738 1.05 5.378a.5.5 0 01-.707.567L12 17.766l-4.664 2.483a.5.5 0 01-.707-.567l1.05-5.378-3.834-3.738a.5.5 0 01.29-.839l5.4-1.018 2.09-5.011z" />
+        </svg>
+        Watchlist
+      </button>
+      <button id="btn-tab-analytics" class="cm-landing-btn ${activeDashboardTab === 'analytics' ? 'active' : ''}">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+        Analytics
+      </button>
+    </div>
+  `;
+  container.appendChild(buttonsSection);
+
+  // Sub-container for active tab
+  const tabContentWrapper = document.createElement('div');
+  tabContentWrapper.id = 'dashboard-tab-content';
+  container.appendChild(tabContentWrapper);
+
+  const btnWatchlist = buttonsSection.querySelector('#btn-tab-watchlist');
+  const btnAnalytics = buttonsSection.querySelector('#btn-tab-analytics');
+
+  const renderActiveTab = () => {
+    tabContentWrapper.innerHTML = '';
+    if (activeDashboardTab === 'watchlist') {
+      renderWatchlistTab(tabContentWrapper);
+    } else {
+      renderAnalyticsTab(tabContentWrapper);
+    }
+  };
+
+  btnWatchlist.addEventListener('click', () => {
+    if (activeDashboardTab === 'watchlist') return;
+    activeDashboardTab = 'watchlist';
+    btnWatchlist.classList.add('active');
+    btnAnalytics.classList.remove('active');
+    renderActiveTab();
+  });
+
+  btnAnalytics.addEventListener('click', () => {
+    if (activeDashboardTab === 'analytics') return;
+    activeDashboardTab = 'analytics';
+    btnAnalytics.classList.add('active');
+    btnWatchlist.classList.remove('active');
+    renderActiveTab();
+  });
+
+  // Render initial selected tab content
+  renderActiveTab();
+}
+
+// Sub-Tab Watchlist Renderer
+function renderWatchlistTab(container) {
   const dashboard = document.createElement('div');
   dashboard.className = 'dashboard-content';
-  dashboard.innerHTML = `<h2 class="section-title">Markierte Karten</h2>`;
+  dashboard.innerHTML = `<h2 class="section-title">Deine Watchlist</h2>`;
   container.appendChild(dashboard);
 
   if (markedCards.length === 0) {
@@ -395,7 +382,7 @@ async function renderDashboard(container) {
         <svg class="empty-state-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499c.151-.377.728-.377.879 0l2.09 5.011 5.4 1.018a.5.5 0 01.29.839l-3.834 3.738 1.05 5.378a.5.5 0 01-.707.567L12 17.766l-4.664 2.483a.5.5 0 01-.707-.567l1.05-5.378-3.834-3.738a.5.5 0 01.29-.839l5.4-1.018 2.09-5.011z" />
         </svg>
-        <p>Noch keine markierten Karten. Scanne eine Karte mit dem Addon und markiere sie mit dem Stern.</p>
+        <p>Deine Watchlist ist leer. Scanne eine Karte mit dem Addon und markiere sie mit dem Stern.</p>
       </div>
     `;
     return;
@@ -405,7 +392,6 @@ async function renderDashboard(container) {
   grid.className = 'marked-grid';
   dashboard.appendChild(grid);
 
-  // Render cards from markedCards array
   for (const card of markedCards) {
     const cardEl = document.createElement('div');
     cardEl.className = 'marked-card glass-panel';
@@ -428,14 +414,89 @@ async function renderDashboard(container) {
       loadCardDetails(card.card_id, card.tcg);
     });
 
-    // Async load latest price for card grid list item
     loadLatestPriceForDashboard(card);
   }
 }
 
+// Sub-Tab Analytics & Search History Renderer
+function renderAnalyticsTab(container) {
+  const dashboard = document.createElement('div');
+  dashboard.className = 'dashboard-content analytics-tab-view';
+  dashboard.innerHTML = `<h2 class="section-title">Analytics & Verlauf</h2>`;
+  container.appendChild(dashboard);
+
+  const historyCard = document.createElement('div');
+  historyCard.className = 'glass-panel';
+  historyCard.style.padding = '16px';
+  dashboard.appendChild(historyCard);
+
+  historyCard.innerHTML = `<h3 style="font-size: 0.9rem; margin-bottom: 12px; font-weight: 600; color: var(--text-secondary);">Zuletzt gesucht (Letzte 5 Suchen)</h3>`;
+
+  const recentSearches = searchHistory.slice(0, 5);
+
+  if (recentSearches.length === 0) {
+    historyCard.innerHTML += `
+      <div class="empty-state" style="padding: 16px 0;">
+        <svg class="empty-state-icon" style="width: 32px; height: 32px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <p style="font-size: 0.85rem;">Kein Suchverlauf vorhanden. Nutze das obere Suchfeld, um Karten zu suchen.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'analytics-history-list';
+  historyCard.appendChild(list);
+
+  recentSearches.forEach((item, idx) => {
+    const cardId = typeof item === 'object' ? item.cardId : item;
+    const tcg = typeof item === 'object' ? item.tcg : 'Unbekannt';
+
+    const itemEl = document.createElement('div');
+    itemEl.className = 'analytics-history-item glass-panel';
+    itemEl.innerHTML = `
+      <div class="analytics-history-item-left">
+        <svg class="analytics-history-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div style="display: flex; flex-direction: column;">
+          <span class="analytics-history-text">${cardId}</span>
+          <span class="analytics-history-tcg">${tcg}</span>
+        </div>
+      </div>
+      <button class="btn-delete-history-item" data-idx="${idx}" title="Eintrag löschen">
+        <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="14" height="14">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    `;
+    list.appendChild(itemEl);
+
+    itemEl.addEventListener('click', async (e) => {
+      if (e.target.closest('.btn-delete-history-item')) return;
+      await loadCardDetails(cardId, tcg);
+    });
+
+    itemEl.querySelector('.btn-delete-history-item').addEventListener('click', (e) => {
+      e.stopPropagation();
+      searchHistory.splice(idx, 1);
+      localStorage.setItem('search_history', JSON.stringify(searchHistory));
+      renderAnalyticsTab(container);
+    });
+  });
+}
+
 // Search History storage helpers
-function addToHistory(query) {
-  searchHistory = [query, ...searchHistory.filter(h => h !== query)].slice(0, 10);
+function addToHistory(cardId, tcg) {
+  searchHistory = searchHistory.filter(h => {
+    const id = typeof h === 'object' ? h.cardId : h;
+    return id !== cardId;
+  });
+
+  searchHistory.unshift({ cardId, tcg });
+  searchHistory = searchHistory.slice(0, 10);
   localStorage.setItem('search_history', JSON.stringify(searchHistory));
 }
 
