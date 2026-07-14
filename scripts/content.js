@@ -50,24 +50,49 @@ function parseHistoryItem(item) {
 }
 
 function getCardImageUrl() {
-  const imgEl = document.querySelector('.image-container img, .product-image img, .image-box img, div[class*="image"] img, img.img-fluid');
-  if (imgEl && imgEl.src && imgEl.src.includes('cardmarket.com')) {
-    return imgEl.src;
-  }
-  const allImgs = document.querySelectorAll('img');
-  for (const img of allImgs) {
-    if (img.src && img.src.includes('cardmarket.com')) {
-      const src = img.src;
-      if (
-        src.includes('/cards/') || 
-        src.includes('/specimens/') || 
-        src.includes('/products/') || 
-        src.includes('product-images')
-      ) {
-        return src;
-      }
+  const isCardImage = (url) => {
+    if (!url) return false;
+    const cleanUrl = url.toLowerCase();
+    return (
+      cleanUrl.includes('cardmarket.com') || 
+      cleanUrl.includes('cardmarket.co')
+    ) && (
+      cleanUrl.includes('/cards/') || 
+      cleanUrl.includes('/specimens/') || 
+      cleanUrl.includes('/products/') || 
+      cleanUrl.includes('product-images')
+    );
+  };
+
+  const containers = document.querySelectorAll('.image-container img, .product-image img, .image-box img, div[class*="image"] img, img.img-fluid, .product-image-container img');
+  for (const img of containers) {
+    if (img) {
+      const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-original') || img.getAttribute('srcset');
+      if (isCardImage(src)) return src;
     }
   }
+
+  const allImgs = document.querySelectorAll('img');
+  for (const img of allImgs) {
+    const src = img.src || img.getAttribute('data-src') || img.getAttribute('data-original') || img.getAttribute('data-lazy') || img.getAttribute('srcset');
+    if (isCardImage(src)) return src;
+  }
+
+  const allLinks = document.querySelectorAll('a');
+  for (const a of allLinks) {
+    const href = a.href || a.getAttribute('href') || a.getAttribute('data-zoom');
+    if (isCardImage(href)) return href;
+  }
+
+  const allDivs = document.querySelectorAll('div[style*="background"]');
+  for (const div of allDivs) {
+    const style = div.getAttribute('style') || '';
+    const match = style.match(/url\(['"]?([^'"]+)['"]?\)/);
+    if (match && isCardImage(match[1])) {
+      return match[1];
+    }
+  }
+
   return null;
 }
 
