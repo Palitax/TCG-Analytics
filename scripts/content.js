@@ -475,13 +475,13 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     if (productInfoCell) {
       const commentElement = productInfoCell.querySelector('.article-comment, .comment, [class*="comment"], .description, .product-comments span');
       if (commentElement) {
-        comment = commentElement.textContent.trim();
+        comment = commentElement.innerText.trim();
       } else {
         // Fallback: subtract condition text and clean spacing
-        let cellText = productInfoCell.textContent.trim();
+        let cellText = productInfoCell.innerText.trim();
         const condBadge = productInfoCell.querySelector('.condition, .article-condition, .badge');
         if (condBadge) {
-          const condText = condBadge.textContent.trim();
+          const condText = condBadge.innerText.trim();
           cellText = cellText.replace(condText, '');
         }
         comment = cellText.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim();
