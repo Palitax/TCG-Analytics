@@ -7,11 +7,9 @@ async function fetchAndConvertToBase64(url) {
   if (url.startsWith('data:')) return url;
   
   try {
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-      }
-    });
+    // Route through our Vercel Image Proxy to bypass CORS restrictions on S3
+    const proxyUrl = `https://tcg-analytics-chi.vercel.app/api/image-proxy?url=${encodeURIComponent(url)}`;
+    const response = await fetch(proxyUrl);
     if (!response.ok) throw new Error(`HTTP error ${response.status}`);
     
     const blob = await response.blob();
@@ -28,7 +26,7 @@ async function fetchAndConvertToBase64(url) {
     const mimeType = blob.type || 'image/jpeg';
     return `data:${mimeType};base64,${base64}`;
   } catch (err) {
-    console.error("Failed to convert image to base64:", err);
+    console.error("Failed to convert image to base64 via proxy:", err);
     return url; // Fallback to raw URL if download fails
   }
 }
