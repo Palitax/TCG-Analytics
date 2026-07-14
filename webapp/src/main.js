@@ -450,12 +450,42 @@ function renderWatchlistTab(container) {
         <span class="watchlist-item-price" id="price-${card.id}">-- €</span>
         <span class="diff-badge" id="diff-${card.id}">...</span>
       </div>
+      <button class="watchlist-item-delete" title="Vom Merkzettel entfernen">
+        <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="14" height="14">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+      </button>
     `;
     list.appendChild(cardEl);
 
     cardEl.addEventListener('click', () => {
       loadCardDetails(card.card_id, card.tcg);
     });
+
+    const deleteBtn = cardEl.querySelector('.watchlist-item-delete');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async (e) => {
+        e.stopPropagation(); // Avoid triggering card details load!
+        if (confirm(`Möchtest du "${cleanCardName(card.card_id)}" wirklich vom Merkzettel entfernen?`)) {
+          try {
+            deleteBtn.disabled = true;
+            const { error } = await supabase
+              .from('marked_cards')
+              .delete()
+              .eq('user_id', currentUser.id)
+              .eq('card_id', card.card_id);
+
+            if (error) throw error;
+
+            await fetchMarkedCards(); // Refresh local list
+            render(); // Refresh current dashboard view
+          } catch (err) {
+            alert("Fehler beim Entfernen: " + err.message);
+            deleteBtn.disabled = false;
+          }
+        }
+      });
+    }
 
     loadLatestPriceForDashboard(card);
   }
