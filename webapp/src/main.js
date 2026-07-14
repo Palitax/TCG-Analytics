@@ -48,6 +48,16 @@ function getFlagHtml(type, code) {
   return `<img class="flag-img" src="https://flagcdn.com/16x12/${flagCode}.png" alt="${cleanCode} Flag" onerror="this.style.display='none'">`;
 }
 
+// Clean card name from raw database path URL
+function cleanCardName(cardId) {
+  if (!cardId) return '';
+  let clean = decodeURIComponent(cardId);
+  if (clean.includes('/')) {
+    clean = clean.split('/').filter(Boolean).pop() || clean;
+  }
+  return clean;
+}
+
 // Robust comment and metadata extractor matching extension parser
 function parseHistoryItem(item) {
   let matchedLang = item.language;
@@ -281,7 +291,7 @@ async function renderDashboard(container) {
           <div class="search-result-item glass-panel" data-card="${c.card_id}" data-tcg="${c.tcg}">
             <img class="search-result-img" src="${c.imageUrl || '/logo.png'}" onerror="this.src='/logo.png'">
             <div class="search-result-info">
-              <span class="search-result-name">${c.card_id}</span>
+              <span class="search-result-name">${cleanCardName(c.card_id)}</span>
               <span class="search-result-tcg">${c.tcg}</span>
             </div>
           </div>
@@ -395,11 +405,12 @@ function renderWatchlistTab(container) {
   for (const card of markedCards) {
     const cardEl = document.createElement('div');
     cardEl.className = 'watchlist-item glass-panel';
+    cardEl.setAttribute('data-card-id', card.id);
     cardEl.innerHTML = `
       <img class="watchlist-item-img" src="${card.image_url || '/logo.png'}" onerror="this.src='/logo.png'">
       <div class="watchlist-item-info">
         <span class="watchlist-item-tcg">${card.tcg}</span>
-        <span class="watchlist-item-name">${card.card_id}</span>
+        <span class="watchlist-item-name">${cleanCardName(card.card_id)}</span>
       </div>
       <div class="watchlist-item-price-col">
         <span class="watchlist-item-price" id="price-${card.id}">-- €</span>
@@ -453,7 +464,7 @@ function renderAnalyticsTab(container) {
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <div style="display: flex; flex-direction: column;">
-          <span class="analytics-history-text">${cardId}</span>
+          <span class="analytics-history-text">${cleanCardName(cardId)}</span>
           <span class="analytics-history-tcg">${tcg}</span>
         </div>
       </div>
@@ -505,6 +516,24 @@ async function loadLatestPriceForDashboard(card) {
       const history = data.map(parseHistoryItem);
       const latest = history[history.length - 1];
       const baseline = history[0];
+
+      // Dynamic Image Extraction Fallback
+      let foundImageUrl = card.image_url;
+      if (!foundImageUrl) {
+        for (let i = history.length - 1; i >= 0; i--) {
+          if (history[i].imageUrl) {
+            foundImageUrl = history[i].imageUrl;
+            break;
+          }
+        }
+      }
+
+      if (foundImageUrl) {
+        const imgEl = document.querySelector(`.watchlist-item[data-card-id="${card.id}"] .watchlist-item-img`);
+        if (imgEl) {
+          imgEl.src = foundImageUrl;
+        }
+      }
 
       const priceEl = document.getElementById(`price-${card.id}`);
       const diffEl = document.getElementById(`diff-${card.id}`);
@@ -670,7 +699,8 @@ function renderDetail(container) {
       </div>
       <div class="hero-meta">
         <span class="hero-tcg">${details.tcg}</span>
-        <h1 class="hero-title">${details.cardId}</h1>
+        <h1 class="hero-title">${cleanCardName(details.cardId)}</h1>
+        <span style="font-size: 0.72rem; color: var(--text-muted); word-break: break-all;">${details.cardId}</span>
       </div>
     </div>
   `;
