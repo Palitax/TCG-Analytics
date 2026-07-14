@@ -499,7 +499,8 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
             language: matchedLanguage,
             sellerCountry: sellerCountry,
             comment: comment,
-            element: row
+            element: row,
+            condition: foundConditionCode
           };
         }
       }
@@ -547,6 +548,9 @@ function updateOverlay(status, details = {}) {
     lastScannedAt = null,
     lastUserId = null,
     lastComment = null,
+    lastCondition = null,
+    lastLanguage = null,
+    lastCountry = null,
     matchedLanguage = null,
     matchedCountry = null,
     comment = null,
@@ -601,11 +605,34 @@ function updateOverlay(status, details = {}) {
                         diffPercent < 0 ? `Günstiger seit Scan am ${dateStr} von ${authorText} (${lastPrice.toFixed(2)} €)` :
                         `Unverändert seit Scan am ${dateStr} von ${authorText}`;
 
-      const diffClass = diffPercent > 0 ? 'loss' : diffPercent < 0 ? 'gain' : 'stable';
+      // User tracks value, so UP is GREEN (gain) and DOWN is RED (loss)
+      const diffClass = diffPercent > 0 ? 'gain' : diffPercent < 0 ? 'loss' : 'stable';
       const diffSign = diffPercent > 0 ? '+' : '';
 
       diffBadge = `<span class="cm-tracker-diff-badge ${diffClass}">${diffSign}${formattedDiff}%</span>`;
       statusText = `<span class="cm-tracker-status-desc">${changeStr}</span>`;
+    }
+
+    // Render last scan row if there was a previous scan
+    let lastScanRowHtml = '';
+    if (lastPrice !== null) {
+      const lastSellerFlag = getFlagHtml('seller', lastCountry);
+      const lastLangFlag = getFlagHtml('language', lastLanguage);
+      const displayLastCondition = lastCondition || 'Unbekannt';
+      
+      lastScanRowHtml = `
+        <div class="cm-tracker-last-scan-row">
+          <span class="cm-last-scan-label">Letzter Scan (${dateStr}):</span>
+          <div class="cm-last-scan-details">
+            <span class="cm-last-scan-price">${lastPrice.toFixed(2)} €</span>
+            <span class="cm-last-scan-cond cm-tracker-badge">${displayLastCondition}</span>
+            <div class="cm-last-scan-flags">
+              <span title="Verkäufer beim letzten Scan">${lastSellerFlag}</span>
+              <span title="Kartensprache beim letzten Scan">${lastLangFlag}</span>
+            </div>
+          </div>
+        </div>
+      `;
     }
 
     // Comment field block layout inside the overlay
@@ -649,6 +676,7 @@ function updateOverlay(status, details = {}) {
           </div>
         </div>
         ${statusText}
+        ${lastScanRowHtml}
         ${commentBlockHtml}
       </div>
     `;
@@ -700,6 +728,10 @@ function updateOverlay(status, details = {}) {
             </div>
           </details>
         </div>
+
+        <div class="cm-control-item" style="justify-content: flex-end;">
+          <button id="cm-btn-apply-filters" class="cm-btn-apply">Anwenden</button>
+        </div>
       </div>
       
       <!-- Scan Result Output -->
@@ -749,14 +781,29 @@ function attachListeners() {
     }
   };
 
-  selectCondition.addEventListener('change', saveAndRefresh);
-  selectLocation.addEventListener('change', saveAndRefresh);
+  const updateLanguagesSummary = () => {
+    const summaryEl = document.getElementById('cm-languages-summary');
+    if (!summaryEl) return;
+    let checkedLangs = [];
+    if (langAll.checked) {
+      checkedLangs = ['ALL'];
+    } else {
+      langChecks.forEach(cb => {
+        if (cb.checked) checkedLangs.push(cb.value);
+      });
+      if (checkedLangs.length === 0) {
+        checkedLangs = ['ALL'];
+        langAll.checked = true;
+      }
+    }
+    summaryEl.textContent = checkedLangs.includes('ALL') ? 'Alle' : checkedLangs.join(', ');
+  };
 
   langAll.addEventListener('change', (e) => {
     if (e.target.checked) {
       langChecks.forEach(cb => cb.checked = false);
     }
-    saveAndRefresh();
+    updateLanguagesSummary();
   });
 
   langChecks.forEach(cb => {
@@ -764,9 +811,14 @@ function attachListeners() {
       if (e.target.checked) {
         langAll.checked = false;
       }
-      saveAndRefresh();
+      updateLanguagesSummary();
     });
   });
+
+  const btnApply = document.getElementById('cm-btn-apply-filters');
+  if (btnApply) {
+    btnApply.addEventListener('click', saveAndRefresh);
+  }
 
   // Seller click and highlight event binding (Duration set to 5000ms / 5s)
   const clickableSeller = document.querySelector('.cm-clickable-seller');
@@ -908,7 +960,7 @@ async function runScan() {
       action: "scanCard",
       tcg: tcg,
       cardId: cardId,
-      condition: savedCondition,
+      condition: match.condition,
       language: match.language,
       sellerCountry: match.sellerCountry,
       currentPrice: match.price,
@@ -947,6 +999,9 @@ async function runScan() {
         lastScannedAt: record ? record.scanned_at : null,
         lastUserId: record ? record.user_id : null,
         lastComment: record ? record.comment : null,
+        lastCondition: record ? record.condition : null,
+        lastLanguage: record ? record.language : null,
+        lastCountry: record ? record.seller_country : null,
         matchedLanguage: match.language,
         matchedCountry: match.sellerCountry,
         comment: match.comment

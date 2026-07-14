@@ -457,3 +457,87 @@
     box-shadow: none;
   }
 }
+
+/* Apply button styling */
+.cm-btn-apply {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.2);
+  align-self: flex-end;
+  height: 31px;
+}
+
+.cm-btn-apply:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+  background: linear-gradient(135deg, #34d399 0%, #059669 100%);
+}
+
+.cm-btn-apply:active {
+  transform: translateY(0);
+}
+
+/* Last Scan Info Row */
+.cm-tracker-last-scan-row {
+  margin-top: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  padding-top: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cm-last-scan-label {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 500;
+}
+
+.cm-last-scan-details {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cm-last-scan-price {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.cm-last-scan-cond {
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+}
+
+.cm-last-scan-flags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.cm-last-scan-flags svg {
+  width: 16px !important;
+  height: 11px !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+}
