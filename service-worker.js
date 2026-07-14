@@ -298,7 +298,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       
       else if (message.action === "captureTab") {
-        chrome.tabs.captureVisibleTab(null, { format: "png" }, (dataUrl) => {
+        chrome.tabs.captureVisibleTab({ format: "png" }, (dataUrl) => {
           if (chrome.runtime.lastError) {
             sendResponse({ success: false, error: chrome.runtime.lastError.message });
           } else {
