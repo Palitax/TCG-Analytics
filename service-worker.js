@@ -181,9 +181,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           // No history exists for this specific combination
           shouldUpload = true;
         } else {
+          const lastPrice = parseFloat(latestRecordBeforeScan.price);
+          const lastComment = latestRecordBeforeScan.comment || '';
+          
+          let parsedLastComment = lastComment;
+          if (lastComment.startsWith('[')) {
+            const match = lastComment.match(/^\[[^\]]*\](?:\s*(.*))?$/);
+            if (match) {
+              parsedLastComment = match[1] || '';
+            }
+          }
+          const currentComment = comment || '';
           const timeSinceLastScan = Date.now() - new Date(latestRecordBeforeScan.scanned_at).getTime();
           
           if (force === true) {
+            shouldUpload = true;
+          } else if (lastPrice !== currentPrice || parsedLastComment !== currentComment) {
             shouldUpload = true;
           } else if (timeSinceLastScan >= 86400000) {
             shouldUpload = true;

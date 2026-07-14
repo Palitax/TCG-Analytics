@@ -799,25 +799,16 @@ function updateOverlay(status, details = {}) {
       `;
     }
 
-    // Render the interactive line chart grouped day-by-day
+    // Render the interactive line chart
     let chartHtml = '';
 
-    // Group prices day-by-day, taking the latest scan of each day
-    const dailyMap = new Map();
-    for (const item of history) {
-      const dateKey = new Date(item.scanned_at).toLocaleDateString('de-DE', {
-        year: 'numeric', month: '2-digit', day: '2-digit'
-      });
-      dailyMap.set(dateKey, item);
-    }
-    
-    const points = Array.from(dailyMap.entries()).map(([dateStr, item]) => {
-      return {
-        price: parseFloat(item.price),
-        time: new Date(item.scanned_at).getTime(),
-        dateText: dateStr
-      };
-    });
+    const points = history.map(item => ({
+      price: item.price,
+      time: new Date(item.scanned_at).getTime(),
+      dateText: new Date(item.scanned_at).toLocaleString('de-DE', {
+        day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit'
+      })
+    }));
 
     if (points.length >= 2) {
       // Find min/max values to scale the axes
