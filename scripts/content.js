@@ -54,9 +54,6 @@ function getCardImageUrl() {
     if (!url) return false;
     const cleanUrl = url.toLowerCase();
     return (
-      cleanUrl.includes('cardmarket.com') || 
-      cleanUrl.includes('cardmarket.co')
-    ) && (
       cleanUrl.includes('/cards/') || 
       cleanUrl.includes('/specimens/') || 
       cleanUrl.includes('/products/') || 
@@ -1358,6 +1355,7 @@ async function runScan(force = false) {
       await new Promise(resolve => setTimeout(resolve, 1200));
       imageUrl = getCardImageUrl();
     }
+    console.log("TCG Tracker - Scraped Card Image URL:", imageUrl);
 
     chrome.runtime.sendMessage({
       action: "scanCard",

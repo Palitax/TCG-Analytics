@@ -694,8 +694,14 @@ function renderDetail(container) {
   detailBody.className = 'detail-view';
   detailBody.innerHTML = `
     <div class="card-hero-section">
-      <div class="hero-img-wrapper">
+      <div class="hero-img-wrapper" style="position: relative; display: inline-block;">
         <img class="hero-img" src="${details.imageUrl || '/logo.png'}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+        <button id="btn-edit-image" class="app-btn-edit-image" style="position: absolute; bottom: 8px; right: 8px; font-size: 0.65rem; padding: 4px 8px; border-radius: 4px; background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.15); color: #fff; cursor: pointer; display: flex; align-items: center; gap: 4px; z-index: 10;">
+          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+          </svg>
+          Bild URL ändern
+        </button>
       </div>
       <div class="hero-meta">
         <span class="hero-tcg">${details.tcg}</span>
@@ -705,6 +711,48 @@ function renderDetail(container) {
     </div>
   `;
   container.appendChild(detailBody);
+
+  const btnEditImage = detailBody.querySelector('#btn-edit-image');
+  if (btnEditImage) {
+    btnEditImage.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const newUrl = prompt("Bild-URL von Cardmarket einfügen (Rechtsklick auf Cardmarket-Bild -> 'Bildadresse kopieren'):", details.imageUrl || "");
+      if (newUrl === null) return; // Cancel
+      const cleanUrl = newUrl.trim();
+
+      try {
+        btnEditImage.disabled = true;
+        btnEditImage.textContent = "Speichert...";
+
+        const { error } = await supabase
+          .from('marked_cards')
+          .update({ image_url: cleanUrl || null })
+          .eq('card_id', details.cardId)
+          .eq('user_id', currentUser.id);
+
+        if (error) throw error;
+
+        details.imageUrl = cleanUrl || null;
+
+        const heroImg = detailBody.querySelector('.hero-img');
+        if (heroImg) {
+          heroImg.src = cleanUrl || '/logo.png';
+        }
+
+        alert("Bild erfolgreich aktualisiert!");
+      } catch (err) {
+        alert("Fehler beim Aktualisieren: " + err.message);
+      } finally {
+        btnEditImage.disabled = false;
+        btnEditImage.innerHTML = `
+          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+          </svg>
+          Bild URL ändern
+        `;
+      }
+    });
+  }
 
   // Filters Controls
   const filterSection = document.createElement('div');
