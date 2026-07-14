@@ -147,7 +147,9 @@ function getSidebarState() {
   
   const langParams = [];
   urlParams.forEach((value, key) => {
-    if (key === 'language' || key === 'language[]') {
+    // Only parse clean "language" parameters. Bracket keys are treated as not set/invalid
+    // so they trigger an auto-migration to the clean "language" parameter in runScan.
+    if (key === 'language') {
       langParams.push(value);
     }
   });
@@ -160,9 +162,9 @@ function getSidebarState() {
     "3": "DE",
     "4": "ES",
     "5": "IT",
-    "6": "ZH",
     "7": "JP",
-    "8": "KO"
+    "8": "ZH",
+    "10": "KO"
   };
 
   const URL_CONDITION_MAP = {
@@ -208,23 +210,27 @@ async function applySidebarFilter(newPrefs) {
     changed = true;
   }
 
-  // 2. Sync languages
+  // 2. Sync languages (MKM database ID mapping)
   const languageMap = {
     "EN": "1",
     "FR": "2",
     "DE": "3",
     "ES": "4",
     "IT": "5",
-    "ZH": "6",
     "JP": "7",
-    "KO": "8"
+    "ZH": "8",
+    "KO": "10"
   };
 
-  // Get current language parameters
+  // Get current language parameters and track if we have outdated bracket keys in the URL
   const currentLangs = [];
+  let hasBracketsKey = false;
   params.forEach((val, key) => {
-    if (key === 'language' || key === 'language[]') {
+    if (key === 'language') {
       currentLangs.push(val);
+    }
+    if (key === 'language[]' || key === 'language%5B%5D') {
+      hasBracketsKey = true;
     }
   });
 
@@ -243,11 +249,12 @@ async function applySidebarFilter(newPrefs) {
   const langsMatch = (currentLangs.length === targetLangs.length && 
                       currentLangs.every((val, index) => val === targetLangs[index]));
 
-  if (!langsMatch) {
+  if (!langsMatch || hasBracketsKey) {
     params.delete('language');
     params.delete('language[]');
+    params.delete('language%5B%5D');
     for (const id of targetLangs) {
-      params.append('language[]', id);
+      params.append('language', id);
     }
     changed = true;
   }
