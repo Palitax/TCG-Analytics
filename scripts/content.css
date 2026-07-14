@@ -662,19 +662,29 @@
   stroke-dasharray: 4 4;
 }
 
-/* Interactive Hover Guides */
+/* Interactive Hover Guides (HTML) */
 .cm-chart-hover-line {
-  stroke: rgba(255, 255, 255, 0.2);
-  stroke-width: 1.25;
-  stroke-dasharray: 3 3;
+  position: absolute;
+  top: 10%;
+  height: 80%;
+  width: 1px;
+  border-left: 1.25px dashed rgba(255, 255, 255, 0.45);
+  pointer-events: none;
+  z-index: 5;
+  transform: translateX(-50%);
 }
 
 .cm-chart-hover-dot {
-  fill: #3b82f6;
-  stroke: #ffffff;
-  stroke-width: 1.5;
-  filter: drop-shadow(0 0 4px rgba(59, 130, 246, 0.5));
-  transition: r 0.1s ease;
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: 1.75px solid #ffffff;
+  box-shadow: 0 0 5px rgba(59, 130, 246, 0.6);
+  pointer-events: none;
+  z-index: 10;
+  transform: translate(-50%, -50%);
 }
 
 /* Floating HTML Tooltip inside Wrapper */

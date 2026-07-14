@@ -816,22 +816,22 @@ function updateOverlay(status, details = {}) {
                   </defs>
                   
                   <!-- Grid lines -->
-                  <line x1="0" y1="10" x2="100" y2="10" class="cm-chart-grid-line" />
-                  <line x1="0" y1="50" x2="100" y2="50" class="cm-chart-grid-line" />
-                  <line x1="0" y1="90" x2="100" y2="90" class="cm-chart-grid-line" />
+                  <line x1="0" y1="10" x2="100" y2="10" class="cm-chart-grid-line" vector-effect="non-scaling-stroke" />
+                  <line x1="0" y1="50" x2="100" y2="50" class="cm-chart-grid-line" vector-effect="non-scaling-stroke" />
+                  <line x1="0" y1="90" x2="100" y2="90" class="cm-chart-grid-line" vector-effect="non-scaling-stroke" />
                   
                   <!-- Gradient Area -->
                   <path d="${areaData}" fill="url(#cm-chart-grad)" />
                   
                   <!-- Line Path -->
-                  <path d="${pathData}" class="cm-chart-line-path" />
-                  
-                  <!-- Interactive Hover Vertical line -->
-                  <line id="cm-chart-hover-line" x1="0" y1="10" x2="0" y2="90" class="cm-chart-hover-line" style="display: none;" />
-                  
-                  <!-- Interactive Hover Point -->
-                  <circle id="cm-chart-hover-dot" r="4.5" class="cm-chart-hover-dot" style="display: none;" />
+                  <path d="${pathData}" class="cm-chart-line-path" vector-effect="non-scaling-stroke" />
                 </svg>
+                
+                <!-- Interactive Hover Vertical line (HTML) -->
+                <div id="cm-chart-hover-line" class="cm-chart-hover-line" style="display: none;"></div>
+                
+                <!-- Interactive Hover Point (HTML) -->
+                <div id="cm-chart-hover-dot" class="cm-chart-hover-dot" style="display: none;"></div>
                 
                 <!-- Float HTML Tooltip -->
                 <div id="cm-chart-tooltip" class="cm-chart-tooltip" style="display: none;"></div>
@@ -946,13 +946,12 @@ function updateOverlay(status, details = {}) {
       }
 
       if (closestPt) {
-        // Draw vertical guide line and hover dot
-        hoverLine.setAttribute('x1', closestPt.x.toFixed(1));
-        hoverLine.setAttribute('x2', closestPt.x.toFixed(1));
+        // Draw vertical guide line and hover dot (HTML elements using %)
+        hoverLine.style.left = closestPt.x.toFixed(1) + '%';
         hoverLine.style.display = 'block';
 
-        hoverDot.setAttribute('cx', closestPt.x.toFixed(1));
-        hoverDot.setAttribute('cy', closestPt.y.toFixed(1));
+        hoverDot.style.left = closestPt.x.toFixed(1) + '%';
+        hoverDot.style.top = closestPt.y.toFixed(1) + '%';
         hoverDot.style.display = 'block';
 
         // Position floating tooltip block
