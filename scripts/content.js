@@ -1530,9 +1530,9 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
             action: 'setFirstScan',
             tcg,
             cardId,
-            condition,
-            language,
-            sellerCountry,
+            condition: targetCondition,
+            language: targetLanguages[0],
+            sellerCountry: targetLocation,
             price,
             comment
           }, (res) => {
