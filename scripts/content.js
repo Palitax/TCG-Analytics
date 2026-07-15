@@ -445,6 +445,82 @@ function extractSellerCountry(sellerCol) {
   return 'OTHER';
 }
 
+function extractCondition(conditionElements) {
+  let foundConditionCode = null;
+  for (const el of conditionElements) {
+    const text = el.textContent.trim().toUpperCase();
+    const codes = ["MT", "NM", "EX", "GD", "LP", "PL", "PO"];
+    for (const code of codes) {
+      if (
+        text === code ||
+        text.startsWith(code + ' ') ||
+        text.startsWith(code + '(') ||
+        text.split(/[^A-Z]/)[0] === code
+      ) {
+        foundConditionCode = code;
+        break;
+      }
+    }
+    if (foundConditionCode) break;
+  }
+  return foundConditionCode;
+}
+
+function extractLanguage(productInfoCell) {
+  if (!productInfoCell) return 'EN';
+  const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
+  const flagCandidates = productInfoCell.querySelectorAll('.icon, .flag, [class*="flag"], [style*="background-image"], img');
+  for (const el of flagCandidates) {
+    const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || el.getAttribute('aria-label') || '';
+    const srcText = el.getAttribute('src') || '';
+    const filename = srcText.split('/').pop().toLowerCase();
+
+    for (const lang of langCodes) {
+      const keywords = LANGUAGE_LABELS[lang];
+      const matchesTitle = keywords && keywords.some(keyword =>
+        titleText.toLowerCase().includes(keyword.toLowerCase())
+      );
+
+      const matchesFile = filename.startsWith(lang.toLowerCase() + '.') || 
+                          filename === lang.toLowerCase() ||
+                          (lang === 'JP' && filename.startsWith('ja.')) ||
+                          (lang === 'EN' && (filename.startsWith('us.') || filename.startsWith('gb.'))) ||
+                          (lang === 'ZH' && filename.startsWith('cn.')) ||
+                          (lang === 'KO' && filename.startsWith('kr.'));
+
+      const matchesClass = el.className.toLowerCase().includes('flag-' + lang.toLowerCase()) ||
+                           (lang === 'JP' && el.className.toLowerCase().includes('flag-ja')) ||
+                           (lang === 'EN' && (el.className.toLowerCase().includes('flag-us') || el.className.toLowerCase().includes('flag-gb'))) ||
+                           (lang === 'ZH' && el.className.toLowerCase().includes('flag-cn')) ||
+                           (lang === 'KO' && el.className.toLowerCase().includes('flag-kr'));
+
+      if (matchesTitle || matchesFile || matchesClass) {
+        return lang;
+      }
+    }
+  }
+  return 'EN';
+}
+
+function extractPrice(priceElements) {
+  for (const el of priceElements) {
+    const text = el.textContent.trim();
+    if (text.includes('€')) {
+      const cleaned = text
+        .replace('€', '')
+        .replace(/\s/g, '')
+        .replace(/\./g, '')
+        .replace(',', '.');
+
+      const parsed = parseFloat(cleaned);
+      if (!isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+  }
+  return null;
+}
+
 // Scrape the DOM for the first offer matching target conditions
 function scrapePrice(targetCondition, targetLocation, targetLanguages) {
   // ONLY match top-level article rows to avoid scanning sub-rows!
@@ -476,24 +552,7 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     };
     const conditionElements = row.querySelectorAll('.article-condition, .condition, .badge, span, a');
     let conditionMatches = false;
-    let foundConditionCode = null;
-
-    for (const el of conditionElements) {
-      const text = el.textContent.trim().toUpperCase();
-      const codes = ["MT", "NM", "EX", "GD", "LP", "PL", "PO"];
-      for (const code of codes) {
-        if (
-          text === code ||
-          text.startsWith(code + ' ') ||
-          text.startsWith(code + '(') ||
-          text.split(/[^A-Z]/)[0] === code
-        ) {
-          foundConditionCode = code;
-          break;
-        }
-      }
-      if (foundConditionCode) break;
-    }
+    const foundConditionCode = extractCondition(conditionElements);
 
     if (foundConditionCode) {
       const targetVal = CONDITION_RANK[targetCondition] || 7;
@@ -506,53 +565,12 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     if (!conditionMatches) continue;
 
     // 3. Verify card language matches target
-    let matchedLanguage = null;
-    const langCodes = ['DE', 'EN', 'ES', 'FR', 'IT', 'JP', 'ZH', 'KO'];
-    
-    // Find the product info cell specifically (excluding the parent .col-sellerProductInfo)
     const productInfoCell = row.querySelector('.col-product, .product-info') || 
                             row.querySelector('.col-sellerProductInfo .col-product') ||
                             row.querySelector('.col-sellerProductInfo div.row > div:nth-child(2)') ||
                             row.querySelector('td:nth-child(2)');
                             
-    if (productInfoCell) {
-      // Find candidate elements representing the language flag (excluding plain text spans/comments)
-      const flagCandidates = productInfoCell.querySelectorAll('.icon, .flag, [class*="flag"], [style*="background-image"], img');
-      for (const el of flagCandidates) {
-        const titleText = el.getAttribute('title') || el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || el.getAttribute('aria-label') || '';
-        const srcText = el.getAttribute('src') || '';
-        const filename = srcText.split('/').pop().toLowerCase();
-
-        for (const lang of langCodes) {
-          const keywords = LANGUAGE_LABELS[lang];
-          const matchesTitle = keywords && keywords.some(keyword =>
-            titleText.toLowerCase().includes(keyword.toLowerCase())
-          );
-
-          // Fallback checks (mapping JP to ja, EN to gb/us, ZH to cn, KO to kr)
-          const matchesFile = filename.startsWith(lang.toLowerCase() + '.') || 
-                              filename === lang.toLowerCase() ||
-                              (lang === 'JP' && filename.startsWith('ja.')) ||
-                              (lang === 'EN' && (filename.startsWith('us.') || filename.startsWith('gb.'))) ||
-                              (lang === 'ZH' && filename.startsWith('cn.')) ||
-                              (lang === 'KO' && filename.startsWith('kr.'));
-
-          const matchesClass = el.className.toLowerCase().includes('flag-' + lang.toLowerCase()) ||
-                               (lang === 'JP' && el.className.toLowerCase().includes('flag-ja')) ||
-                               (lang === 'EN' && (el.className.toLowerCase().includes('flag-us') || el.className.toLowerCase().includes('flag-gb'))) ||
-                               (lang === 'ZH' && el.className.toLowerCase().includes('flag-cn')) ||
-                               (lang === 'KO' && el.className.toLowerCase().includes('flag-kr'));
-
-          if (matchesTitle || matchesFile || matchesClass) {
-            matchedLanguage = lang;
-            break;
-          }
-        }
-        if (matchedLanguage) break;
-      }
-    }
-
-    if (!matchedLanguage) matchedLanguage = 'EN';
+    const matchedLanguage = extractLanguage(productInfoCell);
 
     if (targetLanguages && !targetLanguages.includes('ALL') && !targetLanguages.includes(matchedLanguage)) {
       continue;
@@ -560,13 +578,11 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
 
     // 4. Extract product comment/description from Produktinfo cell
     let comment = '';
-    // Reuse the productInfoCell resolved in step 3
     if (productInfoCell) {
       const commentElement = productInfoCell.querySelector('.article-comment, .comment, [class*="comment"], .description, .product-comments span');
       if (commentElement) {
         comment = commentElement.innerText.trim();
       } else {
-        // Fallback: subtract condition text and clean spacing
         let cellText = productInfoCell.innerText.trim();
         const condBadge = productInfoCell.querySelector('.condition, .article-condition, .badge');
         if (condBadge) {
@@ -579,25 +595,16 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
 
     // 5. Extract price
     const priceElements = row.querySelectorAll('[class*="price"], .color-primary, span');
-    for (const el of priceElements) {
-      const text = el.textContent.trim();
-      if (text.includes('€')) {
-        const cleaned = text
-          .replace('€', '')
-          .replace(/\s/g, '')
-          .replace(/\./g, '')
-          .replace(',', '.');
-
-        const parsed = parseFloat(cleaned);
-        if (!isNaN(parsed) && parsed > 0) {
-          return {
-            price: parsed,
-            language: matchedLanguage,
-            sellerCountry: sellerCountry,
-            comment: comment,
-            element: row,
-            condition: foundConditionCode
-          };
+    const parsedPrice = extractPrice(priceElements);
+    if (parsedPrice !== null) {
+      return {
+        price: parsedPrice,
+        language: matchedLanguage,
+        sellerCountry: sellerCountry,
+        comment: comment,
+        element: row,
+        condition: foundConditionCode
+      };
         }
       }
     }
