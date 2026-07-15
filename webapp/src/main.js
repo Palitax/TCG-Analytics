@@ -106,6 +106,37 @@ function getProxiedImageUrl(url) {
   return url;
 }
 
+// Fullscreen Lightbox Modal for zooming card images
+function showLightbox(imgSrc) {
+  const existing = document.getElementById('app-lightbox');
+  if (existing) existing.remove();
+
+  const lightbox = document.createElement('div');
+  lightbox.id = 'app-lightbox';
+  lightbox.className = 'lightbox-overlay';
+  lightbox.innerHTML = `
+    <div class="lightbox-content">
+      <img src="${imgSrc}" class="lightbox-img" onerror="this.src='/logo.png'">
+      <button class="lightbox-close" title="Schließen">
+        <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="20" height="20">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(lightbox);
+
+  // Close lightbox on click overlay, image or close button
+  lightbox.addEventListener('click', () => {
+    lightbox.classList.remove('active');
+    setTimeout(() => lightbox.remove(), 250);
+  });
+
+  // Fade in animation
+  setTimeout(() => lightbox.classList.add('active'), 10);
+}
+
 // Robust comment and metadata extractor matching extension parser
 function parseHistoryItem(item) {
   let matchedLang = item.language;
@@ -488,6 +519,14 @@ function renderWatchlistTab(container) {
       loadCardDetails(card.card_id, card.tcg);
     });
 
+    const imgEl = cardEl.querySelector('.watchlist-item-img');
+    if (imgEl) {
+      imgEl.addEventListener('click', (e) => {
+        e.stopPropagation(); // Avoid triggering card details load!
+        showLightbox(card.image_url || '/logo.png');
+      });
+    }
+
     const deleteBtn = cardEl.querySelector('.watchlist-item-delete');
     if (deleteBtn) {
       deleteBtn.addEventListener('click', async (e) => {
@@ -782,10 +821,15 @@ function renderDetail(container) {
     }
   });
 
-  // Card Info Hero Section
+  // Card Info Hero Section & left column
   const detailBody = document.createElement('div');
   detailBody.className = 'detail-view';
-  detailBody.innerHTML = `
+  
+  const leftCol = document.createElement('div');
+  leftCol.className = 'detail-left-col';
+  detailBody.appendChild(leftCol);
+
+  leftCol.innerHTML = `
     <div class="card-hero-section">
       <div class="hero-img-wrapper" style="position: relative; display: inline-block;">
         <img class="hero-img" src="${getProxiedImageUrl(details.imageUrl)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
@@ -800,14 +844,19 @@ function renderDetail(container) {
       <div class="hero-meta">
         <span class="hero-tcg">${details.tcg}</span>
         <h1 class="hero-title">${cleanCardName(details.cardId)}</h1>
-        <span style="font-size: 0.72rem; color: var(--text-muted); word-break: break-all;">${details.cardId}</span>
+        <a href="https://www.cardmarket.com${details.cardId}" target="_blank" rel="noopener noreferrer" class="cardmarket-link" style="font-size: 0.78rem; color: #60a5fa; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 500; transition: color 0.2s;">
+          Zeige Karte auf Cardmarket
+          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+          </svg>
+        </a>
       </div>
     </div>
   `;
   container.appendChild(detailBody);
 
-  const btnUploadImage = detailBody.querySelector('#btn-upload-image');
-  const inputCardFile = detailBody.querySelector('#input-card-file');
+  const btnUploadImage = leftCol.querySelector('#btn-upload-image');
+  const inputCardFile = leftCol.querySelector('#input-card-file');
 
   if (btnUploadImage && inputCardFile) {
     btnUploadImage.addEventListener('click', (e) => {
@@ -854,7 +903,7 @@ function renderDetail(container) {
         await fetchMarkedCards(); // Refresh local watchlist copy in memory!
 
         details.imageUrl = compressedBase64;
-        const heroImg = detailBody.querySelector('.hero-img');
+        const heroImg = leftCol.querySelector('.hero-img');
         if (heroImg) {
           heroImg.src = compressedBase64;
         }
@@ -871,6 +920,15 @@ function renderDetail(container) {
           Bild hochladen
         `;
       }
+    });
+  }
+
+  // Lightbox zoom triggers for detail view hero image
+  const heroImgEl = leftCol.querySelector('.hero-img');
+  if (heroImgEl) {
+    heroImgEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showLightbox(details.imageUrl || '/logo.png');
     });
   }
 
@@ -897,12 +955,12 @@ function renderDetail(container) {
       </select>
     </div>
   `;
-  detailBody.appendChild(filterSection);
+  leftCol.appendChild(filterSection);
 
   // Output cards stats viewport
   const statsSection = document.createElement('div');
   statsSection.className = 'detail-offer-section';
-  detailBody.appendChild(statsSection);
+  leftCol.appendChild(statsSection);
 
   // SVG Chart Section Container
   const chartSection = document.createElement('div');
