@@ -305,6 +305,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           payload.role === 'admin'
         );
 
+        console.log("[TCG Tracker SW] scanCard completed response. Email:", session.user.email, "isAdmin:", !!isAdmin, "app_metadata:", payload?.app_metadata, "user_metadata:", payload?.user_metadata);
+
         sendResponse({
           success: true,
           history: history,

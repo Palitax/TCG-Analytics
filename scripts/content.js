@@ -665,7 +665,8 @@ function updateOverlay(status, details = {}) {
     remainingTime = 0,
     forceSyncRemaining = 0,
     forceSyncKey = null,
-    isMarked = false
+    isMarked = false,
+    isAdmin = false
   } = details;
 
   const dotClass = blocked ? 'blocked' : 'active';
@@ -676,6 +677,10 @@ function updateOverlay(status, details = {}) {
     const timeFormatted = formatRemainingTime(remainingTime);
     blockIndicatorHtml = `<span class="cm-tracker-block-badge" title="Scans sind auf einmal pro Tag begrenzt. Nächster automatischer Scan erst nach Ablauf der Sperre.">Sperre aktiv (noch ${timeFormatted})</span>`;
   }
+
+  const adminBadgeHtml = isAdmin 
+    ? `<span class="cm-tracker-admin-badge" style="background:#fb8500;color:#000000;font-size:0.6rem;padding:2px 5px;border-radius:3px;font-weight:bold;margin-left:6px;box-shadow:0 1px 3px rgba(0,0,0,0.3);">Admin</span>` 
+    : `<span class="cm-tracker-admin-badge" style="background:#444444;color:#aaaaaa;font-size:0.6rem;padding:2px 5px;border-radius:3px;margin-left:6px;">User</span>`;
 
   const starTitle = isMarked ? 'Karte von Merkliste entfernen' : 'Karte auf Merkliste speichern';
   const starClass = isMarked ? 'cm-btn-bookmark marked' : 'cm-btn-bookmark';
@@ -692,6 +697,7 @@ function updateOverlay(status, details = {}) {
       <div style="display: flex; align-items: center; gap: 8px;">
         <span class="cm-tracker-dot ${dotClass}" title="${dotTitle}"></span>
         <span class="cm-tracker-title">TCG Card Tracker</span>
+        ${adminBadgeHtml}
         ${blockIndicatorHtml}
       </div>
       <button id="cm-btn-bookmark" class="${starClass}" title="${starTitle}">
@@ -1373,7 +1379,8 @@ async function runScan(force = false) {
         comment: match.comment,
         blocked: dbResponse.blocked || false,
         remainingTime: dbResponse.remainingTime || 0,
-        isMarked: dbResponse.isMarked || false
+        isMarked: dbResponse.isMarked || false,
+        isAdmin: dbResponse.isAdmin || false
       });
 
       injectAdminActions(dbResponse.isAdmin, savedCondition, savedLocation, [savedLanguage]);
@@ -1408,6 +1415,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   return true;
 });
+
+function findBuyCellAndForm(row) {
+  // 1. Look for a form or button that looks like a shopping cart / buy action
+  const buyElement = row.querySelector([
+    'form[action*="Cart"]',
+    'form[action*="cart"]',
+    'form.buy-form',
+    'button.btn-buy',
+    '[class*="buy-btn"]',
+    'button[title*="Warenkorb" i]',
+    'button[title*="Cart" i]',
+    'button[type="submit"]',
+    'a[href*="Cart"]',
+    'a[href*="cart"]'
+  ].join(', '));
+
+  if (buyElement) {
+    const buyCell = buyElement.closest('.col-buy, [class*="buy"], .col-action, div:last-child') || buyElement.parentElement;
+    return { buyCell, buyForm: buyElement };
+  }
+
+  // 2. Fallback: Find the last child div of the row
+  const childDivs = [...row.querySelectorAll(':scope > div')];
+  if (childDivs.length > 0) {
+    const buyCell = childDivs[childDivs.length - 1];
+    const buyForm = buyCell.querySelector('form, button, a');
+    return { buyCell, buyForm };
+  }
+
+  return { buyCell: null, buyForm: null };
+}
 
 // Inject admin override action buttons next to matching Cardmarket list offers
 function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLanguages) {
@@ -1458,7 +1496,7 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
     const comment = commentEl ? commentEl.textContent.trim() : '';
 
     // Inject "Als Startwert" button next to shopping cart icon
-    const buyCell = row.querySelector('.col-buy, [class*="buy"], .col-action, td:last-child');
+    const { buyCell, buyForm } = findBuyCellAndForm(row);
     if (buyCell) {
       const btn = document.createElement('button');
       btn.className = 'cm-admin-btn-first-scan';
@@ -1510,7 +1548,6 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
         }
       });
 
-      const buyForm = buyCell.querySelector('form, button, [class*="buy-btn"]');
       if (buyForm) {
         buyForm.after(btn);
       } else {
