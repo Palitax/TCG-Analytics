@@ -298,6 +298,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           console.error("Failed to query marked status:", err);
         }
 
+        const payload = decodeJWT(accessToken);
+        const isAdmin = payload && (
+          payload.app_metadata?.role === 'admin' ||
+          payload.user_metadata?.role === 'admin' ||
+          payload.role === 'admin'
+        );
+
         sendResponse({
           success: true,
           history: history,
@@ -305,10 +312,80 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           currentUserId: userId,
           blocked: blocked,
           remainingTime: remainingTime,
-          isMarked: isMarked
+          isMarked: isMarked,
+          isAdmin: !!isAdmin
         });
       }
       
+      else if (message.action === "setFirstScan") {
+        const session = await getSession();
+        if (!session) {
+          return sendResponse({ error: "UNAUTHENTICATED" });
+        }
+
+        const payload = decodeJWT(session.access_token);
+        const isAdmin = payload && (
+          payload.app_metadata?.role === 'admin' ||
+          payload.user_metadata?.role === 'admin' ||
+          payload.role === 'admin'
+        );
+
+        if (!isAdmin) {
+          return sendResponse({ error: "UNAUTHORIZED: Admin only option" });
+        }
+
+        const { tcg, cardId, condition, language, sellerCountry, price, comment } = message;
+
+        // Fetch the oldest record to get its ID (scanned_at ascending, limit 1)
+        const getUrl = `${SUPABASE_URL}/rest/v1/price_history?tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}&condition=eq.${encodeURIComponent(condition)}&language=eq.${encodeURIComponent(language)}&seller_country=eq.${encodeURIComponent(sellerCountry)}&order=scanned_at.asc&limit=1`;
+        
+        const getRes = await fetch(getUrl, {
+          method: "GET",
+          headers: {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${session.access_token}`
+          }
+        });
+
+        if (!getRes.ok) {
+          return sendResponse({ error: `Failed to fetch oldest record: ${getRes.statusText}` });
+        }
+
+        const oldestRecords = await getRes.json();
+        if (oldestRecords.length === 0) {
+          return sendResponse({ error: "No records found to overwrite" });
+        }
+
+        const firstRecordId = oldestRecords[0].id;
+
+        // Overwrite the first record in the database using PATCH
+        const updateUrl = `${SUPABASE_URL}/rest/v1/price_history?id=eq.${firstRecordId}`;
+        const metadataPrefix = `[${language}|${sellerCountry}|${condition}]`;
+        const dbComment = comment ? `${metadataPrefix} ${comment}` : metadataPrefix;
+
+        const updateRes = await fetch(updateUrl, {
+          method: "PATCH",
+          headers: {
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+          },
+          body: JSON.stringify({
+            price: parseFloat(price),
+            comment: dbComment,
+            user_id: session.user.id
+          })
+        });
+
+        if (!updateRes.ok) {
+          const errText = await updateRes.text();
+          return sendResponse({ error: `Failed to update record: ${errText}` });
+        }
+
+        sendResponse({ success: true });
+      }
+
       else if (message.action === "toggleBookmark") {
         const session = await getSession();
         if (!session) {

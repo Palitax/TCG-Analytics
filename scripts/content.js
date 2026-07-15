@@ -1370,6 +1370,8 @@ async function runScan(force = false) {
         remainingTime: dbResponse.remainingTime || 0,
         isMarked: dbResponse.isMarked || false
       });
+
+      injectAdminActions(dbResponse.isAdmin, savedCondition, savedLocation, [savedLanguage]);
     });
   });
 }
@@ -1401,6 +1403,100 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   return true;
 });
+
+// Inject admin override action buttons next to matching Cardmarket list offers
+function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLanguages) {
+  // Clear any existing admin buttons first
+  document.querySelectorAll('.cm-admin-btn-first-scan').forEach(btn => btn.remove());
+
+  if (!isAdmin) return;
+
+  const rows = document.querySelectorAll('.article-row, [id^="articleRow"]');
+  for (const row of rows) {
+    // 1. Seller Country
+    const sellerCol = row.querySelector('.col-seller, [class*="seller"], [class*="user"], .col-sellerProductInfo');
+    const sellerCountry = extractSellerCountry(sellerCol);
+    if (targetLocation === 'DE' && sellerCountry !== 'DE') continue;
+
+    // 2. Condition
+    const conditionElements = row.querySelectorAll('.article-condition, .condition, .badge, span, a');
+    const condition = extractCondition(conditionElements);
+    if (!condition) continue;
+
+    const CONDITION_RANK = { "MT": 1, "NM": 2, "EX": 3, "GD": 4, "LP": 5, "PL": 6, "PO": 7 };
+    const targetRank = CONDITION_RANK[targetCondition] || 99;
+    const rowRank = CONDITION_RANK[condition] || 99;
+    if (rowRank > targetRank) continue;
+
+    // 3. Language
+    const productInfoCell = row.querySelector('.col-product, .product-info') || 
+                            row.querySelector('.col-sellerProductInfo .col-product') ||
+                            row.querySelector('.col-sellerProductInfo div.row > div:nth-child(2)') ||
+                            row.querySelector('td:nth-child(2)');
+    const language = extractLanguage(productInfoCell);
+    if (targetLanguages[0] !== 'ALL' && !targetLanguages.includes(language)) continue;
+
+    // 4. Price
+    const priceElements = row.querySelectorAll('[class*="price"], .color-primary, span');
+    const price = extractPrice(priceElements);
+    if (price === null) continue;
+
+    // 5. Comment
+    const commentEl = row.querySelector('.comment-text, .msg, .comment, [class*="comment"]');
+    const comment = commentEl ? commentEl.textContent.trim() : '';
+
+    // Inject "Als Startwert setzen" button next to price
+    const priceCell = row.querySelector('.col-price, [class*="price"], td:last-child');
+    if (priceCell) {
+      const btn = document.createElement('button');
+      btn.className = 'cm-admin-btn-first-scan';
+      btn.textContent = 'Als Startwert';
+      btn.title = 'Überschreibe den ersten Scan in der Datenbank mit diesem Angebot';
+      btn.style.cssText = `
+        display: inline-block;
+        margin-top: 4px;
+        background: #fb8500;
+        border: none;
+        border-radius: 4px;
+        color: #000000;
+        font-size: 0.65rem;
+        font-weight: 800;
+        padding: 3px 6px;
+        cursor: pointer;
+        transition: opacity 0.2s;
+        vertical-align: middle;
+      `;
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (confirm(`Möchtest du dieses Angebot für ${price.toFixed(2)} € als neuen Startwert (First Scan) in der Datenbank festlegen?\n(Der älteste Scan in der Datenbank für diese Filter wird überschrieben)`)) {
+          btn.disabled = true;
+          btn.textContent = 'Speichert...';
+          const { tcg, cardId } = getTcgAndCardId();
+          chrome.runtime.sendMessage({
+            action: 'setFirstScan',
+            tcg,
+            cardId,
+            condition,
+            language,
+            sellerCountry,
+            price,
+            comment
+          }, (res) => {
+            if (res && res.success) {
+              alert('Startwert erfolgreich überschrieben!');
+              window.location.reload();
+            } else {
+              alert('Fehler beim Speichern: ' + (res?.error || 'Unbekannter Fehler'));
+              btn.disabled = false;
+              btn.textContent = 'Als Startwert';
+            }
+          });
+        }
+      });
+      priceCell.appendChild(btn);
+    }
+  }
+}
 
 // Start
 runScan();

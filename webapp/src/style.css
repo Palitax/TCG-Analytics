@@ -1108,6 +1108,15 @@ body {
   background: #ef4444; /* Red color revealed behind the card */
   display: flex;
   flex-direction: column;
+  transition: opacity 0.25s, transform 0.25s;
+}
+
+.watchlist-item-wrapper.dragging {
+  opacity: 0.3;
+  transform: scale(0.97);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  border: 1px dashed var(--primary);
+  z-index: 100;
 }
 
 .watchlist-item-swipe-bg {
@@ -1155,7 +1164,7 @@ body {
   height: 32px;
   border-radius: 50%;
   cursor: pointer;
-  display: flex;
+  display: none; /* Hidden on mobile */
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
@@ -1226,6 +1235,7 @@ body {
 
   .watchlist-item {
     cursor: pointer !important;
+    padding-right: 32px !important; /* Make room for absolute X button */
     transition: border-color 0.2s, transform 0.2s;
   }
 
@@ -1235,6 +1245,10 @@ body {
   }
 
   .watchlist-item-desktop-delete {
+    display: flex;
+  }
+
+  .lightbox-close {
     display: flex;
   }
 }

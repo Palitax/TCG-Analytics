@@ -224,7 +224,25 @@ async function fetchMarkedCards() {
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-    markedCards = data || [];
+    
+    let listData = data || [];
+    const orderKey = `watchlist_order_${currentUser.id}`;
+    let savedOrder = [];
+    try {
+      savedOrder = JSON.parse(localStorage.getItem(orderKey) || '[]');
+    } catch (e) {}
+
+    if (savedOrder.length > 0) {
+      listData.sort((a, b) => {
+        const idxA = savedOrder.indexOf(a.card_id);
+        const idxB = savedOrder.indexOf(b.card_id);
+        if (idxA === -1 && idxB === -1) return 0;
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+      });
+    }
+    markedCards = listData;
   } catch (err) {
     console.error('Error loading bookmarks:', err.message);
   }
@@ -512,9 +530,58 @@ function renderWatchlistTab(container) {
   list.className = 'watchlist-list';
   dashboard.appendChild(list);
 
+  // Global variables to track dragged element for desktop drag-sort
+  let draggedItem = null;
+
+  list.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (!draggedItem) return;
+    const afterElement = getDragAfterElement(list, e.clientY);
+    if (afterElement == null) {
+      list.appendChild(draggedItem);
+    } else {
+      list.insertBefore(draggedItem, afterElement);
+    }
+  });
+
+  function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.watchlist-item-wrapper:not(.dragging)')];
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) {
+        return { offset: offset, element: child };
+      } else {
+        return closest;
+      }
+    }, { offset: -Infinity }).element;
+  }
+
+  function saveWatchlistOrder() {
+    const newOrder = Array.from(list.querySelectorAll('.watchlist-item-wrapper')).map(el => {
+      const cardEl = el.querySelector('.watchlist-item');
+      return cardEl.dataset.cardUuid;
+    });
+    const orderKey = `watchlist_order_${currentUser.id}`;
+    try {
+      localStorage.setItem(orderKey, JSON.stringify(newOrder));
+    } catch (e) {}
+
+    // Update in-memory array to match
+    markedCards.sort((a, b) => {
+      const idxA = newOrder.indexOf(a.card_id);
+      const idxB = newOrder.indexOf(b.card_id);
+      if (idxA === -1 && idxB === -1) return 0;
+      if (idxA === -1) return 1;
+      if (idxB === -1) return -1;
+      return idxA - idxB;
+    });
+  }
+
   for (const card of markedCards) {
     const wrapper = document.createElement('div');
     wrapper.className = 'watchlist-item-wrapper';
+    wrapper.setAttribute('draggable', 'true');
     wrapper.innerHTML = `
       <div class="watchlist-item-swipe-bg">
         <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="20" height="20">
@@ -522,7 +589,7 @@ function renderWatchlistTab(container) {
         </svg>
         <span>Löschen</span>
       </div>
-      <div class="watchlist-item glass-panel" data-card-id="${card.id}">
+      <div class="watchlist-item glass-panel" data-card-id="${card.id}" data-card-uuid="${card.card_id}">
         <button class="watchlist-item-desktop-delete" title="Vom Merkzettel entfernen">
           <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="10" height="10">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -541,31 +608,77 @@ function renderWatchlistTab(container) {
     `;
     list.appendChild(wrapper);
 
+    // Desktop Drag events for sorting
+    wrapper.addEventListener('dragstart', (e) => {
+      if (e.target.closest('button, img, a')) {
+        e.preventDefault();
+        return;
+      }
+      draggedItem = wrapper;
+      wrapper.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    wrapper.addEventListener('dragend', () => {
+      wrapper.classList.remove('dragging');
+      draggedItem = null;
+      saveWatchlistOrder();
+    });
+
     const cardEl = wrapper.querySelector('.watchlist-item');
 
     let startX = 0;
+    let startY = 0;
     let currentX = 0;
     let isDragging = false;
     let hasMoved = false;
-    const threshold = 120; // Swipe distance to trigger confirm dialog
+    let isSwiping = false;
+    let isSorting = false;
+    let touchDraggedItem = null;
+    const threshold = 120;
 
-    const handleStart = (clientX) => {
-      // Disable swiping on desktop layout
+    const handleStart = (clientX, clientY) => {
       if (window.innerWidth >= 768) return;
       startX = clientX;
+      startY = clientY;
       isDragging = true;
       hasMoved = false;
+      isSwiping = false;
+      isSorting = false;
       cardEl.style.transition = 'none';
     };
 
-    const handleMove = (clientX) => {
+    const handleMove = (clientX, clientY) => {
       if (!isDragging) return;
       const deltaX = clientX - startX;
-      if (deltaX < 0) {
-        currentX = deltaX;
-        cardEl.style.transform = `translateX(${deltaX}px)`;
-        if (Math.abs(deltaX) > 10) {
-          hasMoved = true;
+      const deltaY = clientY - startY;
+
+      // Detect swipe direction once threshold met
+      if (!isSwiping && !isSorting) {
+        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+          isSwiping = true;
+        } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+          isSorting = true;
+          touchDraggedItem = wrapper;
+          touchDraggedItem.classList.add('dragging');
+        }
+      }
+
+      if (isSwiping) {
+        if (deltaX < 0) {
+          currentX = deltaX;
+          cardEl.style.transform = `translateX(${deltaX}px)`;
+          if (Math.abs(deltaX) > 10) {
+            hasMoved = true;
+          }
+        }
+      } else if (isSorting && touchDraggedItem) {
+        hasMoved = true;
+        const afterElement = getDragAfterElement(list, clientY);
+        if (afterElement == null) {
+          list.appendChild(touchDraggedItem);
+        } else {
+          list.insertBefore(touchDraggedItem, afterElement);
         }
       }
     };
@@ -574,71 +687,79 @@ function renderWatchlistTab(container) {
       if (!isDragging) return;
       isDragging = false;
       
-      cardEl.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
-      
-      if (currentX < -threshold) {
-        // Complete swipe animation
-        cardEl.style.transform = 'translateX(-100%)';
-        setTimeout(async () => {
-          if (confirm(`Möchtest du "${cleanCardName(card.card_id)}" wirklich vom Merkzettel entfernen?`)) {
-            try {
-              const { error } = await supabase
-                .from('marked_cards')
-                .delete()
-                .eq('user_id', currentUser.id)
-                .eq('card_id', card.card_id);
+      if (isSwiping) {
+        cardEl.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+        
+        if (currentX < -threshold) {
+          cardEl.style.transform = 'translateX(-100%)';
+          setTimeout(async () => {
+            if (confirm(`Möchtest du "${cleanCardName(card.card_id)}" wirklich vom Merkzettel entfernen?`)) {
+              try {
+                const { error } = await supabase
+                  .from('marked_cards')
+                  .delete()
+                  .eq('user_id', currentUser.id)
+                  .eq('card_id', card.card_id);
 
-              if (error) throw error;
+                if (error) throw error;
 
-              await fetchMarkedCards(); // Refresh local list
-              render(); // Refresh current dashboard view
-            } catch (err) {
-              alert("Fehler beim Entfernen: " + err.message);
+                await fetchMarkedCards(); // Refresh local list
+                render(); // Refresh current dashboard view
+              } catch (err) {
+                alert("Fehler beim Entfernen: " + err.message);
+                cardEl.style.transform = 'translateX(0)';
+              }
+            } else {
               cardEl.style.transform = 'translateX(0)';
             }
-          } else {
-            // Cancelled: restore card position
-            cardEl.style.transform = 'translateX(0)';
-          }
-        }, 150);
-      } else {
-        // Drag not far enough: restore card position
-        cardEl.style.transform = 'translateX(0)';
+          }, 150);
+        } else {
+          cardEl.style.transform = 'translateX(0)';
+        }
+      } else if (isSorting && touchDraggedItem) {
+        touchDraggedItem.classList.remove('dragging');
+        touchDraggedItem = null;
+        saveWatchlistOrder();
       }
+
       currentX = 0;
+      isSwiping = false;
+      isSorting = false;
     };
 
-    // Touch events for mobile swiping
-    cardEl.addEventListener('touchstart', (e) => handleStart(e.touches[0].clientX), { passive: true });
+    // Touch events for mobile swiping or sorting
+    cardEl.addEventListener('touchstart', (e) => {
+      handleStart(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true });
+
     cardEl.addEventListener('touchmove', (e) => {
       if (!isDragging) return;
-      const deltaX = e.touches[0].clientX - startX;
-      if (Math.abs(deltaX) > 10) {
-        handleMove(e.touches[0].clientX);
+      
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - startX;
+      const deltaY = touch.clientY - startY;
+
+      if (!isSwiping && !isSorting) {
+        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+          isSwiping = true;
+        } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+          isSorting = true;
+          touchDraggedItem = wrapper;
+          touchDraggedItem.classList.add('dragging');
+        }
       }
-    }, { passive: true });
+
+      if (isSorting) {
+        if (e.cancelable) e.preventDefault();
+        handleMove(touch.clientX, touch.clientY);
+      } else if (isSwiping) {
+        handleMove(touch.clientX, touch.clientY);
+      }
+    }, { passive: false });
+
     cardEl.addEventListener('touchend', handleEnd, { passive: true });
 
-    // Mouse events for desktop swiping drag support (disabled by handleStart checking width >= 768)
-    cardEl.addEventListener('mousedown', (e) => {
-      if (e.button !== 0 || e.target.closest('a, button')) return;
-      handleStart(e.clientX);
-
-      const onMouseMove = (moveEv) => {
-        handleMove(moveEv.clientX);
-      };
-
-      const onMouseUp = () => {
-        window.removeEventListener('mousemove', onMouseMove);
-        window.removeEventListener('mouseup', onMouseUp);
-        handleEnd();
-      };
-
-      window.addEventListener('mousemove', onMouseMove);
-      window.addEventListener('mouseup', onMouseUp);
-    });
-
-    // Navigation click handler (only fires if they didn't drag/swipe)
+    // Mouse events (fallback - only desktop click detection, drag sort handles dragging)
     cardEl.addEventListener('click', () => {
       if (hasMoved) {
         hasMoved = false;
