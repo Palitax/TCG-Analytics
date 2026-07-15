@@ -16,6 +16,57 @@
     <!-- Dynamic panel viewport container -->
   </div>
   
+  <div id="cache-recovery-widget" style="display: none; position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; background: rgba(0,0,0,0.95); border: 1.5px solid #fb8500; border-radius: 12px; padding: 16px; box-shadow: 0 10px 40px rgba(251,133,0,0.4); text-align: center; font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 90%; width: 320px;">
+    <p style="color: #fff; font-size: 0.85rem; margin: 0 0 12px 0; line-height: 1.4; font-weight: 500;">Seite scheint festzuhängen oder lädt nicht.</p>
+    <button onclick="clearCacheAndReload()" style="background: #fb8500; border: none; border-radius: 8px; color: #000; font-size: 0.82rem; font-weight: 700; padding: 10px 14px; cursor: pointer; width: 100%; transition: opacity 0.2s;">
+      Cache leeren & neu laden
+    </button>
+  </div>
+
+  <script>
+    function clearCacheAndReload() {
+      try { localStorage.clear(); } catch(e){}
+      try { sessionStorage.clear(); } catch(e){}
+      
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+          for (let registration of registrations) {
+            registration.unregister();
+          }
+        });
+      }
+      
+      if (window.caches) {
+        caches.keys().then(keys => {
+          keys.forEach(key => caches.delete(key));
+        });
+      }
+      
+      setTimeout(() => {
+        window.location.reload(true);
+      }, 250);
+    }
+
+    (function() {
+      var widget = document.getElementById('cache-recovery-widget');
+      var timeout = setTimeout(function() {
+        var app = document.getElementById('app');
+        if (!app || app.innerHTML.trim() === '' || app.querySelector('.spinner-box')) {
+          widget.style.display = 'block';
+        }
+      }, 5000); // 5 seconds timeout fallback
+
+      window.addEventListener('error', function(e) {
+        widget.style.display = 'block';
+        clearTimeout(timeout);
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        widget.style.display = 'block';
+        clearTimeout(timeout);
+      });
+    })();
+  </script>
+
   <script type="module" src="/src/main.js"></script>
   <script>
     if ('serviceWorker' in navigator) {

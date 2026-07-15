@@ -234,6 +234,11 @@ async function fetchMarkedCards() {
 async function setView(view) {
   currentView = view;
   await render();
+
+  if (view !== 'loading') {
+    const widget = document.getElementById('cache-recovery-widget');
+    if (widget) widget.style.display = 'none';
+  }
 }
 
 async function render() {
