@@ -114,6 +114,7 @@ body {
 .login-logo {
   width: 72px;
   height: 72px;
+  filter: brightness(0) invert(1);
 }
 
 .login-title {
@@ -154,6 +155,7 @@ body {
 .header-logo img {
   width: 32px;
   height: 32px;
+  filter: brightness(0) invert(1);
 }
 
 .header-title {
