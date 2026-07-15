@@ -1414,9 +1414,16 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
   // Clear any existing admin buttons first
   document.querySelectorAll('.cm-admin-btn-first-scan').forEach(btn => btn.remove());
 
-  if (!isAdmin) return;
+  console.log("[TCG Tracker] injectAdminActions call - isAdmin:", isAdmin, "Filter:", { targetCondition, targetLocation, targetLanguages });
+
+  if (!isAdmin) {
+    console.log("[TCG Tracker] User is not recognized as admin. app_metadata.role or user_metadata.role must be 'admin'.");
+    return;
+  }
 
   const rows = document.querySelectorAll('.article-row, [id^="articleRow"]');
+  let injectedCount = 0;
+
   for (const row of rows) {
     // 1. Seller Country
     const sellerCol = row.querySelector('.col-seller, [class*="seller"], [class*="user"], .col-sellerProductInfo');
@@ -1455,28 +1462,31 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
     if (buyCell) {
       const btn = document.createElement('button');
       btn.className = 'cm-admin-btn-first-scan';
-      btn.textContent = 'Als Startwert';
-      btn.title = 'Überschreibe den ersten Scan in der Datenbank mit diesem Angebot';
+      btn.innerHTML = '👑';
+      btn.title = `Dieses Angebot (${price.toFixed(2)} €) als neuen Startwert (First Scan) in Datenbank eintragen`;
       btn.style.cssText = `
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         margin-left: 6px;
         background: #fb8500;
         border: none;
         border-radius: 4px;
         color: #000000;
-        font-size: 0.65rem;
-        font-weight: 800;
-        padding: 4px 8px;
+        font-size: 0.75rem;
         cursor: pointer;
-        white-space: nowrap;
-        transition: opacity 0.2s;
+        transition: opacity 0.2s, transform 0.2s;
         vertical-align: middle;
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
       `;
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (confirm(`Möchtest du dieses Angebot für ${price.toFixed(2)} € als neuen Startwert (First Scan) in der Datenbank festlegen?\n(Der älteste Scan in der Datenbank für diese Filter wird überschrieben)`)) {
           btn.disabled = true;
-          btn.textContent = 'Speichert...';
+          btn.innerHTML = '⏳';
           const { tcg, cardId } = getTcgAndCardId();
           chrome.runtime.sendMessage({
             action: 'setFirstScan',
@@ -1494,7 +1504,7 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
             } else {
               alert('Fehler beim Speichern: ' + (res?.error || 'Unbekannter Fehler'));
               btn.disabled = false;
-              btn.textContent = 'Als Startwert';
+              btn.innerHTML = '👑';
             }
           });
         }
@@ -1506,8 +1516,11 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
       } else {
         buyCell.appendChild(btn);
       }
+      injectedCount++;
     }
   }
+
+  console.log("[TCG Tracker] injectAdminActions complete. Injected", injectedCount, "admin button overlays.");
 }
 
 // Start
