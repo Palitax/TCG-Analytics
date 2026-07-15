@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js';
+import { animate } from 'motion';
 
 // Global state variables
 let currentUser = null;
@@ -230,28 +231,35 @@ async function fetchMarkedCards() {
 }
 
 // Main View Router
-function setView(view) {
+async function setView(view) {
   currentView = view;
-  render();
+  await render();
 }
 
-function render() {
+async function render() {
   const app = document.getElementById('app');
   app.innerHTML = '';
 
+  let viewEl = null;
+
   if (currentView === 'loading') {
-    app.innerHTML = `
-      <div class="spinner-box">
-        <div class="spinner"></div>
-        <p>Verbindung wird hergestellt...</p>
-      </div>
+    viewEl = document.createElement('div');
+    viewEl.className = 'spinner-box';
+    viewEl.innerHTML = `
+      <div class="spinner"></div>
+      <p>Verbindung wird hergestellt...</p>
     `;
+    app.appendChild(viewEl);
   } else if (currentView === 'login') {
-    renderLogin(app);
+    viewEl = renderLogin(app);
   } else if (currentView === 'dashboard') {
-    renderDashboard(app);
+    viewEl = await renderDashboard(app);
   } else if (currentView === 'detail') {
-    renderDetail(app);
+    viewEl = renderDetail(app);
+  }
+
+  if (viewEl) {
+    animate(viewEl, { opacity: [0, 1], y: [15, 0] }, { duration: 0.28, ease: "easeOut" });
   }
 }
 
@@ -290,10 +298,15 @@ function renderLogin(container) {
       }
     });
   });
+  return div;
 }
 
 // RENDER: Dashboard Panel
 async function renderDashboard(container) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'dashboard-wrapper';
+  container.appendChild(wrapper);
+
   const header = document.createElement('header');
   header.className = 'app-header';
   header.innerHTML = `
@@ -307,7 +320,7 @@ async function renderDashboard(container) {
       </svg>
     </button>
   `;
-  container.appendChild(header);
+  wrapper.appendChild(header);
 
   header.querySelector('#btn-logout').addEventListener('click', async () => {
     await supabase.auth.signOut();
@@ -322,7 +335,7 @@ async function renderDashboard(container) {
     </div>
     <div id="search-results" class="search-results-overlay" style="display: none;"></div>
   `;
-  container.appendChild(searchSection);
+  wrapper.appendChild(searchSection);
 
   const inpSearch = searchSection.querySelector('#inp-search');
   const divResults = searchSection.querySelector('#search-results');
@@ -431,12 +444,12 @@ async function renderDashboard(container) {
       </button>
     </div>
   `;
-  container.appendChild(buttonsSection);
+  wrapper.appendChild(buttonsSection);
 
   // Sub-container for active tab
   const tabContentWrapper = document.createElement('div');
   tabContentWrapper.id = 'dashboard-tab-content';
-  container.appendChild(tabContentWrapper);
+  wrapper.appendChild(tabContentWrapper);
 
   const btnWatchlist = buttonsSection.querySelector('#btn-tab-watchlist');
   const btnAnalytics = buttonsSection.querySelector('#btn-tab-analytics');
@@ -468,6 +481,7 @@ async function renderDashboard(container) {
 
   // Render initial selected tab content
   renderActiveTab();
+  return wrapper;
 }
 
 // Sub-Tab Watchlist Renderer
@@ -494,61 +508,138 @@ function renderWatchlistTab(container) {
   dashboard.appendChild(list);
 
   for (const card of markedCards) {
-    const cardEl = document.createElement('div');
-    cardEl.className = 'watchlist-item glass-panel';
-    cardEl.setAttribute('data-card-id', card.id);
-    cardEl.innerHTML = `
-      <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
-      <div class="watchlist-item-info">
-        <span class="watchlist-item-tcg">${card.tcg}</span>
-        <span class="watchlist-item-name">${cleanCardName(card.card_id)}</span>
-      </div>
-      <div class="watchlist-item-price-col">
-        <span class="watchlist-item-price" id="price-${card.id}">-- €</span>
-        <span class="diff-badge" id="diff-${card.id}">...</span>
-      </div>
-      <button class="watchlist-item-delete" title="Vom Merkzettel entfernen">
-        <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="14" height="14">
+    const wrapper = document.createElement('div');
+    wrapper.className = 'watchlist-item-wrapper';
+    wrapper.innerHTML = `
+      <div class="watchlist-item-swipe-bg">
+        <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="20" height="20">
           <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
         </svg>
-      </button>
+        <span>Löschen</span>
+      </div>
+      <div class="watchlist-item glass-panel" data-card-id="${card.id}">
+        <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+        <div class="watchlist-item-info">
+          <span class="watchlist-item-tcg">${card.tcg}</span>
+          <span class="watchlist-item-name">${cleanCardName(card.card_id)}</span>
+        </div>
+        <div class="watchlist-item-price-col">
+          <span class="watchlist-item-price" id="price-${card.id}">-- €</span>
+          <span class="diff-badge" id="diff-${card.id}">...</span>
+        </div>
+      </div>
     `;
-    list.appendChild(cardEl);
+    list.appendChild(wrapper);
 
+    const cardEl = wrapper.querySelector('.watchlist-item');
+
+    let startX = 0;
+    let currentX = 0;
+    let isDragging = false;
+    let hasMoved = false;
+    const threshold = 120; // Swipe distance to trigger confirm dialog
+
+    const handleStart = (clientX) => {
+      startX = clientX;
+      isDragging = true;
+      hasMoved = false;
+      cardEl.style.transition = 'none';
+    };
+
+    const handleMove = (clientX) => {
+      if (!isDragging) return;
+      const deltaX = clientX - startX;
+      if (deltaX < 0) {
+        currentX = deltaX;
+        cardEl.style.transform = `translateX(${deltaX}px)`;
+        if (Math.abs(deltaX) > 10) {
+          hasMoved = true;
+        }
+      }
+    };
+
+    const handleEnd = () => {
+      if (!isDragging) return;
+      isDragging = false;
+      
+      cardEl.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+      
+      if (currentX < -threshold) {
+        // Complete swipe animation
+        cardEl.style.transform = 'translateX(-100%)';
+        setTimeout(async () => {
+          if (confirm(`Möchtest du "${cleanCardName(card.card_id)}" wirklich vom Merkzettel entfernen?`)) {
+            try {
+              const { error } = await supabase
+                .from('marked_cards')
+                .delete()
+                .eq('user_id', currentUser.id)
+                .eq('card_id', card.card_id);
+
+              if (error) throw error;
+
+              await fetchMarkedCards(); // Refresh local list
+              render(); // Refresh current dashboard view
+            } catch (err) {
+              alert("Fehler beim Entfernen: " + err.message);
+              cardEl.style.transform = 'translateX(0)';
+            }
+          } else {
+            // Cancelled: restore card position
+            cardEl.style.transform = 'translateX(0)';
+          }
+        }, 150);
+      } else {
+        // Drag not far enough: restore card position
+        cardEl.style.transform = 'translateX(0)';
+      }
+      currentX = 0;
+    };
+
+    // Touch events for mobile swiping
+    cardEl.addEventListener('touchstart', (e) => handleStart(e.touches[0].clientX), { passive: true });
+    cardEl.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      const deltaX = e.touches[0].clientX - startX;
+      if (Math.abs(deltaX) > 10) {
+        handleMove(e.touches[0].clientX);
+      }
+    }, { passive: true });
+    cardEl.addEventListener('touchend', handleEnd, { passive: true });
+
+    // Mouse events for desktop swiping drag support
+    cardEl.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || e.target.closest('a, button')) return;
+      handleStart(e.clientX);
+
+      const onMouseMove = (moveEv) => {
+        handleMove(moveEv.clientX);
+      };
+
+      const onMouseUp = () => {
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        handleEnd();
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    });
+
+    // Navigation click handler (only fires if they didn't drag/swipe)
     cardEl.addEventListener('click', () => {
+      if (hasMoved) {
+        hasMoved = false;
+        return;
+      }
       loadCardDetails(card.card_id, card.tcg);
     });
 
     const imgEl = cardEl.querySelector('.watchlist-item-img');
     if (imgEl) {
       imgEl.addEventListener('click', (e) => {
-        e.stopPropagation(); // Avoid triggering card details load!
+        e.stopPropagation(); // Avoid triggering details card navigation
         showLightbox(card.image_url || '/logo.png');
-      });
-    }
-
-    const deleteBtn = cardEl.querySelector('.watchlist-item-delete');
-    if (deleteBtn) {
-      deleteBtn.addEventListener('click', async (e) => {
-        e.stopPropagation(); // Avoid triggering card details load!
-        if (confirm(`Möchtest du "${cleanCardName(card.card_id)}" wirklich vom Merkzettel entfernen?`)) {
-          try {
-            deleteBtn.disabled = true;
-            const { error } = await supabase
-              .from('marked_cards')
-              .delete()
-              .eq('user_id', currentUser.id)
-              .eq('card_id', card.card_id);
-
-            if (error) throw error;
-
-            await fetchMarkedCards(); // Refresh local list
-            render(); // Refresh current dashboard view
-          } catch (err) {
-            alert("Fehler beim Entfernen: " + err.message);
-            deleteBtn.disabled = false;
-          }
-        }
       });
     }
 
@@ -744,7 +835,11 @@ async function loadCardDetails(cardId, tcg) {
 // RENDER: Detail View Panel
 function renderDetail(container) {
   const details = activeCardDetails;
-  if (!details) return;
+  if (!details) return null;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'detail-wrapper';
+  container.appendChild(wrapper);
 
   const header = document.createElement('header');
   header.className = 'app-header';
@@ -761,7 +856,7 @@ function renderDetail(container) {
       </svg>
     </button>
   `;
-  container.appendChild(header);
+  wrapper.appendChild(header);
 
   const starBtn = header.querySelector('#btn-detail-star');
   const starIcon = starBtn.querySelector('svg');
@@ -853,7 +948,7 @@ function renderDetail(container) {
       </div>
     </div>
   `;
-  container.appendChild(detailBody);
+  wrapper.appendChild(detailBody);
 
   const btnUploadImage = leftCol.querySelector('#btn-upload-image');
   const inputCardFile = leftCol.querySelector('#input-card-file');
@@ -1206,6 +1301,7 @@ function renderDetail(container) {
 
   // Initial draw
   updatePricesAndChart();
+  return wrapper;
 }
 
 // Start PWA Router
