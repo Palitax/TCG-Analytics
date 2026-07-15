@@ -605,8 +605,6 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
         element: row,
         condition: foundConditionCode
       };
-        }
-      }
     }
   }
   return null;
