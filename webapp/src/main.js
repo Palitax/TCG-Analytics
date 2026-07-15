@@ -518,6 +518,11 @@ function renderWatchlistTab(container) {
         <span>Löschen</span>
       </div>
       <div class="watchlist-item glass-panel" data-card-id="${card.id}">
+        <button class="watchlist-item-desktop-delete" title="Vom Merkzettel entfernen">
+          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="10" height="10">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
         <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
         <div class="watchlist-item-info">
           <span class="watchlist-item-tcg">${card.tcg}</span>
@@ -540,6 +545,8 @@ function renderWatchlistTab(container) {
     const threshold = 120; // Swipe distance to trigger confirm dialog
 
     const handleStart = (clientX) => {
+      // Disable swiping on desktop layout
+      if (window.innerWidth >= 768) return;
       startX = clientX;
       isDragging = true;
       hasMoved = false;
@@ -607,7 +614,7 @@ function renderWatchlistTab(container) {
     }, { passive: true });
     cardEl.addEventListener('touchend', handleEnd, { passive: true });
 
-    // Mouse events for desktop swiping drag support
+    // Mouse events for desktop swiping drag support (disabled by handleStart checking width >= 768)
     cardEl.addEventListener('mousedown', (e) => {
       if (e.button !== 0 || e.target.closest('a, button')) return;
       handleStart(e.clientX);
@@ -635,11 +642,38 @@ function renderWatchlistTab(container) {
       loadCardDetails(card.card_id, card.tcg);
     });
 
+    // Lightbox image trigger
     const imgEl = cardEl.querySelector('.watchlist-item-img');
     if (imgEl) {
       imgEl.addEventListener('click', (e) => {
         e.stopPropagation(); // Avoid triggering details card navigation
         showLightbox(card.image_url || '/logo.png');
+      });
+    }
+
+    // Bind desktop 'x' delete button click
+    const desktopDeleteBtn = cardEl.querySelector('.watchlist-item-desktop-delete');
+    if (desktopDeleteBtn) {
+      desktopDeleteBtn.addEventListener('click', async (e) => {
+        e.stopPropagation(); // Avoid triggering details card navigation
+        if (confirm(`Möchtest du "${cleanCardName(card.card_id)}" wirklich vom Merkzettel entfernen?`)) {
+          try {
+            desktopDeleteBtn.disabled = true;
+            const { error } = await supabase
+              .from('marked_cards')
+              .delete()
+              .eq('user_id', currentUser.id)
+              .eq('card_id', card.card_id);
+
+            if (error) throw error;
+
+            await fetchMarkedCards(); // Refresh local list
+            render(); // Refresh current dashboard view
+          } catch (err) {
+            alert("Fehler beim Entfernen: " + err.message);
+            desktopDeleteBtn.disabled = false;
+          }
+        }
       });
     }
 
