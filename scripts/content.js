@@ -1450,24 +1450,25 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
     const commentEl = row.querySelector('.comment-text, .msg, .comment, [class*="comment"]');
     const comment = commentEl ? commentEl.textContent.trim() : '';
 
-    // Inject "Als Startwert setzen" button next to price
-    const priceCell = row.querySelector('.col-price, [class*="price"], td:last-child');
-    if (priceCell) {
+    // Inject "Als Startwert" button next to shopping cart icon
+    const buyCell = row.querySelector('.col-buy, [class*="buy"], .col-action, td:last-child');
+    if (buyCell) {
       const btn = document.createElement('button');
       btn.className = 'cm-admin-btn-first-scan';
       btn.textContent = 'Als Startwert';
       btn.title = 'Überschreibe den ersten Scan in der Datenbank mit diesem Angebot';
       btn.style.cssText = `
         display: inline-block;
-        margin-top: 4px;
+        margin-left: 6px;
         background: #fb8500;
         border: none;
         border-radius: 4px;
         color: #000000;
         font-size: 0.65rem;
         font-weight: 800;
-        padding: 3px 6px;
+        padding: 4px 8px;
         cursor: pointer;
+        white-space: nowrap;
         transition: opacity 0.2s;
         vertical-align: middle;
       `;
@@ -1498,7 +1499,13 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
           });
         }
       });
-      priceCell.appendChild(btn);
+
+      const buyForm = buyCell.querySelector('form, button, [class*="buy-btn"]');
+      if (buyForm) {
+        buyForm.after(btn);
+      } else {
+        buyCell.appendChild(btn);
+      }
     }
   }
 }
