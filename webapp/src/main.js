@@ -5,7 +5,21 @@ let currentUser = null;
 let currentView = 'loading'; // 'loading', 'login', 'dashboard', 'detail'
 let activeDashboardTab = 'watchlist'; // 'watchlist' or 'analytics'
 let markedCards = [];
-let searchHistory = JSON.parse(localStorage.getItem('search_history') || '[]');
+let searchHistory = [];
+try {
+  searchHistory = JSON.parse(localStorage.getItem('search_history') || '[]');
+} catch (err) {
+  console.warn('localStorage is restricted or unavailable:', err);
+}
+
+function safeSaveSearchHistory() {
+  try {
+    localStorage.setItem('search_history', JSON.stringify(searchHistory));
+  } catch (err) {
+    console.warn('Failed to save search history to localStorage:', err);
+  }
+}
+
 let activeCardDetails = null; // Holds detail view data
 
 // Language dictionary
@@ -131,25 +145,37 @@ function parseHistoryItem(item) {
 
 // Initialize PWA App
 async function init() {
-  const { data: { session } } = await supabase.auth.getSession();
-  
-  if (session) {
-    currentUser = session.user;
-    await fetchMarkedCards();
-    setView('dashboard');
-  } else {
-    setView('login');
-  }
-
-  // Listen for auth state changes
-  supabase.auth.onAuthStateChange(async (event, session) => {
+  setView('loading');
+  try {
+    const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+    if (sessionErr) throw sessionErr;
+    
     if (session) {
       currentUser = session.user;
       await fetchMarkedCards();
       setView('dashboard');
     } else {
-      currentUser = null;
-      markedCards = [];
+      setView('login');
+    }
+  } catch (err) {
+    console.error('Initialization failed, falling back to login screen:', err);
+    setView('login');
+  }
+
+  // Listen for auth state changes
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    try {
+      if (session) {
+        currentUser = session.user;
+        await fetchMarkedCards();
+        setView('dashboard');
+      } else {
+        currentUser = null;
+        markedCards = [];
+        setView('login');
+      }
+    } catch (err) {
+      console.error('Auth state change handler failed:', err);
       setView('login');
     }
   });
@@ -548,7 +574,7 @@ function renderAnalyticsTab(container) {
     itemEl.querySelector('.btn-delete-history-item').addEventListener('click', (e) => {
       e.stopPropagation();
       searchHistory.splice(idx, 1);
-      localStorage.setItem('search_history', JSON.stringify(searchHistory));
+      safeSaveSearchHistory();
       renderAnalyticsTab(container);
     });
   });
@@ -563,7 +589,7 @@ function addToHistory(cardId, tcg) {
 
   searchHistory.unshift({ cardId, tcg });
   searchHistory = searchHistory.slice(0, 10);
-  localStorage.setItem('search_history', JSON.stringify(searchHistory));
+  safeSaveSearchHistory();
 }
 
 // Load the single latest price record for each bookmark grid card
