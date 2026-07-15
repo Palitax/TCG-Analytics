@@ -23,6 +23,10 @@ function safeSaveSearchHistory() {
 
 let activeCardDetails = null; // Holds detail view data
 
+function checkIsMobile() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+}
+
 // Language dictionary
 const LANGUAGE_NAMES_GERMAN = {
   "ALL": "Alle Sprachen",
@@ -112,17 +116,22 @@ function showLightbox(imgSrc) {
   const existing = document.getElementById('app-lightbox');
   if (existing) existing.remove();
 
+  const isMobileLayout = checkIsMobile();
+  const closeBtnHtml = isMobileLayout ? '' : `
+    <button class="lightbox-close" title="Schließen">
+      <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="20" height="20">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    </button>
+  `;
+
   const lightbox = document.createElement('div');
   lightbox.id = 'app-lightbox';
   lightbox.className = 'lightbox-overlay';
   lightbox.innerHTML = `
     <div class="lightbox-content">
       <img src="${imgSrc}" class="lightbox-img" onerror="this.src='/logo.png'">
-      <button class="lightbox-close" title="Schließen">
-        <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="20" height="20">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      ${closeBtnHtml}
     </div>
   `;
 
@@ -582,6 +591,16 @@ function renderWatchlistTab(container) {
     const wrapper = document.createElement('div');
     wrapper.className = 'watchlist-item-wrapper';
     wrapper.setAttribute('draggable', 'true');
+
+    const isMobileDevice = checkIsMobile();
+    const desktopDeleteBtnHtml = isMobileDevice ? '' : `
+      <button class="watchlist-item-desktop-delete" title="Vom Merkzettel entfernen">
+        <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="10" height="10">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    `;
+
     wrapper.innerHTML = `
       <div class="watchlist-item-swipe-bg">
         <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="20" height="20">
@@ -590,11 +609,7 @@ function renderWatchlistTab(container) {
         <span>Löschen</span>
       </div>
       <div class="watchlist-item glass-panel" data-card-id="${card.id}" data-card-uuid="${card.card_id}">
-        <button class="watchlist-item-desktop-delete" title="Vom Merkzettel entfernen">
-          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="10" height="10">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        ${desktopDeleteBtnHtml}
         <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
         <div class="watchlist-item-info">
           <span class="watchlist-item-tcg">${card.tcg}</span>
@@ -637,8 +652,12 @@ function renderWatchlistTab(container) {
     let touchDraggedItem = null;
     const threshold = 120;
 
+    let wrappers = [];
+    let currentIndex = -1;
+    let itemHeight = 0;
+
     const handleStart = (clientX, clientY) => {
-      if (window.innerWidth >= 768) return;
+      if (!checkIsMobile()) return;
       startX = clientX;
       startY = clientY;
       isDragging = true;
@@ -646,6 +665,10 @@ function renderWatchlistTab(container) {
       isSwiping = false;
       isSorting = false;
       cardEl.style.transition = 'none';
+
+      wrappers = [...list.querySelectorAll('.watchlist-item-wrapper')];
+      currentIndex = wrappers.indexOf(wrapper);
+      itemHeight = wrapper.offsetHeight;
     };
 
     const handleMove = (clientX, clientY) => {
@@ -653,7 +676,6 @@ function renderWatchlistTab(container) {
       const deltaX = clientX - startX;
       const deltaY = clientY - startY;
 
-      // Detect swipe direction once threshold met
       if (!isSwiping && !isSorting) {
         if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
           isSwiping = true;
@@ -661,6 +683,7 @@ function renderWatchlistTab(container) {
           isSorting = true;
           touchDraggedItem = wrapper;
           touchDraggedItem.classList.add('dragging');
+          touchDraggedItem.style.zIndex = '1000';
         }
       }
 
@@ -674,16 +697,34 @@ function renderWatchlistTab(container) {
         }
       } else if (isSorting && touchDraggedItem) {
         hasMoved = true;
-        const afterElement = getDragAfterElement(list, clientY);
-        if (afterElement == null) {
-          list.appendChild(touchDraggedItem);
-        } else {
-          list.insertBefore(touchDraggedItem, afterElement);
-        }
+        touchDraggedItem.style.transform = `translateY(${deltaY}px)`;
+
+        const shift = Math.round(deltaY / itemHeight);
+        const targetIndex = Math.max(0, Math.min(wrappers.length - 1, currentIndex + shift));
+
+        wrappers.forEach((w, idx) => {
+          if (w === wrapper) return;
+          w.style.transition = 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)';
+          if (currentIndex < targetIndex) {
+            if (idx > currentIndex && idx <= targetIndex) {
+              w.style.transform = `translateY(${-itemHeight}px)`;
+            } else {
+              w.style.transform = '';
+            }
+          } else if (currentIndex > targetIndex) {
+            if (idx < currentIndex && idx >= targetIndex) {
+              w.style.transform = `translateY(${itemHeight}px)`;
+            } else {
+              w.style.transform = '';
+            }
+          } else {
+            w.style.transform = '';
+          }
+        });
       }
     };
 
-    const handleEnd = () => {
+    const handleEnd = (changedTouches) => {
       if (!isDragging) return;
       isDragging = false;
       
@@ -703,8 +744,8 @@ function renderWatchlistTab(container) {
 
                 if (error) throw error;
 
-                await fetchMarkedCards(); // Refresh local list
-                render(); // Refresh current dashboard view
+                await fetchMarkedCards();
+                render();
               } catch (err) {
                 alert("Fehler beim Entfernen: " + err.message);
                 cardEl.style.transform = 'translateX(0)';
@@ -718,8 +759,31 @@ function renderWatchlistTab(container) {
         }
       } else if (isSorting && touchDraggedItem) {
         touchDraggedItem.classList.remove('dragging');
+        
+        wrappers.forEach(w => {
+          w.style.transform = '';
+          w.style.transition = '';
+          w.style.zIndex = '';
+        });
+        touchDraggedItem.style.transform = '';
+        touchDraggedItem.style.zIndex = '';
+
+        const clientY = (changedTouches && changedTouches[0]) ? changedTouches[0].clientY : startY;
+        const finalDeltaY = clientY - startY;
+        const finalShift = Math.round(finalDeltaY / itemHeight);
+        const finalTargetIndex = Math.max(0, Math.min(wrappers.length - 1, currentIndex + finalShift));
+
+        if (finalTargetIndex !== currentIndex) {
+          if (finalTargetIndex === wrappers.length - 1) {
+            list.appendChild(wrapper);
+          } else {
+            const referenceNode = wrappers[finalTargetIndex + (finalTargetIndex > currentIndex ? 1 : 0)];
+            list.insertBefore(wrapper, referenceNode);
+          }
+          saveWatchlistOrder();
+        }
+
         touchDraggedItem = null;
-        saveWatchlistOrder();
       }
 
       currentX = 0;
@@ -746,6 +810,7 @@ function renderWatchlistTab(container) {
           isSorting = true;
           touchDraggedItem = wrapper;
           touchDraggedItem.classList.add('dragging');
+          touchDraggedItem.style.zIndex = '1000';
         }
       }
 
@@ -757,7 +822,7 @@ function renderWatchlistTab(container) {
       }
     }, { passive: false });
 
-    cardEl.addEventListener('touchend', handleEnd, { passive: true });
+    cardEl.addEventListener('touchend', (e) => handleEnd(e.changedTouches), { passive: true });
 
     // Mouse events (fallback - only desktop click detection, drag sort handles dragging)
     cardEl.addEventListener('click', () => {
@@ -1458,6 +1523,71 @@ function renderDetail(container) {
   selCond.addEventListener('change', onFilterChange);
   selLang.addEventListener('change', onFilterChange);
   selLoc.addEventListener('change', onFilterChange);
+
+  // Watchlist previous/next navigation
+  const currentIndex = markedCards.findIndex(m => m.card_id === details.cardId);
+  if (currentIndex !== -1) {
+    const prevCard = currentIndex > 0 ? markedCards[currentIndex - 1] : null;
+    const nextCard = currentIndex < markedCards.length - 1 ? markedCards[currentIndex + 1] : null;
+
+    if (!checkIsMobile()) {
+      // Desktop Pfeile links und rechts
+      if (prevCard) {
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'detail-nav-btn prev-btn';
+        prevBtn.title = `Vorherige Karte: ${cleanCardName(prevCard.card_id)}`;
+        prevBtn.innerHTML = `
+          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="24" height="24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        `;
+        prevBtn.addEventListener('click', () => {
+          loadCardDetails(prevCard.card_id, prevCard.tcg);
+        });
+        wrapper.appendChild(prevBtn);
+      }
+      if (nextCard) {
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'detail-nav-btn next-btn';
+        nextBtn.title = `Nächste Karte: ${cleanCardName(nextCard.card_id)}`;
+        nextBtn.innerHTML = `
+          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="24" height="24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        `;
+        nextBtn.addEventListener('click', () => {
+          loadCardDetails(nextCard.card_id, nextCard.tcg);
+        });
+        wrapper.appendChild(nextBtn);
+      }
+    } else {
+      // Mobile swipe gestures on the detail page wrapper
+      let touchStartX = 0;
+      let touchStartY = 0;
+      
+      wrapper.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      }, { passive: true });
+
+      wrapper.addEventListener('touchend', (e) => {
+        if (e.changedTouches.length === 0) return;
+        const touchEndX = e.changedTouches[0].clientX;
+        const touchEndY = e.changedTouches[0].clientY;
+        const deltaX = touchEndX - touchStartX;
+        const deltaY = touchEndY - touchStartY;
+
+        // Verify it was a horizontal swipe of significant distance (> 80px)
+        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 80) {
+          if (deltaX > 0 && prevCard) {
+            loadCardDetails(prevCard.card_id, prevCard.tcg);
+          } else if (deltaX < 0 && nextCard) {
+            loadCardDetails(nextCard.card_id, nextCard.tcg);
+          }
+        }
+      }, { passive: true });
+    }
+  }
 
   // Initial draw
   updatePricesAndChart();
