@@ -356,6 +356,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         const oldestRecords = await getRes.json();
+        console.log("[TCG Tracker SW] setFirstScan - oldestRecords matching filters:", oldestRecords);
         if (oldestRecords.length === 0) {
           return sendResponse({ error: "No records found to overwrite" });
         }
@@ -385,6 +386,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!updateRes.ok) {
           const errText = await updateRes.text();
           return sendResponse({ error: `Failed to update record: ${errText}` });
+        }
+
+        const updatedData = await updateRes.json();
+        console.log("[TCG Tracker SW] PATCH response status:", updateRes.status, "data:", updatedData);
+        
+        if (updatedData.length === 0) {
+          return sendResponse({ error: "Keine Zeile aktualisiert. Bitte prüfe die RLS-Datenbankrechte (UPDATE-Policy auf price_history)." });
         }
 
         sendResponse({ success: true });
