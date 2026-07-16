@@ -251,6 +251,32 @@ async function fetchMarkedCards() {
         return idxA - idxB;
       });
     }
+
+    // Fetch global card images if any
+    const cardIds = listData.map(c => c.card_id);
+    if (cardIds.length > 0) {
+      try {
+        const { data: globalImages, error: globalImagesErr } = await supabase
+          .from('card_images')
+          .select('card_id, image_url')
+          .in('card_id', cardIds);
+        
+        if (!globalImagesErr && globalImages) {
+          const imageMap = {};
+          for (const img of globalImages) {
+            imageMap[img.card_id] = img.image_url;
+          }
+          for (const card of listData) {
+            if (imageMap[card.card_id]) {
+              card.image_url = imageMap[card.card_id];
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching global card images:', err.message);
+      }
+    }
+
     markedCards = listData;
   } catch (err) {
     console.error('Error loading bookmarks:', err.message);
@@ -411,6 +437,31 @@ async function renderDashboard(container) {
               tcg: row.tcg,
               imageUrl: parsed.imageUrl
             });
+          }
+        }
+
+        // Enrich uniqueCards with global custom images
+        const cardIds = uniqueCards.map(c => c.card_id);
+        if (cardIds.length > 0) {
+          try {
+            const { data: globalImages, error: globalImagesErr } = await supabase
+              .from('card_images')
+              .select('card_id, image_url')
+              .in('card_id', cardIds);
+            
+            if (!globalImagesErr && globalImages) {
+              const imageMap = {};
+              for (const img of globalImages) {
+                imageMap[img.card_id] = img.image_url;
+              }
+              for (const c of uniqueCards) {
+                if (imageMap[c.card_id]) {
+                  c.imageUrl = imageMap[c.card_id];
+                }
+              }
+            }
+          } catch (err) {
+            console.error('Error fetching global search images:', err.message);
           }
         }
 
@@ -1021,6 +1072,21 @@ async function loadCardDetails(cardId, tcg) {
 
     const parsedHistory = (historyData || []).map(parseHistoryItem);
 
+    // Fetch global custom image if any
+    let globalImageUrl = null;
+    try {
+      const { data: globalImgData, error: globalImgErr } = await supabase
+        .from('card_images')
+        .select('image_url')
+        .eq('card_id', cardId)
+        .maybeSingle();
+      if (!globalImgErr && globalImgData) {
+        globalImageUrl = globalImgData.image_url;
+      }
+    } catch (err) {
+      console.error('Error fetching global card image:', err.message);
+    }
+
     // Extract unique filter combinations available in scanned data
     const conditions = Array.from(new Set(parsedHistory.map(h => h.condition)));
     const locations = Array.from(new Set(parsedHistory.map(h => h.seller_country)));
@@ -1041,7 +1107,7 @@ async function loadCardDetails(cardId, tcg) {
       locations: locations.sort(),
       languages: languages.sort(),
       isMarked: isCurrentlyMarked,
-      imageUrl: bookmarkImageUrl || (parsedHistory.length > 0 ? parsedHistory[0].imageUrl : null),
+      imageUrl: globalImageUrl || bookmarkImageUrl || (parsedHistory.length > 0 ? parsedHistory[0].imageUrl : null),
       
       // Default initial local filters: matching first scanned entry configuration
       selectedCondition: conditions[0] || 'NM',
@@ -1202,7 +1268,19 @@ function renderDetail(container) {
         // Compress to Max Width 200px (ideal thumbnail resolution)
         const compressedBase64 = await compressImage(base64Raw, 200);
 
-        // Use delete-then-insert workaround to bypass potential Supabase RLS UPDATE policy restrictions
+        // 1. Save globally in card_images table (replaces the previous one if it exists)
+        const { error: globalErr } = await supabase
+          .from('card_images')
+          .upsert({
+            card_id: details.cardId,
+            tcg: details.tcg,
+            image_url: compressedBase64,
+            updated_at: new Date().toISOString()
+          });
+
+        if (globalErr) throw globalErr;
+
+        // 2. Keep the private watchlist record updated
         await supabase
           .from('marked_cards')
           .delete()
