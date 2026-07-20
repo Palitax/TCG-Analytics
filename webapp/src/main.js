@@ -82,7 +82,7 @@ function cleanCardName(cardId) {
 }
 
 // Compress and resize base64 image using canvas to save storage
-function compressImage(base64Str, maxWidth = 200) {
+function compressImage(base64Str, maxWidth = 400) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -1501,43 +1501,44 @@ function renderDetail(container) {
       starBtn.style.pointerEvents = 'auto';
     }
   });
-
-  // Card Info Hero Section & left column
   const detailBody = document.createElement('div');
   detailBody.className = 'detail-view';
-  
-  const leftCol = document.createElement('div');
-  leftCol.className = 'detail-left-col';
-  detailBody.appendChild(leftCol);
-
-  leftCol.innerHTML = `
-    <div class="card-hero-section">
-      <div class="hero-img-wrapper" style="position: relative; display: inline-block;">
-        <img class="hero-img" src="${getProxiedImageUrl(details.imageUrl)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
-        <input type="file" id="input-card-file" accept="image/*" style="display: none;">
-        <button id="btn-upload-image" class="app-btn-edit-image" style="position: absolute; bottom: 8px; right: 8px; font-size: 0.65rem; padding: 4px 8px; border-radius: 4px; background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.2); color: #fff; cursor: pointer; display: flex; align-items: center; gap: 4px; z-index: 10;">
-          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-          </svg>
-          Bild hochladen
-        </button>
-      </div>
-      <div class="hero-meta">
-        <span class="hero-tcg">${details.tcg}</span>
-        <h1 class="hero-title">${cleanCardName(details.cardId)}</h1>
-        <a href="https://www.cardmarket.com${details.cardId}" target="_blank" rel="noopener noreferrer" class="cardmarket-link" style="font-size: 0.78rem; color: #60a5fa; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 500; transition: color 0.2s;">
-          Zeige Karte auf Cardmarket
-          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-          </svg>
-        </a>
-      </div>
-    </div>
-  `;
   wrapper.appendChild(detailBody);
 
-  const btnUploadImage = leftCol.querySelector('#btn-upload-image');
-  const inputCardFile = leftCol.querySelector('#input-card-file');
+  // 1. Meta Header Area
+  const metaHeader = document.createElement('div');
+  metaHeader.className = 'detail-meta-header';
+  metaHeader.innerHTML = `
+    <span class="hero-tcg">${details.tcg}</span>
+    <h1 class="hero-title">${cleanCardName(details.cardId)}</h1>
+    <a href="https://www.cardmarket.com${details.cardId}" target="_blank" rel="noopener noreferrer" class="cardmarket-link" style="font-size: 0.78rem; color: #60a5fa; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 500; transition: color 0.2s;">
+      Zeige Karte auf Cardmarket
+      <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+      </svg>
+    </a>
+  `;
+  detailBody.appendChild(metaHeader);
+
+  // 2. Image Area
+  const imageBox = document.createElement('div');
+  imageBox.className = 'detail-image-box';
+  imageBox.innerHTML = `
+    <div class="hero-img-wrapper" style="position: relative; display: block;">
+      <img class="hero-img" src="${getProxiedImageUrl(details.imageUrl)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+      <input type="file" id="input-card-file" accept="image/*" style="display: none;">
+      <button id="btn-upload-image" class="app-btn-edit-image">
+        <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+        </svg>
+        Bild ändern
+      </button>
+    </div>
+  `;
+  detailBody.appendChild(imageBox);
+
+  const btnUploadImage = imageBox.querySelector('#btn-upload-image');
+  const inputCardFile = imageBox.querySelector('#input-card-file');
 
   if (btnUploadImage && inputCardFile) {
     btnUploadImage.addEventListener('click', (e) => {
@@ -1560,8 +1561,8 @@ function renderDetail(container) {
           reader.readAsDataURL(file);
         });
 
-        // Compress to Max Width 200px (ideal thumbnail resolution)
-        const compressedBase64 = await compressImage(base64Raw, 200);
+        // Compress to Max Width 400px (ideal thumbnail resolution)
+        const compressedBase64 = await compressImage(base64Raw, 400);
 
         // 1. Save globally in card_images table (replaces the previous one if it exists)
         const { error: globalErr } = await supabase
@@ -1596,7 +1597,7 @@ function renderDetail(container) {
         await fetchMarkedCards(); // Refresh local watchlist copy in memory!
 
         details.imageUrl = compressedBase64;
-        const heroImg = leftCol.querySelector('.hero-img');
+        const heroImg = imageBox.querySelector('.hero-img');
         if (heroImg) {
           heroImg.src = compressedBase64;
         }
@@ -1610,14 +1611,14 @@ function renderDetail(container) {
           <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
             <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
           </svg>
-          Bild hochladen
+          Bild ändern
         `;
       }
     });
   }
 
   // Lightbox zoom triggers for detail view hero image
-  const heroImgEl = leftCol.querySelector('.hero-img');
+  const heroImgEl = imageBox.querySelector('.hero-img');
   if (heroImgEl) {
     heroImgEl.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1648,12 +1649,12 @@ function renderDetail(container) {
       </select>
     </div>
   `;
-  leftCol.appendChild(filterSection);
+  detailBody.appendChild(filterSection);
 
   // Output cards stats viewport
   const statsSection = document.createElement('div');
   statsSection.className = 'detail-offer-section';
-  leftCol.appendChild(statsSection);
+  detailBody.appendChild(statsSection);
 
   // SVG Chart Section Container
   const chartSection = document.createElement('div');
@@ -1964,7 +1965,7 @@ function renderDetail(container) {
 
   // --- Clipped Images Suggestions Logic ---
   const renderClippedImages = (images) => {
-    let suggestionsContainer = leftCol.querySelector('#clipped-images-suggestions');
+    let suggestionsContainer = detailBody.querySelector('#clipped-images-suggestions');
     if (images.length === 0) {
       if (suggestionsContainer) suggestionsContainer.remove();
       return;
@@ -1979,10 +1980,7 @@ function renderDetail(container) {
         <span style="font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); text-align: left;">Geclippte Bilder</span>
         <div class="suggestions-grid" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin;"></div>
       `;
-      const heroSection = leftCol.querySelector('.card-hero-section');
-      if (heroSection) {
-        heroSection.appendChild(suggestionsContainer);
-      }
+      detailBody.appendChild(suggestionsContainer);
     }
 
     const grid = suggestionsContainer.querySelector('.suggestions-grid');
@@ -2012,7 +2010,7 @@ function renderDetail(container) {
       imgBtn.addEventListener('click', async () => {
         if (confirm("Möchtest du dieses geclippte Bild als Anzeigebild für diese Karte übernehmen?")) {
           try {
-            const compressedBase64 = await compressImage(imgRecord.image, 200);
+            const compressedBase64 = await compressImage(imgRecord.image, 400);
 
             // 1. Save globally in card_images table
             const { error: globalErr } = await supabase
@@ -2046,7 +2044,7 @@ function renderDetail(container) {
 
             await fetchMarkedCards(); // Refresh local watchlist copy
             details.imageUrl = compressedBase64;
-            const heroImg = leftCol.querySelector('.hero-img');
+            const heroImg = detailBody.querySelector('.hero-img');
             if (heroImg) {
               heroImg.src = compressedBase64;
             }
