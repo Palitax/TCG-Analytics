@@ -6,6 +6,10 @@ let currentUser = null;
 let currentView = 'loading'; // 'loading', 'login', 'dashboard', 'detail'
 let activeDashboardTab = 'watchlist'; // 'watchlist' or 'analytics'
 let markedCards = [];
+let activeSortOption = 'custom';
+try {
+  activeSortOption = localStorage.getItem('watchlist_sort_option') || 'custom';
+} catch (err) {}
 let searchHistory = [];
 try {
   searchHistory = JSON.parse(localStorage.getItem('search_history') || '[]');
@@ -274,6 +278,52 @@ async function fetchMarkedCards() {
         }
       } catch (err) {
         console.error('Error fetching global card images:', err.message);
+      }
+
+      // Bulk fetch price history for all cards
+      try {
+        const { data: priceData, error: priceErr } = await supabase
+          .from('price_history')
+          .select('card_id, price, comment, scanned_at')
+          .in('card_id', cardIds)
+          .order('scanned_at', { ascending: true });
+
+        if (!priceErr && priceData) {
+          const historyMap = {};
+          for (const row of priceData) {
+            if (!historyMap[row.card_id]) {
+              historyMap[row.card_id] = [];
+            }
+            historyMap[row.card_id].push(parseHistoryItem(row));
+          }
+
+          for (const card of listData) {
+            const history = historyMap[card.card_id] || [];
+            if (history.length > 0) {
+              const latest = history[history.length - 1];
+              const baseline = history[0];
+              card.latest_price = latest.price;
+              card.baseline_price = baseline.price;
+              card.diff_percent = baseline.price > 0 ? ((latest.price - baseline.price) / baseline.price) * 100 : 0;
+
+              // Fallback image url from history
+              if (!card.image_url) {
+                for (let i = history.length - 1; i >= 0; i--) {
+                  if (history[i].imageUrl) {
+                    card.image_url = history[i].imageUrl;
+                    break;
+                  }
+                }
+              }
+            } else {
+              card.latest_price = null;
+              card.baseline_price = null;
+              card.diff_percent = 0;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching bulk prices:', err.message);
       }
     }
 
@@ -586,42 +636,97 @@ function renderWatchlistTab(container) {
     return;
   }
 
-  // Watchlist Header & Sync All Actions
+  // Sort the cards based on selected sort option
+  let sortedCards = [...markedCards];
+  if (activeSortOption === 'price-asc') {
+    sortedCards.sort((a, b) => {
+      const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : Infinity;
+      const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : Infinity;
+      return pA - pB;
+    });
+  } else if (activeSortOption === 'price-desc') {
+    sortedCards.sort((a, b) => {
+      const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : -Infinity;
+      const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : -Infinity;
+      return pB - pA;
+    });
+  } else if (activeSortOption === 'diff-desc') {
+    sortedCards.sort((a, b) => {
+      const dA = a.diff_percent !== undefined ? a.diff_percent : 0;
+      const dB = b.diff_percent !== undefined ? b.diff_percent : 0;
+      return dB - dA;
+    });
+  } else if (activeSortOption === 'diff-asc') {
+    sortedCards.sort((a, b) => {
+      const dA = a.diff_percent !== undefined ? a.diff_percent : 0;
+      const dB = b.diff_percent !== undefined ? b.diff_percent : 0;
+      return dA - dB;
+    });
+  }
+
+  // Watchlist Header & Sync All Actions & Sorting Controls
   const headerSection = document.createElement('div');
   headerSection.className = 'watchlist-header-actions';
-  headerSection.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; width: 100%; padding: 0 4px; gap: 12px;';
+  headerSection.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; width: 100%; padding: 0 4px;';
   headerSection.innerHTML = `
-    <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Watchlist (${markedCards.length})</span>
-    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-      <button id="btn-web-sync-all" style="
-        background-color: var(--primary);
-        color: white;
-        border: none;
-        border-radius: 6px;
-        padding: 8px 16px;
-        font-size: 0.82rem;
-        font-weight: 600;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        transition: all 0.2s ease;
-        box-shadow: 0 2px 8px rgba(251, 133, 0, 0.25);
-      ">
-        <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 12px;">
+      <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Watchlist (${markedCards.length})</span>
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+        <button id="btn-web-sync-all" style="
+          background-color: var(--primary);
+          color: white;
+          border: none;
+          border-radius: 6px;
+          padding: 8px 16px;
+          font-size: 0.82rem;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 8px rgba(251, 133, 0, 0.25);
+        ">
+          <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+          Sync all
+        </button>
+        <span id="sync-all-hint" style="font-size: 0.68rem; color: var(--text-muted); display: none; text-align: right;">
+          Tipp: Pop-ups erlauben, falls nicht alle Tabs öffnen.
+        </span>
+      </div>
+    </div>
+    
+    <div class="watchlist-filter-row" style="display: flex; justify-content: flex-start; align-items: center; gap: 12px; width: 100%;">
+      <div class="watchlist-sort-container">
+        <svg style="width: 14px; height: 14px; color: var(--text-muted);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
         </svg>
-        Sync all
-      </button>
-      <span id="sync-all-hint" style="font-size: 0.68rem; color: var(--text-muted); display: none; text-align: right;">
-        Tipp: Pop-ups erlauben, falls nicht alle Tabs öffnen.
-      </span>
+        <select id="select-watchlist-sort" class="watchlist-sort-select">
+          <option value="custom" ${activeSortOption === 'custom' ? 'selected' : ''}>Eigene Reihenfolge</option>
+          <option value="price-asc" ${activeSortOption === 'price-asc' ? 'selected' : ''}>Preis: Aufsteigend</option>
+          <option value="price-desc" ${activeSortOption === 'price-desc' ? 'selected' : ''}>Preis: Absteigend</option>
+          <option value="diff-desc" ${activeSortOption === 'diff-desc' ? 'selected' : ''}>Gewinn: Meiste %</option>
+          <option value="diff-asc" ${activeSortOption === 'diff-asc' ? 'selected' : ''}>Verlust: Meiste %</option>
+        </select>
+      </div>
     </div>
   `;
   dashboard.appendChild(headerSection);
 
   const btnWebSyncAll = headerSection.querySelector('#btn-web-sync-all');
   const syncHint = headerSection.querySelector('#sync-all-hint');
+  const selectSort = headerSection.querySelector('#select-watchlist-sort');
+
+  selectSort.addEventListener('change', () => {
+    activeSortOption = selectSort.value;
+    try {
+      localStorage.setItem('watchlist_sort_option', activeSortOption);
+    } catch (e) {}
+    container.innerHTML = '';
+    renderWatchlistTab(container);
+  });
 
   btnWebSyncAll.addEventListener('mouseenter', () => {
     btnWebSyncAll.style.backgroundColor = 'var(--primary-hover)';
@@ -665,6 +770,7 @@ function renderWatchlistTab(container) {
 
   list.addEventListener('dragover', (e) => {
     e.preventDefault();
+    if (activeSortOption !== 'custom') return;
     if (!draggedItem) return;
     const afterElement = getDragAfterElement(list, e.clientY);
     if (afterElement == null) {
@@ -708,10 +814,10 @@ function renderWatchlistTab(container) {
     });
   }
 
-  for (const card of markedCards) {
+  for (const card of sortedCards) {
     const wrapper = document.createElement('div');
     wrapper.className = 'watchlist-item-wrapper';
-    wrapper.setAttribute('draggable', 'true');
+    wrapper.setAttribute('draggable', activeSortOption === 'custom' ? 'true' : 'false');
 
     const isMobileDevice = checkIsMobile();
     const desktopDeleteBtnHtml = isMobileDevice ? '' : `
@@ -721,6 +827,22 @@ function renderWatchlistTab(container) {
         </svg>
       </button>
     `;
+
+    const priceText = card.latest_price !== null && card.latest_price !== undefined ? `${card.latest_price.toFixed(2)} €` : '-- €';
+    let diffText = '...';
+    let diffClass = '';
+    if (card.diff_percent !== undefined) {
+      if (card.diff_percent < 0) {
+        diffText = `${card.diff_percent.toFixed(2)}%`;
+        diffClass = 'gain'; // dropped is good
+      } else if (card.diff_percent > 0) {
+        diffText = `+${card.diff_percent.toFixed(2)}%`;
+        diffClass = 'loss'; // rose is bad
+      } else {
+        diffText = '0.00%';
+        diffClass = 'stable';
+      }
+    }
 
     wrapper.innerHTML = `
       <div class="watchlist-item-swipe-bg">
@@ -737,8 +859,8 @@ function renderWatchlistTab(container) {
           <span class="watchlist-item-name">${cleanCardName(card.card_id)}</span>
         </div>
         <div class="watchlist-item-price-col">
-          <span class="watchlist-item-price" id="price-${card.id}">-- €</span>
-          <span class="diff-badge" id="diff-${card.id}">...</span>
+          <span class="watchlist-item-price" id="price-${card.id}">${priceText}</span>
+          <span class="diff-badge ${diffClass}" id="diff-${card.id}">${diffText}</span>
         </div>
       </div>
     `;
@@ -746,6 +868,10 @@ function renderWatchlistTab(container) {
 
     // Desktop Drag events for sorting
     wrapper.addEventListener('dragstart', (e) => {
+      if (activeSortOption !== 'custom') {
+        e.preventDefault();
+        return;
+      }
       if (e.target.closest('button, img, a')) {
         e.preventDefault();
         return;
@@ -801,10 +927,12 @@ function renderWatchlistTab(container) {
         if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
           isSwiping = true;
         } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
-          isSorting = true;
-          touchDraggedItem = wrapper;
-          touchDraggedItem.classList.add('dragging');
-          touchDraggedItem.style.zIndex = '1000';
+          if (activeSortOption === 'custom') {
+            isSorting = true;
+            touchDraggedItem = wrapper;
+            touchDraggedItem.classList.add('dragging');
+            touchDraggedItem.style.zIndex = '1000';
+          }
         }
       }
 
@@ -928,10 +1056,12 @@ function renderWatchlistTab(container) {
         if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
           isSwiping = true;
         } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
-          isSorting = true;
-          touchDraggedItem = wrapper;
-          touchDraggedItem.classList.add('dragging');
-          touchDraggedItem.style.zIndex = '1000';
+          if (activeSortOption === 'custom') {
+            isSorting = true;
+            touchDraggedItem = wrapper;
+            touchDraggedItem.classList.add('dragging');
+            touchDraggedItem.style.zIndex = '1000';
+          }
         }
       }
 
@@ -988,8 +1118,6 @@ function renderWatchlistTab(container) {
         }
       });
     }
-
-    loadLatestPriceForDashboard(card);
   }
 }
 

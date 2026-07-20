@@ -1287,3 +1287,36 @@ body {
   right: 24px;
 }
 
+/* Watchlist Sorting Styles */
+.watchlist-sort-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 6px 12px;
+  transition: all 0.2s ease;
+}
+
+.watchlist-sort-container:focus-within {
+  border-color: var(--primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.watchlist-sort-select {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 0.82rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  padding-right: 4px;
+}
+
+.watchlist-sort-select option {
+  background: #090d16;
+  color: var(--text-primary);
+}
