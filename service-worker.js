@@ -454,9 +454,77 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const { urls } = message;
         if (urls && Array.isArray(urls)) {
           (async () => {
-            for (const url of urls) {
-              chrome.tabs.create({ url: url, active: false });
-              await new Promise(r => setTimeout(r, 50));
+            try {
+              const session = await getSession();
+              let cardPrefs = {};
+              let globalPrefs = {};
+              if (session && session.user) {
+                const userId = session.user.id;
+                const cardPrefsKey = 'card_preferences_' + userId;
+                const globalPrefsKey = 'preferences_' + userId;
+                const storage = await chrome.storage.local.get([cardPrefsKey, globalPrefsKey]);
+                cardPrefs = storage[cardPrefsKey] || {};
+                globalPrefs = storage[globalPrefsKey] || {};
+              }
+
+              const CONDITION_URL_MAP = {
+                "MT": "1",
+                "NM": "2",
+                "EX": "3",
+                "GD": "4",
+                "LP": "5",
+                "PL": "6",
+                "PO": "7"
+              };
+
+              const LANGUAGE_URL_MAP = {
+                "EN": "1",
+                "FR": "2",
+                "DE": "3",
+                "ES": "4",
+                "IT": "5",
+                "JP": "7",
+                "ZH": "8",
+                "KO": "10"
+              };
+
+              for (const urlStr of urls) {
+                let resolvedUrl = urlStr;
+                try {
+                  const urlObj = new URL(urlStr);
+                  const cardId = urlObj.pathname;
+                  
+                  const filters = cardPrefs[cardId] || globalPrefs || {};
+                  const params = new URLSearchParams(urlObj.search);
+                  
+                  const condition = filters.condition || 'NM';
+                  if (CONDITION_URL_MAP[condition]) {
+                    params.set('minCondition', CONDITION_URL_MAP[condition]);
+                  }
+                  
+                  const language = filters.language || 'ALL';
+                  if (language !== 'ALL' && LANGUAGE_URL_MAP[language]) {
+                    params.set('language', LANGUAGE_URL_MAP[language]);
+                  }
+                  
+                  const location = filters.location || 'DE';
+                  if (location === 'DE') {
+                    params.set('sellerCountry', '7');
+                  } else {
+                    params.delete('sellerCountry');
+                  }
+                  
+                  urlObj.search = params.toString();
+                  resolvedUrl = urlObj.toString();
+                } catch (e) {
+                  console.error("Failed to parse/resolve URL:", urlStr, e);
+                }
+
+                chrome.tabs.create({ url: resolvedUrl, active: false });
+                await new Promise(r => setTimeout(r, 50));
+              }
+            } catch (err) {
+              console.error("Error in openTabs loop:", err);
             }
           })();
         }

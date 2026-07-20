@@ -1161,9 +1161,31 @@ function attachListeners() {
         tcg: tcg,
         cardId: cardId,
         shouldMark: !isMarked
-      }, (response) => {
+      }, async (response) => {
         btnBookmark.style.pointerEvents = 'auto';
         if (response && response.success) {
+          if (!isMarked) {
+            // Save current filters specifically for this card
+            const storageKey = 'preferences_' + currentUserId;
+            const cardPrefsKey = 'card_preferences_' + currentUserId;
+            const { [storageKey]: prefs, [cardPrefsKey]: cardPrefs = {} } = await chrome.storage.local.get([storageKey, cardPrefsKey]);
+            
+            const sidebar = getSidebarState();
+            const sidebarLanguage = sidebar.languages.includes('ALL') ? 'ALL' : sidebar.languages[0];
+            
+            cardPrefs[cardId] = {
+              condition: sidebar.condition || prefs?.condition || 'NM',
+              location: sidebar.location || prefs?.location || 'DE',
+              language: sidebarLanguage || prefs?.language || 'ALL'
+            };
+            await chrome.storage.local.set({ [cardPrefsKey]: cardPrefs });
+          } else {
+            // Remove card preferences on unbookmark
+            const cardPrefsKey = 'card_preferences_' + currentUserId;
+            const { [cardPrefsKey]: cardPrefs = {} } = await chrome.storage.local.get(cardPrefsKey);
+            delete cardPrefs[cardId];
+            await chrome.storage.local.set({ [cardPrefsKey]: cardPrefs });
+          }
           runScan();
         }
       });
@@ -1203,14 +1225,17 @@ async function runScan(force = false) {
 
     currentUserId = response.user.id;
     const storageKey = 'preferences_' + currentUserId;
+    const cardPrefsKey = 'card_preferences_' + currentUserId;
+    const { tcg, cardId } = getTcgAndCardId();
 
-    // Load saved settings
-    const { [storageKey]: prefs } = await chrome.storage.local.get(storageKey);
-    let savedCondition = prefs?.condition || 'NM';
-    let savedLocation = prefs?.location || 'DE';
+    // Load saved settings (global and card-specific)
+    const { [storageKey]: prefs, [cardPrefsKey]: cardPrefs = {} } = await chrome.storage.local.get([storageKey, cardPrefsKey]);
+    const cardSpecific = cardPrefs[cardId] || {};
+    let savedCondition = cardSpecific.condition || prefs?.condition || 'NM';
+    let savedLocation = cardSpecific.location || prefs?.location || 'DE';
     
     // Support migrating from array layout to single string layout:
-    let savedLanguage = prefs?.language || (prefs?.languages && prefs.languages[0]) || 'ALL';
+    let savedLanguage = cardSpecific.language || prefs?.language || (prefs?.languages && prefs.languages[0]) || 'ALL';
 
     // Get available languages on the current page
     const availableLangs = getAvailableLanguages();
@@ -1261,6 +1286,12 @@ async function runScan(force = false) {
         language: savedLanguage
       };
       await chrome.storage.local.set({ [storageKey]: newPrefs });
+      
+      const { [cardPrefsKey]: latestCardPrefs = {} } = await chrome.storage.local.get(cardPrefsKey);
+      if (latestCardPrefs[cardId]) {
+        latestCardPrefs[cardId] = newPrefs;
+        await chrome.storage.local.set({ [cardPrefsKey]: latestCardPrefs });
+      }
       console.log("Updated saved preferences from URL state:", newPrefs);
     }
 
@@ -1382,6 +1413,19 @@ async function runScan(force = false) {
         isMarked: dbResponse.isMarked || false,
         isAdmin: dbResponse.isAdmin || false
       });
+
+      if (dbResponse.isMarked) {
+        (async () => {
+          const cardPrefsKey = 'card_preferences_' + currentUserId;
+          const { [cardPrefsKey]: latestCardPrefs = {} } = await chrome.storage.local.get(cardPrefsKey);
+          latestCardPrefs[cardId] = {
+            condition: savedCondition,
+            location: savedLocation,
+            language: savedLanguage
+          };
+          await chrome.storage.local.set({ [cardPrefsKey]: latestCardPrefs });
+        })();
+      }
 
       injectAdminActions(dbResponse.isAdmin, savedCondition, savedLocation, [savedLanguage]);
     });
