@@ -1720,7 +1720,7 @@ function showClipperButton(img) {
       box-shadow: 0 4px 12px rgba(0,0,0,0.5);
       transition: opacity 0.2s ease, transform 0.1s ease;
       opacity: 0;
-      pointer-events: auto;
+      pointer-events: none;
       line-height: 1;
     `;
     
@@ -1744,33 +1744,43 @@ function showClipperButton(img) {
         await clipImageAction(activeHoverImage);
       }
     });
-    
-    document.body.appendChild(clipperButton);
   }
 
   activeHoverImage = img;
+  const parent = img.parentElement;
+  if (!parent) return;
+
+  const parentStyle = window.getComputedStyle(parent);
+  if (parentStyle.position === 'static') {
+    parent.style.position = 'relative';
+  }
+
+  if (clipperButton.parentElement !== parent) {
+    parent.appendChild(clipperButton);
+  }
+
   const rect = img.getBoundingClientRect();
-  const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-  const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-  
-  // Position button inside top-right of image dynamically based on button size
   const btnWidth = clipperButton.offsetWidth || 65;
-  const btnHeight = clipperButton.offsetHeight || 28;
   
   if (rect.width > btnWidth + 16) {
-    clipperButton.style.left = `${rect.right + scrollLeft - btnWidth - 8}px`;
-    clipperButton.style.top = `${rect.top + scrollTop + 8}px`;
+    clipperButton.style.left = 'auto';
+    clipperButton.style.right = '8px';
+    clipperButton.style.top = '8px';
+    clipperButton.style.transform = 'none';
   } else {
-    // Center it on very small thumbnail images
-    clipperButton.style.left = `${rect.left + scrollLeft + (rect.width - btnWidth) / 2}px`;
-    clipperButton.style.top = `${rect.top + scrollTop + (rect.height - btnHeight) / 2}px`;
+    clipperButton.style.left = '50%';
+    clipperButton.style.top = '50%';
+    clipperButton.style.right = 'auto';
+    clipperButton.style.transform = 'translate(-50%, -50%)';
   }
   
+  clipperButton.style.pointerEvents = 'auto';
   clipperButton.style.opacity = '1';
 }
 
 function hideClipperButton() {
   if (clipperButton) {
+    clipperButton.style.pointerEvents = 'none';
     clipperButton.style.opacity = '0';
   }
   activeHoverImage = null;
