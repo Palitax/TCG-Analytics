@@ -447,34 +447,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         }
 
-        sendResponse({ success: true });
-      }
-
-      else if (message.action === "getMarkedCards") {
-        const session = await getSession();
-        if (!session) {
-          return sendResponse({ error: "UNAUTHENTICATED" });
-        }
-
-        const accessToken = session.access_token;
-        const userId = session.user.id;
-
-        const getUrl = `${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&order=created_at.desc`;
-        const response = await fetch(getUrl, {
-          method: "GET",
-          headers: {
-            "apikey": SUPABASE_ANON_KEY,
-            "Authorization": `Bearer ${accessToken}`
-          }
-        });
-
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(`Failed to fetch marked cards: ${response.statusText} - ${errText}`);
-        }
-
-        const data = await response.json();
-        sendResponse({ success: true, cards: data });
       }
     } catch (err) {
       console.error("Error handling message:", err);

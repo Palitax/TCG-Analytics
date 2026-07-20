@@ -7,11 +7,6 @@ const btnLogin = document.getElementById('btn-login');
 const btnLogout = document.getElementById('btn-logout');
 const userEmail = document.getElementById('user-email');
 
-const btnSyncAll = document.getElementById('btn-sync-all');
-const btnSyncAllText = document.getElementById('btn-sync-all-text');
-const wishlistStatus = document.getElementById('wishlist-status');
-let wishlistCards = [];
-
 // Toggle active display states
 function showPanel(panel) {
   panelLoading.classList.remove('active');
@@ -37,33 +32,6 @@ async function triggerTabScan() {
   }
 }
 
-// Fetch bookmarked cards and update popup UI
-async function updateWishlistUI() {
-  btnSyncAll.disabled = true;
-  wishlistStatus.textContent = "Lade Wishlist...";
-  
-  chrome.runtime.sendMessage({ action: "getMarkedCards" }, (response) => {
-    if (response && response.success) {
-      wishlistCards = response.cards || [];
-      const count = wishlistCards.length;
-      btnSyncAllText.textContent = `Sync all (${count})`;
-      
-      if (count > 0) {
-        btnSyncAll.disabled = false;
-        wishlistStatus.textContent = `${count} Karte(n) auf deiner Merkliste.`;
-      } else {
-        btnSyncAll.disabled = true;
-        wishlistStatus.textContent = "Keine Karten auf deiner Merkliste.";
-      }
-    } else {
-      btnSyncAll.disabled = true;
-      btnSyncAllText.textContent = "Sync all (0)";
-      wishlistStatus.textContent = "Fehler beim Laden der Merkliste.";
-      console.error("Failed to load wishlist:", response?.error);
-    }
-  });
-}
-
 // Check session state and initialize views
 async function init() {
   showPanel(panelLoading);
@@ -73,7 +41,6 @@ async function init() {
     if (response && response.authenticated) {
       userEmail.textContent = response.user.email;
       showPanel(panelLoggedIn);
-      updateWishlistUI();
     } else {
       showPanel(panelLoggedOut);
     }
@@ -89,7 +56,6 @@ btnLogin.addEventListener('click', () => {
       userEmail.textContent = response.user.email;
       showPanel(panelLoggedIn);
       triggerTabScan();
-      updateWishlistUI();
     } else {
       alert("Fehler bei der Anmeldung: " + (response?.error || "Unbekannter Fehler"));
       showPanel(panelLoggedOut);
@@ -108,31 +74,6 @@ btnLogout.addEventListener('click', () => {
       showPanel(panelLoggedIn);
     }
   });
-});
-
-// Add click listener to Sync All button
-btnSyncAll.addEventListener('click', async () => {
-  if (wishlistCards.length === 0) return;
-  
-  btnSyncAll.disabled = true;
-  btnSyncAll.classList.add('loading');
-  wishlistStatus.textContent = "Öffne Karten im Browser...";
-  
-  try {
-    for (const card of wishlistCards) {
-      const cardPath = card.card_id.startsWith('/') ? card.card_id : `/${card.card_id}`;
-      const url = `https://www.cardmarket.com${cardPath}`;
-      // Open in background tab so popup stays open
-      await chrome.tabs.create({ url: url, active: false });
-    }
-    wishlistStatus.textContent = `${wishlistCards.length} Karte(n) erfolgreich geöffnet!`;
-  } catch (err) {
-    wishlistStatus.textContent = "Fehler beim Öffnen der Tabs.";
-    console.error("Error opening tabs:", err);
-  } finally {
-    btnSyncAll.classList.remove('loading');
-    btnSyncAll.disabled = false;
-  }
 });
 
 // Run

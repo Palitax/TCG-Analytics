@@ -586,6 +586,64 @@ function renderWatchlistTab(container) {
     return;
   }
 
+  // Watchlist Header & Sync All Actions
+  const headerSection = document.createElement('div');
+  headerSection.className = 'watchlist-header-actions';
+  headerSection.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; width: 100%; padding: 0 4px; gap: 12px;';
+  headerSection.innerHTML = `
+    <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Watchlist (${markedCards.length})</span>
+    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+      <button id="btn-web-sync-all" style="
+        background-color: var(--primary);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 8px rgba(251, 133, 0, 0.25);
+      ">
+        <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+        </svg>
+        Sync all
+      </button>
+      <span id="sync-all-hint" style="font-size: 0.68rem; color: var(--text-muted); display: none; text-align: right;">
+        Tipp: Pop-ups erlauben, falls nicht alle Tabs öffnen.
+      </span>
+    </div>
+  `;
+  dashboard.appendChild(headerSection);
+
+  const btnWebSyncAll = headerSection.querySelector('#btn-web-sync-all');
+  const syncHint = headerSection.querySelector('#sync-all-hint');
+
+  btnWebSyncAll.addEventListener('mouseenter', () => {
+    btnWebSyncAll.style.backgroundColor = 'var(--primary-hover)';
+  });
+  btnWebSyncAll.addEventListener('mouseleave', () => {
+    btnWebSyncAll.style.backgroundColor = 'var(--primary)';
+  });
+
+  btnWebSyncAll.addEventListener('click', () => {
+    syncHint.style.display = 'block';
+    
+    for (const card of markedCards) {
+      const cardPath = card.card_id.startsWith('/') ? card.card_id : `/${card.card_id}`;
+      const url = `https://www.cardmarket.com${cardPath}`;
+      window.open(url, '_blank');
+    }
+    
+    setTimeout(() => {
+      syncHint.style.display = 'none';
+    }, 8000);
+  });
+
   const list = document.createElement('div');
   list.className = 'watchlist-list';
   dashboard.appendChild(list);
