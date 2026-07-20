@@ -1,6 +1,28 @@
 const SUPABASE_URL = "https://pjorjwwhiinaaebxvhhi.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqb3Jqd3doaWluYWFlYnh2aGhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5MjQ4NzEsImV4cCI6MjA5OTUwMDg3MX0.T8Gs9JaF9X-DbEgx0fSN9VeSEUPsV6nlFMd0RRW2hOs";
 
+// Setup dynamic declarativeNetRequest rule to strip Origin and set Referer for S3 requests to bypass 403 Forbidden checks
+chrome.declarativeNetRequest.updateSessionRules({
+  removeRuleIds: [1],
+  addRules: [
+    {
+      id: 1,
+      priority: 1,
+      action: {
+        type: "modifyHeaders",
+        requestHeaders: [
+          { header: "referer", operation: "set", value: "https://www.cardmarket.com/" },
+          { header: "origin", operation: "remove" }
+        ]
+      },
+      condition: {
+        urlFilter: "amazonaws.com",
+        resourceTypes: ["xmlhttprequest", "image"]
+      }
+    }
+  ]
+}).catch(err => console.error("Failed to register declarativeNetRequest rules:", err));
+
 // Fetch remote image and convert to Base64 in service worker background thread
 async function fetchAndConvertToBase64(url) {
   if (!url) return null;
@@ -531,20 +553,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       else if (message.action === "saveClippedImage") {
-        const { cardId, tcg, image } = message;
+        const { cardId, tcg, imageUrl } = message;
         (async () => {
           try {
-            if (!image) {
-              throw new Error("Missing image base64 data");
+            const base64 = await fetchAndConvertToBase64(imageUrl);
+            if (!base64) {
+              throw new Error("Failed to convert image to base64");
             }
             
             const { clippedImages = [] } = await chrome.storage.local.get('clippedImages');
-            const exists = clippedImages.some(img => img.cardId === cardId && img.image === image);
+            const exists = clippedImages.some(img => img.cardId === cardId && img.image === base64);
             if (!exists) {
               clippedImages.unshift({
                 cardId,
                 tcg,
-                image: image,
+                image: base64,
                 timestamp: Date.now()
               });
               if (clippedImages.length > 50) {
@@ -552,7 +575,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               }
               await chrome.storage.local.set({ clippedImages });
             }
-            sendResponse({ success: true, image: image });
+            sendResponse({ success: true, image: base64 });
           } catch (err) {
             console.error("Failed to save clipped image:", err);
             sendResponse({ error: err.message });

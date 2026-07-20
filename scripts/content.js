@@ -1761,60 +1761,41 @@ async function clipImageAction(img) {
   const { tcg, cardId } = getTcgAndCardId();
   const imageUrl = img.src;
 
-  try {
-    // 1. Fetch image directly from content script (uses cardmarket.com origin, bypassing CORS/Origin S3 blocks!)
-    const response = await fetch(imageUrl);
-    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-    
-    const blob = await response.blob();
-    
-    // 2. Convert blob to Base64 data URI in content script context
-    const base64 = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.onerror = () => reject(new Error("FileReader failed"));
-      reader.readAsDataURL(blob);
-    });
-
-    // 3. Send base64 to service worker to save
-    chrome.runtime.sendMessage({
-      action: "saveClippedImage",
-      cardId,
-      tcg,
-      image: base64
-    }, (res) => {
-      if (res && res.success) {
-        clipperButton.style.background = '#34d399'; // green success
-        clipperButton.innerHTML = `
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" style="display:inline-block; vertical-align:middle;">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-          <span style="vertical-align:middle;">Geclippt!</span>
-        `;
-        setTimeout(() => {
-          if (clipperButton) {
-            clipperButton.disabled = false;
-            clipperButton.innerHTML = originalContent;
-            clipperButton.style.background = 'rgba(251, 133, 0, 0.9)';
-            hideClipperButton();
-          }
-        }, 1500);
-      } else {
-        throw new Error(res?.error || "Unknown service worker error");
-      }
-    });
-  } catch (err) {
-    clipperButton.style.background = '#ef4444'; // red error
-    clipperButton.innerHTML = `<span style="vertical-align:middle;">Fehler!</span>`;
-    console.error("Clipper failed:", err);
-    setTimeout(() => {
-      if (clipperButton) {
-        clipperButton.disabled = false;
-        clipperButton.innerHTML = originalContent;
-        clipperButton.style.background = 'rgba(251, 133, 0, 0.9)';
-      }
-    }, 2000);
-  }
+  chrome.runtime.sendMessage({
+    action: "saveClippedImage",
+    cardId,
+    tcg,
+    imageUrl
+  }, (res) => {
+    if (res && res.success) {
+      clipperButton.style.background = '#34d399'; // green success
+      clipperButton.innerHTML = `
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" style="display:inline-block; vertical-align:middle;">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+        <span style="vertical-align:middle;">Geclippt!</span>
+      `;
+      setTimeout(() => {
+        if (clipperButton) {
+          clipperButton.disabled = false;
+          clipperButton.innerHTML = originalContent;
+          clipperButton.style.background = 'rgba(251, 133, 0, 0.9)';
+          hideClipperButton();
+        }
+      }, 1500);
+    } else {
+      clipperButton.style.background = '#ef4444'; // red error
+      clipperButton.innerHTML = `<span style="vertical-align:middle;">Fehler!</span>`;
+      console.error("Clipper failed:", res?.error);
+      setTimeout(() => {
+        if (clipperButton) {
+          clipperButton.disabled = false;
+          clipperButton.innerHTML = originalContent;
+          clipperButton.style.background = 'rgba(251, 133, 0, 0.9)';
+        }
+      }, 2000);
+    }
+  });
 }
 
 // Hover Event Listeners
