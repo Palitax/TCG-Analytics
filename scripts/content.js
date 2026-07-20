@@ -1636,8 +1636,11 @@ function isValidCardImage(el) {
     return false;
   }
   
-  // Match card artwork or main product images
-  const isCardmarketDomain = src.includes('static.cardmarket.com') || src.includes('cardmarket.com/img/');
+  // Match card artwork or main product images (including Amazon S3 hosted card scans)
+  const isCardmarketDomain = src.includes('static.cardmarket.com') || 
+                             src.includes('cardmarket.com/img/') ||
+                             src.includes('amazonaws.com');
+                             
   const isMainProductImage = el.closest('.image-container') !== null ||
                              el.closest('.prod-img') !== null ||
                              el.closest('.carousel') !== null ||
@@ -1646,7 +1649,10 @@ function isValidCardImage(el) {
                              el.className.includes('img-fluid') ||
                              el.closest('.col-12') !== null;
                              
-  return isCardmarketDomain || isMainProductImage;
+  // Ensure it's a reasonably sized image (not a tiny icon or pixel tracker)
+  const isLargeEnough = el.width > 80 || el.naturalWidth > 80 || el.height > 80 || el.naturalHeight > 80;
+                             
+  return (isCardmarketDomain || isMainProductImage) && isLargeEnough;
 }
 
 function showClipperButton(img) {
