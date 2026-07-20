@@ -1256,8 +1256,6 @@ async function runScan(force = false) {
     // Read the current state from the URL query parameters
     const sidebar = getSidebarState();
     const sidebarLanguage = sidebar.languages.includes('ALL') ? 'ALL' : sidebar.languages[0];
-    const { tcg, cardId } = getTcgAndCardId();
-
     const urlParams = new URLSearchParams(window.location.search);
     const hasUrlLocation = urlParams.has('sellerCountry');
     const hasUrlLanguage = urlParams.has('language');
