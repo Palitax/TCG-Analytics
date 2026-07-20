@@ -1606,6 +1606,35 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
 let clipperButton = null;
 let activeHoverImage = null;
 
+let mainCardImageElement = null;
+
+function findMainCardImageOnPage() {
+  if (mainCardImageElement && document.body.contains(mainCardImageElement)) {
+    return mainCardImageElement;
+  }
+  
+  const images = Array.from(document.querySelectorAll('img'));
+  const candidates = images.filter(img => {
+    const src = img.src || '';
+    if (src.includes('/avatars/') || src.includes('/logos/') || src.includes('payment') || src.includes('svg') || src.includes('/svg/')) {
+      return false;
+    }
+    const w = img.width || img.naturalWidth || 0;
+    const h = img.height || img.naturalHeight || 0;
+    const isMainClass = img.className.includes('img-fluid') || img.className.includes('product-image') || img.className.includes('prod-img');
+    return w > 100 || h > 100 || img.naturalWidth > 100 || img.naturalHeight > 100 || isMainClass;
+  });
+  
+  candidates.sort((a, b) => {
+    const sizeA = (a.width || a.naturalWidth || 0) * (a.height || a.naturalHeight || 0);
+    const sizeB = (b.width || b.naturalWidth || 0) * (b.height || b.naturalHeight || 0);
+    return sizeB - sizeA;
+  });
+  
+  mainCardImageElement = candidates[0] || null;
+  return mainCardImageElement;
+}
+
 function findImageInContext(target) {
   if (!target) return null;
   if (target.tagName === 'IMG') return target;
@@ -1613,7 +1642,7 @@ function findImageInContext(target) {
   let img = target.querySelector('img');
   if (img) return img;
   
-  const wrapper = target.closest('.image-container, .prod-img, .carousel, .lightbox, .gallery, .image-wrapper, [class*="image"], [class*="img"], .col-12');
+  const wrapper = target.closest('.image-container, .prod-img, .carousel, .lightbox, .gallery, .image-wrapper, [class*="image"], [class*="img"], .col-12, [class*="col-"]');
   if (wrapper) {
     img = wrapper.querySelector('img');
     if (img) return img;
@@ -1636,23 +1665,9 @@ function isValidCardImage(el) {
     return false;
   }
   
-  // Match card artwork or main product images (including Amazon S3 hosted card scans)
-  const isCardmarketDomain = src.includes('static.cardmarket.com') || 
-                             src.includes('cardmarket.com/img/') ||
-                             src.includes('amazonaws.com');
-                             
-  const isMainProductImage = el.closest('.image-container') !== null ||
-                             el.closest('.prod-img') !== null ||
-                             el.closest('.carousel') !== null ||
-                             el.closest('.lightbox') !== null ||
-                             el.closest('.gallery') !== null ||
-                             el.className.includes('img-fluid') ||
-                             el.closest('.col-12') !== null;
-                             
-  // Ensure it's a reasonably sized image (not a tiny icon or pixel tracker)
-  const isLargeEnough = el.width > 80 || el.naturalWidth > 80 || el.height > 80 || el.naturalHeight > 80;
-                             
-  return (isCardmarketDomain || isMainProductImage) && isLargeEnough;
+  const w = el.width || el.naturalWidth || 0;
+  const h = el.height || el.naturalHeight || 0;
+  return w > 60 || h > 60 || el.naturalWidth > 60 || el.naturalHeight > 60;
 }
 
 function showClipperButton(img) {
@@ -1788,6 +1803,20 @@ async function clipImageAction(img) {
 let hoverTimeout = null;
 
 document.addEventListener('mouseover', (e) => {
+  const mainImg = findMainCardImageOnPage();
+  if (mainImg) {
+    const isHoveringMainArea = e.target === mainImg || 
+                               mainImg.contains(e.target) || 
+                               e.target.contains(mainImg) ||
+                               e.target.closest('.image-container, .prod-img, .carousel, .lightbox, .gallery, .image-wrapper, [class*="col-"]') === mainImg.closest('.image-container, .prod-img, .carousel, .lightbox, .gallery, .image-wrapper, [class*="col-"]');
+                               
+    if (isHoveringMainArea) {
+      clearTimeout(hoverTimeout);
+      showClipperButton(mainImg);
+      return;
+    }
+  }
+
   const img = findImageInContext(e.target);
   if (img && isValidCardImage(img)) {
     clearTimeout(hoverTimeout);
@@ -1801,6 +1830,22 @@ document.addEventListener('mouseout', (e) => {
     return;
   }
   
+  const mainImg = findMainCardImageOnPage();
+  if (mainImg && activeHoverImage === mainImg) {
+    const hoveredElements = document.querySelectorAll(':hover');
+    const isStillHoveringMain = Array.from(hoveredElements).some(el => {
+      return el === clipperButton || 
+             el === mainImg || 
+             mainImg.contains(el) || 
+             el.contains(mainImg) ||
+             el.closest('.image-container, .prod-img, .carousel, .lightbox, .gallery, .image-wrapper, [class*="col-"]') === mainImg.closest('.image-container, .prod-img, .carousel, .lightbox, .gallery, .image-wrapper, [class*="col-"]');
+    });
+    
+    if (isStillHoveringMain) {
+      return;
+    }
+  }
+
   const img = findImageInContext(e.target);
   if (img && img === activeHoverImage) {
     clearTimeout(hoverTimeout);
