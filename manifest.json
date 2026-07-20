@@ -30,6 +30,16 @@
         "scripts/content.css"
       ],
       "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "http://localhost/*",
+        "https://tcg-analytics-chi.vercel.app/*"
+      ],
+      "js": [
+        "scripts/webapp-helper.js"
+      ],
+      "run_at": "document_start"
     }
   ],
   "icons": {

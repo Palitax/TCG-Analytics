@@ -631,12 +631,24 @@ function renderWatchlistTab(container) {
   });
 
   btnWebSyncAll.addEventListener('click', () => {
-    syncHint.style.display = 'block';
-    
-    for (const card of markedCards) {
+    const urls = markedCards.map(card => {
       const cardPath = card.card_id.startsWith('/') ? card.card_id : `/${card.card_id}`;
-      const url = `https://www.cardmarket.com${cardPath}`;
-      window.open(url, '_blank');
+      return `https://www.cardmarket.com${cardPath}`;
+    });
+
+    const isExtensionActive = document.documentElement.hasAttribute('data-tcg-tracker-extension-active');
+    syncHint.style.display = 'block';
+
+    if (isExtensionActive) {
+      syncHint.textContent = `Öffne ${urls.length} Tabs im Hintergrund...`;
+      syncHint.style.color = '#34d399'; // Green success color
+      document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_ALL', { detail: { urls } }));
+    } else {
+      syncHint.textContent = 'Tipp: Pop-ups erlauben oder Erweiterung aktivieren, falls nicht alle Tabs öffnen.';
+      syncHint.style.color = 'var(--text-muted)';
+      for (const url of urls) {
+        window.open(url, '_blank');
+      }
     }
     
     setTimeout(() => {

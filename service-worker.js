@@ -447,6 +447,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         }
 
+        sendResponse({ success: true });
+      }
+
+      else if (message.action === "openTabs") {
+        const { urls } = message;
+        if (urls && Array.isArray(urls)) {
+          (async () => {
+            for (const url of urls) {
+              chrome.tabs.create({ url: url, active: false });
+              await new Promise(r => setTimeout(r, 50));
+            }
+          })();
+        }
+        sendResponse({ success: true });
       }
     } catch (err) {
       console.error("Error handling message:", err);
