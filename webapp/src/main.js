@@ -1737,6 +1737,114 @@ function renderDetail(container) {
     }
   }
 
+  // --- Clipped Images Suggestions Logic ---
+  const handleClippedImagesReply = async (event) => {
+    // Clean up immediately
+    document.removeEventListener('TCG_TRACKER_CLIPPED_IMAGES_REPLY', handleClippedImagesReply);
+
+    const images = event.detail.images || [];
+    if (images.length === 0) return;
+
+    let suggestionsContainer = leftCol.querySelector('#clipped-images-suggestions');
+    if (!suggestionsContainer) {
+      suggestionsContainer = document.createElement('div');
+      suggestionsContainer.id = 'clipped-images-suggestions';
+      suggestionsContainer.className = 'glass-panel';
+      suggestionsContainer.style.cssText = 'display: flex; flex-direction: column; gap: 8px; padding: 12px; margin-top: 12px; border-radius: 8px; width: 100%;';
+      suggestionsContainer.innerHTML = `
+        <span style="font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); text-align: left;">Geclippte Bilder</span>
+        <div class="suggestions-grid" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin;"></div>
+      `;
+      const heroSection = leftCol.querySelector('.card-hero-section');
+      if (heroSection) {
+        heroSection.appendChild(suggestionsContainer);
+      }
+    }
+
+    const grid = suggestionsContainer.querySelector('.suggestions-grid');
+    grid.innerHTML = '';
+
+    for (const imgRecord of images) {
+      const imgBtn = document.createElement('button');
+      imgBtn.style.cssText = 'border: 2px solid var(--border-glass); border-radius: 6px; padding: 0; background: transparent; cursor: pointer; flex-shrink: 0; width: 44px; height: 44px; overflow: hidden; transition: all 0.2s ease; display: inline-block; vertical-align: middle;';
+
+      const thumb = document.createElement('img');
+      thumb.src = imgRecord.image;
+      thumb.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+      imgBtn.appendChild(thumb);
+
+      imgBtn.addEventListener('mouseenter', () => {
+        imgBtn.style.borderColor = 'var(--primary)';
+        imgBtn.style.transform = 'scale(1.05)';
+      });
+      imgBtn.addEventListener('mouseleave', () => {
+        imgBtn.style.borderColor = 'var(--border-glass)';
+        imgBtn.style.transform = 'scale(1)';
+      });
+
+      imgBtn.addEventListener('click', async () => {
+        if (confirm("Möchtest du dieses geclippte Bild als Anzeigebild für diese Karte übernehmen?")) {
+          try {
+            const compressedBase64 = await compressImage(imgRecord.image, 200);
+
+            // 1. Save globally in card_images table
+            const { error: globalErr } = await supabase
+              .from('card_images')
+              .upsert({
+                card_id: details.cardId,
+                tcg: details.tcg,
+                image_url: compressedBase64,
+                updated_at: new Date().toISOString()
+              });
+
+            if (globalErr) throw globalErr;
+
+            // 2. Keep the private watchlist record updated
+            await supabase
+              .from('marked_cards')
+              .delete()
+              .eq('card_id', details.cardId)
+              .eq('user_id', currentUser.id);
+
+            const { error } = await supabase
+              .from('marked_cards')
+              .insert({
+                user_id: currentUser.id,
+                tcg: details.tcg,
+                card_id: details.cardId,
+                image_url: compressedBase64
+              });
+
+            if (error) throw error;
+
+            await fetchMarkedCards(); // Refresh local watchlist copy
+            details.imageUrl = compressedBase64;
+            const heroImg = leftCol.querySelector('.hero-img');
+            if (heroImg) {
+              heroImg.src = compressedBase64;
+            }
+            alert("Bild erfolgreich übernommen!");
+          } catch (err) {
+            alert("Fehler beim Übernehmen: " + err.message);
+          }
+        }
+      });
+      grid.appendChild(imgBtn);
+    }
+  };
+
+  document.addEventListener('TCG_TRACKER_CLIPPED_IMAGES_REPLY', handleClippedImagesReply);
+
+  // Auto clean-up if no extension reply is received
+  setTimeout(() => {
+    document.removeEventListener('TCG_TRACKER_CLIPPED_IMAGES_REPLY', handleClippedImagesReply);
+  }, 1000);
+
+  // Dispatch request to get clipped images
+  document.dispatchEvent(new CustomEvent('TCG_TRACKER_GET_CLIPPED_IMAGES', {
+    detail: { cardId: details.cardId }
+  }));
+
   // Initial draw
   updatePricesAndChart();
   return wrapper;

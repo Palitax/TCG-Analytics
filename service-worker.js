@@ -462,6 +462,53 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         sendResponse({ success: true });
       }
+
+      else if (message.action === "saveClippedImage") {
+        const { cardId, tcg, imageUrl } = message;
+        (async () => {
+          try {
+            const base64 = await fetchAndConvertToBase64(imageUrl);
+            if (!base64) {
+              throw new Error("Failed to convert image to base64");
+            }
+            
+            const { clippedImages = [] } = await chrome.storage.local.get('clippedImages');
+            const exists = clippedImages.some(img => img.cardId === cardId && img.image === base64);
+            if (!exists) {
+              clippedImages.unshift({
+                cardId,
+                tcg,
+                image: base64,
+                timestamp: Date.now()
+              });
+              if (clippedImages.length > 50) {
+                clippedImages.pop();
+              }
+              await chrome.storage.local.set({ clippedImages });
+            }
+            sendResponse({ success: true, image: base64 });
+          } catch (err) {
+            console.error("Failed to save clipped image:", err);
+            sendResponse({ error: err.message });
+          }
+        })();
+      }
+
+      else if (message.action === "getClippedImages") {
+        const { cardId } = message;
+        (async () => {
+          try {
+            const { clippedImages = [] } = await chrome.storage.local.get('clippedImages');
+            const filtered = cardId 
+              ? clippedImages.filter(img => img.cardId === cardId)
+              : clippedImages;
+            sendResponse({ success: true, images: filtered });
+          } catch (err) {
+            console.error("Failed to get clipped images:", err);
+            sendResponse({ error: err.message });
+          }
+        })();
+      }
     } catch (err) {
       console.error("Error handling message:", err);
       sendResponse({ error: err.message });

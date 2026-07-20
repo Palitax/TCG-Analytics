@@ -1560,6 +1560,179 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
   console.log("[TCG Tracker] injectAdminActions complete. Injected", injectedCount, "admin button overlays.");
 }
 
+// --- Webclipper Feature ---
+let clipperButton = null;
+let activeHoverImage = null;
+
+function isValidCardImage(el) {
+  if (el.tagName !== 'IMG') return false;
+  const src = el.src || '';
+  // Match Cardmarket card artwork images (contains items/ or Cards/ or static.cardmarket)
+  const isCardArt = src.includes('static.cardmarket.com/img/items') || 
+                    src.includes('cardmarket.com/img/items') ||
+                    src.includes('/img/items/');
+  
+  // Also match main product images on singles pages
+  const isMainProductImage = el.closest('.image-container') !== null ||
+                             el.closest('.prod-img') !== null ||
+                             el.className.includes('img-fluid') && el.closest('.col-12');
+                             
+  return isCardArt || isMainProductImage;
+}
+
+function showClipperButton(img) {
+  if (!clipperButton) {
+    clipperButton = document.createElement('button');
+    clipperButton.className = 'cm-webclipper-btn';
+    clipperButton.innerHTML = `
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle; display:inline-block;">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+      <span style="vertical-align:middle;">Clip</span>
+    `;
+    clipperButton.style.cssText = `
+      position: absolute;
+      z-index: 100000;
+      background: rgba(251, 133, 0, 0.9);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      transition: opacity 0.2s ease, transform 0.1s ease;
+      opacity: 0;
+      pointer-events: auto;
+      line-height: 1;
+    `;
+    
+    clipperButton.addEventListener('mouseenter', () => {
+      if (!clipperButton.disabled) {
+        clipperButton.style.background = '#ffb703';
+        clipperButton.style.transform = 'scale(1.05)';
+      }
+    });
+    clipperButton.addEventListener('mouseleave', () => {
+      if (!clipperButton.disabled) {
+        clipperButton.style.background = 'rgba(251, 133, 0, 0.9)';
+        clipperButton.style.transform = 'scale(1)';
+      }
+    });
+    
+    clipperButton.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (activeHoverImage) {
+        await clipImageAction(activeHoverImage);
+      }
+    });
+    
+    document.body.appendChild(clipperButton);
+  }
+
+  activeHoverImage = img;
+  const rect = img.getBoundingClientRect();
+  const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+  const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+  
+  // Position button inside top-right of image
+  clipperButton.style.left = `${rect.right + scrollLeft - 68}px`;
+  clipperButton.style.top = `${rect.top + scrollTop + 8}px`;
+  clipperButton.style.opacity = '1';
+}
+
+function hideClipperButton() {
+  if (clipperButton) {
+    clipperButton.style.opacity = '0';
+  }
+  activeHoverImage = null;
+}
+
+async function clipImageAction(img) {
+  if (!clipperButton || clipperButton.disabled) return;
+
+  const originalContent = clipperButton.innerHTML;
+  clipperButton.disabled = true;
+  clipperButton.style.background = '#fb8500';
+  clipperButton.innerHTML = `
+    <svg class="cm-clip-spinner" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" style="animation: spin 1s linear infinite; display:inline-block; vertical-align:middle;">
+      <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.2)"/>
+      <path d="M12 2a10 10 0 0 1 10 10" stroke="#fff"/>
+    </svg>
+    <span style="vertical-align:middle;">Clipping...</span>
+  `;
+
+  // Get current Cardmarket card page details
+  const { tcg, cardId } = getTcgAndCardId();
+  const imageUrl = img.src;
+
+  chrome.runtime.sendMessage({
+    action: "saveClippedImage",
+    cardId,
+    tcg,
+    imageUrl
+  }, (res) => {
+    if (res && res.success) {
+      clipperButton.style.background = '#34d399'; // green success
+      clipperButton.innerHTML = `
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" style="display:inline-block; vertical-align:middle;">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+        <span style="vertical-align:middle;">Geclippt!</span>
+      `;
+      setTimeout(() => {
+        if (clipperButton) {
+          clipperButton.disabled = false;
+          clipperButton.innerHTML = originalContent;
+          clipperButton.style.background = 'rgba(251, 133, 0, 0.9)';
+          hideClipperButton();
+        }
+      }, 1500);
+    } else {
+      clipperButton.style.background = '#ef4444'; // red error
+      clipperButton.innerHTML = `<span style="vertical-align:middle;">Fehler!</span>`;
+      console.error("Clipper failed:", res?.error);
+      setTimeout(() => {
+        if (clipperButton) {
+          clipperButton.disabled = false;
+          clipperButton.innerHTML = originalContent;
+          clipperButton.style.background = 'rgba(251, 133, 0, 0.9)';
+        }
+      }, 2000);
+    }
+  });
+}
+
+// Hover Event Listeners
+document.addEventListener('mouseover', (e) => {
+  const img = e.target.closest('img');
+  if (img && isValidCardImage(img)) {
+    showClipperButton(img);
+  }
+});
+
+document.addEventListener('mouseout', (e) => {
+  const related = e.relatedTarget;
+  if (clipperButton && (related === clipperButton || clipperButton.contains(related))) {
+    return;
+  }
+  if (activeHoverImage && e.target === activeHoverImage) {
+    setTimeout(() => {
+      const hovered = document.querySelectorAll(':hover');
+      const isHovered = Array.from(hovered).some(el => el === activeHoverImage || el === clipperButton);
+      if (!isHovered) {
+        hideClipperButton();
+      }
+    }, 150);
+  }
+});
+
 // Start
 runScan();
 setupObserver();

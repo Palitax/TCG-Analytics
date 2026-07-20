@@ -10,3 +10,14 @@ document.addEventListener('TCG_TRACKER_SYNC_ALL', (event) => {
     chrome.runtime.sendMessage({ action: "openTabs", urls: event.detail.urls });
   }
 });
+// Listen for requests for clipped images from the Webapp
+document.addEventListener('TCG_TRACKER_GET_CLIPPED_IMAGES', (event) => {
+  const { cardId } = event.detail || {};
+  chrome.runtime.sendMessage({ action: "getClippedImages", cardId }, (res) => {
+    if (res && res.success) {
+      document.dispatchEvent(new CustomEvent('TCG_TRACKER_CLIPPED_IMAGES_REPLY', {
+        detail: { images: res.images || [] }
+      }));
+    }
+  });
+});
