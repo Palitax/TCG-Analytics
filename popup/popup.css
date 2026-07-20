@@ -424,3 +424,57 @@ select:focus {
   background-color: #303030;
   opacity: 0.2;
 }
+
+/* Wishlist Panel styles */
+.wishlist-box {
+  background-color: var(--bg-card);
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.wishlist-status {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.btn-primary:disabled {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.25);
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.btn-primary:disabled:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  transform: none;
+}
+
+.btn-icon {
+  flex-shrink: 0;
+  animation: none;
+}
+
+/* Spinning animation for loading state */
+@keyframes spin-icon {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.btn-primary.loading .btn-icon {
+  animation: spin-icon 1s linear infinite;
+}
+
