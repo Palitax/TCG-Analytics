@@ -10,7 +10,9 @@
   ],
   "host_permissions": [
     "https://*.cardmarket.com/*",
-    "https://pjorjwwhiinaaebxvhhi.supabase.co/*"
+    "https://pjorjwwhiinaaebxvhhi.supabase.co/*",
+    "https://*.amazonaws.com/*",
+    "https://*.cloudfront.net/*"
   ],
   "action": {
     "default_popup": "popup/popup.html"
