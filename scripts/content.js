@@ -1620,6 +1620,28 @@ function isValidCardImage(el) {
   return w > 60 || h > 60 || el.naturalWidth > 60 || el.naturalHeight > 60;
 }
 
+function isElementVisibleInOverflow(el) {
+  if (!el) return false;
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return false;
+
+  let parent = el.parentElement;
+  while (parent && parent !== document.body) {
+    const parentStyle = window.getComputedStyle(parent);
+    if (parentStyle.overflow === 'hidden' || parentStyle.overflowX === 'hidden' || parentStyle.overflowY === 'hidden') {
+      const parentRect = parent.getBoundingClientRect();
+      if (rect.right <= parentRect.left + 5 ||
+          rect.left >= parentRect.right - 5 ||
+          rect.bottom <= parentRect.top + 5 ||
+          rect.top >= parentRect.bottom - 5) {
+        return false;
+      }
+    }
+    parent = parent.parentElement;
+  }
+  return true;
+}
+
 function findVisibleImage(parent) {
   if (!parent) return null;
   if (parent.tagName === 'IMG' && isValidCardImage(parent)) {
@@ -1627,7 +1649,9 @@ function findVisibleImage(parent) {
     if (rect.width > 0 && rect.height > 0) {
       const style = window.getComputedStyle(parent);
       if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) !== 0) {
-        return parent;
+        if (isElementVisibleInOverflow(parent)) {
+          return parent;
+        }
       }
     }
     return null;
@@ -1639,7 +1663,10 @@ function findVisibleImage(parent) {
     const rect = img.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return false;
     const style = window.getComputedStyle(img);
-    return style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) !== 0;
+    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+      return false;
+    }
+    return isElementVisibleInOverflow(img);
   });
 
   return visibleImgs[0] || null;
@@ -1657,7 +1684,7 @@ function findMainCardImageOnPage() {
     if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
       return false;
     }
-    return true;
+    return isElementVisibleInOverflow(img);
   });
   
   candidates.sort((a, b) => {
