@@ -7,7 +7,8 @@
   "permissions": [
     "storage",
     "identity",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "unlimitedStorage"
   ],
   "host_permissions": [
     "https://*.cardmarket.com/*",
