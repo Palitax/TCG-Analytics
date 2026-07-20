@@ -556,6 +556,58 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               }
               await chrome.storage.local.set({ clippedImages });
             }
+
+            // Sync with Supabase: save to card_images and update marked_cards
+            try {
+              const { session } = await chrome.storage.local.get('session');
+              if (session && session.access_token) {
+                const accessToken = session.access_token;
+                
+                // 1. Upsert into card_images
+                const imgData = {
+                  card_id: cardId,
+                  tcg: tcg,
+                  image_url: base64,
+                  updated_at: new Date().toISOString()
+                };
+
+                const imgRes = await fetch(`${SUPABASE_URL}/rest/v1/card_images`, {
+                  method: "POST",
+                  headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${accessToken}`,
+                    "Content-Type": "application/json",
+                    "Prefer": "resolution=merge-duplicates"
+                  },
+                  body: JSON.stringify(imgData)
+                });
+
+                if (!imgRes.ok) {
+                  console.error("Failed to upload clipped image to card_images:", imgRes.status, imgRes.statusText);
+                }
+
+                // 2. Update private marked_cards if bookmarked
+                const userId = session.user?.id;
+                if (userId) {
+                  const updateRes = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&card_id=eq.${encodeURIComponent(cardId)}`, {
+                    method: "PATCH",
+                    headers: {
+                      "apikey": SUPABASE_ANON_KEY,
+                      "Authorization": `Bearer ${accessToken}`,
+                      "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ image_url: base64 })
+                  });
+
+                  if (!updateRes.ok) {
+                    console.error("Failed to update marked_cards with clipped image:", updateRes.status, updateRes.statusText);
+                  }
+                }
+              }
+            } catch (syncErr) {
+              console.error("Failed syncing clipped image to Supabase:", syncErr);
+            }
+
             sendResponse({ success: true, image: base64 });
           } catch (err) {
             console.error("Failed to save clipped image:", err);
