@@ -1,43 +1,7 @@
 const SUPABASE_URL = "https://pjorjwwhiinaaebxvhhi.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqb3Jqd3doaWluYWFlYnh2aGhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5MjQ4NzEsImV4cCI6MjA5OTUwMDg3MX0.T8Gs9JaF9X-DbEgx0fSN9VeSEUPsV6nlFMd0RRW2hOs";
 
-// Setup dynamic declarativeNetRequest rules to strip Origin and set Referer for S3 / Cloudfront requests to bypass 403 Forbidden checks
-// Note: resourceTypes must include "other" because fetches from the background service worker are classified as "other"!
-chrome.declarativeNetRequest.updateSessionRules({
-  removeRuleIds: [1, 2],
-  addRules: [
-    {
-      id: 1,
-      priority: 1,
-      action: {
-        type: "modifyHeaders",
-        requestHeaders: [
-          { header: "referer", operation: "set", value: "https://www.cardmarket.com/" },
-          { header: "origin", operation: "remove" }
-        ]
-      },
-      condition: {
-        urlFilter: "amazonaws.com",
-        resourceTypes: ["xmlhttprequest", "image", "other"]
-      }
-    },
-    {
-      id: 2,
-      priority: 1,
-      action: {
-        type: "modifyHeaders",
-        requestHeaders: [
-          { header: "referer", operation: "set", value: "https://www.cardmarket.com/" },
-          { header: "origin", operation: "remove" }
-        ]
-      },
-      condition: {
-        urlFilter: "cloudfront.net",
-        resourceTypes: ["xmlhttprequest", "image", "other"]
-      }
-    }
-  ]
-}).catch(err => console.error("Failed to register declarativeNetRequest rules:", err));
+
 
 // Fetch remote image and convert to Base64 in service worker background thread
 async function fetchAndConvertToBase64(url) {
