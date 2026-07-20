@@ -1692,6 +1692,24 @@ function findImageInContext(target) {
   return null;
 }
 
+function repositionClipperButton(img) {
+  if (!clipperButton || !img) return;
+  const rect = img.getBoundingClientRect();
+  const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+  const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+  
+  const btnWidth = clipperButton.offsetWidth || 65;
+  const btnHeight = clipperButton.offsetHeight || 28;
+  
+  if (rect.width > btnWidth + 16) {
+    clipperButton.style.left = `${rect.right + scrollLeft - btnWidth - 8}px`;
+    clipperButton.style.top = `${rect.top + scrollTop + 8}px`;
+  } else {
+    clipperButton.style.left = `${rect.left + scrollLeft + (rect.width - btnWidth) / 2}px`;
+    clipperButton.style.top = `${rect.top + scrollTop + (rect.height - btnHeight) / 2}px`;
+  }
+}
+
 function showClipperButton(img) {
   if (!clipperButton) {
     clipperButton = document.createElement('button');
@@ -1744,36 +1762,12 @@ function showClipperButton(img) {
         await clipImageAction(activeHoverImage);
       }
     });
+    
+    document.body.appendChild(clipperButton);
   }
 
   activeHoverImage = img;
-  const parent = img.parentElement;
-  if (!parent) return;
-
-  const parentStyle = window.getComputedStyle(parent);
-  if (parentStyle.position === 'static') {
-    parent.style.position = 'relative';
-  }
-
-  if (clipperButton.parentElement !== parent) {
-    parent.appendChild(clipperButton);
-  }
-
-  const rect = img.getBoundingClientRect();
-  const btnWidth = clipperButton.offsetWidth || 65;
-  
-  if (rect.width > btnWidth + 16) {
-    clipperButton.style.left = 'auto';
-    clipperButton.style.right = '8px';
-    clipperButton.style.top = '8px';
-    clipperButton.style.transform = 'none';
-  } else {
-    clipperButton.style.left = '50%';
-    clipperButton.style.top = '50%';
-    clipperButton.style.right = 'auto';
-    clipperButton.style.transform = 'translate(-50%, -50%)';
-  }
-  
+  repositionClipperButton(img);
   clipperButton.style.pointerEvents = 'auto';
   clipperButton.style.opacity = '1';
 }
@@ -1907,3 +1901,10 @@ document.addEventListener('mouseout', (e) => {
 // Start
 runScan();
 setupObserver();
+
+// Reposition clipper button dynamically on scroll
+window.addEventListener('scroll', () => {
+  if (activeHoverImage && clipperButton && clipperButton.style.opacity === '1') {
+    repositionClipperButton(activeHoverImage);
+  }
+}, { passive: true });
