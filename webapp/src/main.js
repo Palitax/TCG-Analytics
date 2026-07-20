@@ -402,11 +402,103 @@ function renderLogin(container) {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin
+        redirectTo: window.location.origin,
+        queryParams: {
+          prompt: 'select_account'
+        }
       }
     });
   });
   return div;
+}
+
+function showLogoutModal() {
+  const modal = document.createElement('div');
+  modal.className = 'custom-modal-overlay';
+  modal.innerHTML = `
+    <div class="custom-modal glass-panel">
+      <h3 style="margin-top: 0; color: var(--text-primary); font-size: 1.1rem; font-weight: 700;">Abmelden</h3>
+      <p style="color: var(--text-secondary); font-size: 0.88rem; line-height: 1.5; margin: 8px 0 20px 0;">
+        Möchtest du dich abmelden oder den Google-Account wechseln?
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <button id="modal-btn-switch" style="
+          background-color: var(--primary);
+          color: white;
+          border: none;
+          border-radius: 8px;
+          padding: 10px;
+          font-size: 0.88rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background-color 0.2s;
+        ">Google-Account wechseln</button>
+        
+        <button id="modal-btn-logout" style="
+          background-color: rgba(239, 68, 68, 0.15);
+          color: #ef4444;
+          border: 1px solid rgba(239, 68, 68, 0.3);
+          border-radius: 8px;
+          padding: 10px;
+          font-size: 0.88rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background-color 0.2s;
+        ">Ausloggen</button>
+        
+        <button id="modal-btn-cancel" style="
+          background-color: transparent;
+          color: var(--text-muted);
+          border: 1px solid var(--border-glass);
+          border-radius: 8px;
+          padding: 10px;
+          font-size: 0.88rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background-color 0.2s;
+        ">Abbrechen</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  // Close animation helper
+  const closeModal = () => {
+    animate(modal, { opacity: [1, 0] }, { duration: 0.2 }).finished.then(() => modal.remove());
+  };
+
+  // Animate in
+  animate(modal, { opacity: [0, 1] }, { duration: 0.2 });
+  animate(modal.querySelector('.custom-modal'), { transform: ['scale(0.95)', 'scale(1)'] }, { duration: 0.2, ease: "easeOut" });
+
+  modal.querySelector('#modal-btn-cancel').addEventListener('click', closeModal);
+
+  modal.querySelector('#modal-btn-logout').addEventListener('click', async () => {
+    closeModal();
+    await supabase.auth.signOut();
+  });
+
+  modal.querySelector('#modal-btn-switch').addEventListener('click', async () => {
+    closeModal();
+    await supabase.auth.signOut();
+    // Re-auth immediately with prompt selector
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+        queryParams: {
+          prompt: 'select_account'
+        }
+      }
+    });
+  });
+
+  // Close on clicking overlay background
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      closeModal();
+    }
+  });
 }
 
 // RENDER: Dashboard Panel
@@ -422,16 +514,21 @@ async function renderDashboard(container) {
       <img src="/logo.png" alt="Logo">
       <span class="header-title">TCG Card Tracker</span>
     </div>
-    <button id="btn-logout" class="btn-logout" title="Ausloggen">
-      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-      </svg>
-    </button>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <span class="header-user-email" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">
+        ${currentUser ? currentUser.email : ''}
+      </span>
+      <button id="btn-logout" class="btn-logout" title="Ausloggen">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+      </button>
+    </div>
   `;
   wrapper.appendChild(header);
 
-  header.querySelector('#btn-logout').addEventListener('click', async () => {
-    await supabase.auth.signOut();
+  header.querySelector('#btn-logout').addEventListener('click', () => {
+    showLogoutModal();
   });
 
   // Search Container (Quick Search is always persistent at the top)
