@@ -531,21 +531,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       else if (message.action === "saveClippedImage") {
-        const { cardId, tcg, imageUrl } = message;
+        const { cardId, tcg, image } = message;
         (async () => {
           try {
-            const base64 = await fetchAndConvertToBase64(imageUrl);
-            if (!base64) {
-              throw new Error("Failed to convert image to base64");
+            if (!image) {
+              throw new Error("Missing image base64 data");
             }
             
             const { clippedImages = [] } = await chrome.storage.local.get('clippedImages');
-            const exists = clippedImages.some(img => img.cardId === cardId && img.image === base64);
+            const exists = clippedImages.some(img => img.cardId === cardId && img.image === image);
             if (!exists) {
               clippedImages.unshift({
                 cardId,
                 tcg,
-                image: base64,
+                image: image,
                 timestamp: Date.now()
               });
               if (clippedImages.length > 50) {
@@ -553,7 +552,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               }
               await chrome.storage.local.set({ clippedImages });
             }
-            sendResponse({ success: true, image: base64 });
+            sendResponse({ success: true, image: image });
           } catch (err) {
             console.error("Failed to save clipped image:", err);
             sendResponse({ error: err.message });
