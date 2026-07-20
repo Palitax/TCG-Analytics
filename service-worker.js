@@ -9,8 +9,9 @@ async function fetchAndConvertToBase64(url) {
   if (url.startsWith('data:')) return url;
   
   try {
-    // Fetch directly since the background script has host_permissions for Cardmarket and S3
-    const response = await fetch(url);
+    // Route through our Vercel Image Proxy to bypass Amazon S3 referer & CORS blocks
+    const proxyUrl = `https://tcg-analytics-chi.vercel.app/api/image-proxy?url=${encodeURIComponent(url)}`;
+    const response = await fetch(proxyUrl);
     if (!response.ok) throw new Error(`HTTP error ${response.status}`);
     
     const blob = await response.blob();
@@ -27,7 +28,7 @@ async function fetchAndConvertToBase64(url) {
     const mimeType = blob.type || 'image/jpeg';
     return `data:${mimeType};base64,${base64}`;
   } catch (err) {
-    console.error("Failed to fetch and convert image to base64 directly:", err);
+    console.error("Failed to convert image to base64 via proxy:", err);
     return null; // Returning null here ensures clipping fails explicitly rather than saving a hotlink S3 url
   }
 }
