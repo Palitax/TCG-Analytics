@@ -24,10 +24,7 @@
   </div>
 
   <script>
-    function clearCacheAndReload() {
-      try { localStorage.clear(); } catch(e){}
-      try { sessionStorage.clear(); } catch(e){}
-      
+    function clearSWAndReload() {
       if (navigator.serviceWorker) {
         navigator.serviceWorker.getRegistrations().then(registrations => {
           for (let registration of registrations) {
@@ -47,6 +44,12 @@
       }, 250);
     }
 
+    function clearCacheAndReload() {
+      try { localStorage.clear(); } catch(e){}
+      try { sessionStorage.clear(); } catch(e){}
+      clearSWAndReload();
+    }
+
     (function() {
       var widget = document.getElementById('cache-recovery-widget');
       var timeout = setTimeout(function() {
@@ -57,10 +60,30 @@
       }, 5000); // 5 seconds timeout fallback
 
       window.addEventListener('error', function(e) {
+        const msg = e.message || '';
+        if (msg && (
+          msg.indexOf('dynamically imported module') !== -1 ||
+          msg.indexOf('Failed to fetch') !== -1 ||
+          msg.indexOf('Importing a module script') !== -1
+        )) {
+          console.warn("Chunk load error detected, auto-clearing SW cache & reloading...", msg);
+          clearSWAndReload();
+          return;
+        }
         widget.style.display = 'block';
         clearTimeout(timeout);
       });
       window.addEventListener('unhandledrejection', function(e) {
+        const msg = e.reason?.message || '';
+        if (msg && (
+          msg.indexOf('dynamically imported module') !== -1 ||
+          msg.indexOf('Failed to fetch') !== -1 ||
+          msg.indexOf('Importing a module script') !== -1
+        )) {
+          console.warn("Unhandled chunk rejection detected, auto-clearing SW cache & reloading...", msg);
+          clearSWAndReload();
+          return;
+        }
         widget.style.display = 'block';
         clearTimeout(timeout);
       });
@@ -71,7 +94,9 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch(err => {
+        navigator.serviceWorker.register('/sw.js').then(reg => {
+          reg.update().catch(err => console.log('ServiceWorker update check failed:', err));
+        }).catch(err => {
           console.error('ServiceWorker registration failed:', err);
         });
       });
