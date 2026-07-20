@@ -579,6 +579,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         })();
       }
+
+      else if (message.action === "deleteClippedImage") {
+        const { cardId, image, timestamp } = message;
+        (async () => {
+          try {
+            const { clippedImages = [] } = await chrome.storage.local.get('clippedImages');
+            const updated = clippedImages.filter(img => {
+              if (timestamp && img.timestamp === timestamp) return false;
+              if (img.cardId === cardId && img.image === image) return false;
+              return true;
+            });
+            await chrome.storage.local.set({ clippedImages: updated });
+            
+            // Return updated list of remaining images for this cardId
+            const filtered = cardId 
+              ? updated.filter(img => img.cardId === cardId)
+              : updated;
+            sendResponse({ success: true, images: filtered });
+          } catch (err) {
+            console.error("Failed to delete clipped image:", err);
+            sendResponse({ error: err.message });
+          }
+        })();
+      }
     } catch (err) {
       console.error("Error handling message:", err);
       sendResponse({ error: err.message });

@@ -21,3 +21,15 @@ document.addEventListener('TCG_TRACKER_GET_CLIPPED_IMAGES', (event) => {
     }
   });
 });
+
+// Listen for delete requests for clipped images from the Webapp
+document.addEventListener('TCG_TRACKER_DELETE_CLIPPED_IMAGE', (event) => {
+  const { cardId, image, timestamp } = event.detail || {};
+  chrome.runtime.sendMessage({ action: "deleteClippedImage", cardId, image, timestamp }, (res) => {
+    if (res && res.success) {
+      document.dispatchEvent(new CustomEvent('TCG_TRACKER_CLIPPED_IMAGES_REPLY', {
+        detail: { images: res.images || [] }
+      }));
+    }
+  });
+});

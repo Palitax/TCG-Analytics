@@ -1606,56 +1606,6 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
 let clipperButton = null;
 let activeHoverImage = null;
 
-let mainCardImageElement = null;
-
-function findMainCardImageOnPage() {
-  if (mainCardImageElement && document.body.contains(mainCardImageElement)) {
-    return mainCardImageElement;
-  }
-  
-  const images = Array.from(document.querySelectorAll('img'));
-  const candidates = images.filter(img => {
-    const src = img.src || '';
-    if (src.includes('/avatars/') || src.includes('/logos/') || src.includes('payment') || src.includes('svg') || src.includes('/svg/')) {
-      return false;
-    }
-    const w = img.width || img.naturalWidth || 0;
-    const h = img.height || img.naturalHeight || 0;
-    const isMainClass = img.className.includes('img-fluid') || img.className.includes('product-image') || img.className.includes('prod-img');
-    return w > 100 || h > 100 || img.naturalWidth > 100 || img.naturalHeight > 100 || isMainClass;
-  });
-  
-  candidates.sort((a, b) => {
-    const sizeA = (a.width || a.naturalWidth || 0) * (a.height || a.naturalHeight || 0);
-    const sizeB = (b.width || b.naturalWidth || 0) * (b.height || b.naturalHeight || 0);
-    return sizeB - sizeA;
-  });
-  
-  mainCardImageElement = candidates[0] || null;
-  return mainCardImageElement;
-}
-
-function findImageInContext(target) {
-  if (!target) return null;
-  if (target.tagName === 'IMG') return target;
-  
-  let img = target.querySelector('img');
-  if (img) return img;
-  
-  const wrapper = target.closest('.image-container, .prod-img, .carousel, .lightbox, .gallery, .image-wrapper, [class*="image"], [class*="img"], .col-12, [class*="col-"]');
-  if (wrapper) {
-    img = wrapper.querySelector('img');
-    if (img) return img;
-  }
-  
-  if (target.parentElement) {
-    img = target.parentElement.querySelector('img');
-    if (img) return img;
-  }
-  
-  return null;
-}
-
 function isValidCardImage(el) {
   if (!el || el.tagName !== 'IMG') return false;
   const src = el.src || '';
@@ -1668,6 +1618,78 @@ function isValidCardImage(el) {
   const w = el.width || el.naturalWidth || 0;
   const h = el.height || el.naturalHeight || 0;
   return w > 60 || h > 60 || el.naturalWidth > 60 || el.naturalHeight > 60;
+}
+
+function findVisibleImage(parent) {
+  if (!parent) return null;
+  if (parent.tagName === 'IMG' && isValidCardImage(parent)) {
+    const rect = parent.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      const style = window.getComputedStyle(parent);
+      if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) !== 0) {
+        return parent;
+      }
+    }
+    return null;
+  }
+
+  const imgs = Array.from(parent.querySelectorAll('img'));
+  const visibleImgs = imgs.filter(img => {
+    if (!isValidCardImage(img)) return false;
+    const rect = img.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+    const style = window.getComputedStyle(img);
+    return style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) !== 0;
+  });
+
+  return visibleImgs[0] || null;
+}
+
+function findMainCardImageOnPage() {
+  const images = Array.from(document.querySelectorAll('img'));
+  const candidates = images.filter(img => {
+    if (!isValidCardImage(img)) return false;
+    
+    // Visibility check
+    const rect = img.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+    const style = window.getComputedStyle(img);
+    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+      return false;
+    }
+    return true;
+  });
+  
+  candidates.sort((a, b) => {
+    const sizeA = (a.width || a.naturalWidth || 0) * (a.height || a.naturalHeight || 0);
+    const sizeB = (b.width || b.naturalWidth || 0) * (b.height || b.naturalHeight || 0);
+    return sizeB - sizeA;
+  });
+  
+  return candidates[0] || null;
+}
+
+function findImageInContext(target) {
+  if (!target) return null;
+  
+  // 1. Check if the target itself is a visible image
+  const selfImg = findVisibleImage(target);
+  if (selfImg) return selfImg;
+  
+  // 2. Search in closest container
+  const wrapper = target.closest('.image-container, .prod-img, .carousel, .lightbox, .gallery, .image-wrapper, [class*="image"], [class*="img"], .col-12, [class*="col-"]');
+  if (wrapper) {
+    const img = findVisibleImage(wrapper);
+    if (img) return img;
+  }
+  
+  // 3. Search in parent
+  if (target.parentElement) {
+    const img = findVisibleImage(target.parentElement);
+    if (img) return img;
+  }
+  
+  return null;
 }
 
 function showClipperButton(img) {
@@ -1731,9 +1753,19 @@ function showClipperButton(img) {
   const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
   const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
   
-  // Position button inside top-right of image
-  clipperButton.style.left = `${rect.right + scrollLeft - 68}px`;
-  clipperButton.style.top = `${rect.top + scrollTop + 8}px`;
+  // Position button inside top-right of image dynamically based on button size
+  const btnWidth = clipperButton.offsetWidth || 65;
+  const btnHeight = clipperButton.offsetHeight || 28;
+  
+  if (rect.width > btnWidth + 16) {
+    clipperButton.style.left = `${rect.right + scrollLeft - btnWidth - 8}px`;
+    clipperButton.style.top = `${rect.top + scrollTop + 8}px`;
+  } else {
+    // Center it on very small thumbnail images
+    clipperButton.style.left = `${rect.left + scrollLeft + (rect.width - btnWidth) / 2}px`;
+    clipperButton.style.top = `${rect.top + scrollTop + (rect.height - btnHeight) / 2}px`;
+  }
+  
   clipperButton.style.opacity = '1';
 }
 

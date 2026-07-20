@@ -1738,14 +1738,13 @@ function renderDetail(container) {
   }
 
   // --- Clipped Images Suggestions Logic ---
-  const handleClippedImagesReply = async (event) => {
-    // Clean up immediately
-    document.removeEventListener('TCG_TRACKER_CLIPPED_IMAGES_REPLY', handleClippedImagesReply);
-
-    const images = event.detail.images || [];
-    if (images.length === 0) return;
-
+  const renderClippedImages = (images) => {
     let suggestionsContainer = leftCol.querySelector('#clipped-images-suggestions');
+    if (images.length === 0) {
+      if (suggestionsContainer) suggestionsContainer.remove();
+      return;
+    }
+
     if (!suggestionsContainer) {
       suggestionsContainer = document.createElement('div');
       suggestionsContainer.id = 'clipped-images-suggestions';
@@ -1765,8 +1764,11 @@ function renderDetail(container) {
     grid.innerHTML = '';
 
     for (const imgRecord of images) {
+      const itemWrapper = document.createElement('div');
+      itemWrapper.style.cssText = 'position: relative; flex-shrink: 0; width: 44px; height: 44px;';
+
       const imgBtn = document.createElement('button');
-      imgBtn.style.cssText = 'border: 2px solid var(--border-glass); border-radius: 6px; padding: 0; background: transparent; cursor: pointer; flex-shrink: 0; width: 44px; height: 44px; overflow: hidden; transition: all 0.2s ease; display: inline-block; vertical-align: middle;';
+      imgBtn.style.cssText = 'border: 2px solid var(--border-glass); border-radius: 6px; padding: 0; background: transparent; cursor: pointer; width: 100%; height: 100%; overflow: hidden; transition: all 0.2s ease; display: block;';
 
       const thumb = document.createElement('img');
       thumb.src = imgRecord.image;
@@ -1829,8 +1831,45 @@ function renderDetail(container) {
           }
         }
       });
-      grid.appendChild(imgBtn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.innerHTML = '&times;';
+      deleteBtn.title = 'Bild löschen';
+      deleteBtn.style.cssText = 'position: absolute; top: -4px; right: -4px; width: 14px; height: 14px; border-radius: 50%; background: rgba(220, 53, 69, 0.9); border: none; color: white; font-size: 10px; font-weight: bold; line-height: 12px; text-align: center; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.3); transition: all 0.2s ease;';
+
+      deleteBtn.addEventListener('mouseenter', () => {
+        deleteBtn.style.background = '#dc3545';
+        deleteBtn.style.transform = 'scale(1.2)';
+      });
+      deleteBtn.addEventListener('mouseleave', () => {
+        deleteBtn.style.background = 'rgba(220, 53, 69, 0.9)';
+        deleteBtn.style.transform = 'scale(1)';
+      });
+
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm("Möchtest du dieses geclippte Bild löschen?")) {
+          const handleDeleteReply = (deleteEvent) => {
+            document.removeEventListener('TCG_TRACKER_CLIPPED_IMAGES_REPLY', handleDeleteReply);
+            renderClippedImages(deleteEvent.detail.images || []);
+          };
+          document.addEventListener('TCG_TRACKER_CLIPPED_IMAGES_REPLY', handleDeleteReply);
+
+          document.dispatchEvent(new CustomEvent('TCG_TRACKER_DELETE_CLIPPED_IMAGE', {
+            detail: { cardId: details.cardId, image: imgRecord.image, timestamp: imgRecord.timestamp }
+          }));
+        }
+      });
+
+      itemWrapper.appendChild(imgBtn);
+      itemWrapper.appendChild(deleteBtn);
+      grid.appendChild(itemWrapper);
     }
+  };
+
+  const handleClippedImagesReply = async (event) => {
+    document.removeEventListener('TCG_TRACKER_CLIPPED_IMAGES_REPLY', handleClippedImagesReply);
+    renderClippedImages(event.detail.images || []);
   };
 
   document.addEventListener('TCG_TRACKER_CLIPPED_IMAGES_REPLY', handleClippedImagesReply);
