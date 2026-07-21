@@ -1166,7 +1166,13 @@ function renderWatchlistTab(container) {
   }
 
   // Sort the cards based on selected sort option
-  if (activeSortOption === 'price-asc') {
+  if (activeSortOption === 'date-desc') {
+    sortedCards.sort((a, b) => {
+      const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tB - tA;
+    });
+  } else if (activeSortOption === 'price-asc') {
     sortedCards.sort((a, b) => {
       const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : Infinity;
       const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : Infinity;
@@ -1233,6 +1239,7 @@ function renderWatchlistTab(container) {
         </svg>
         <select id="select-watchlist-sort" class="watchlist-sort-select">
           <option value="custom" ${activeSortOption === 'custom' ? 'selected' : ''}>Eigene Reihenfolge</option>
+          <option value="date-desc" ${activeSortOption === 'date-desc' ? 'selected' : ''}>Zuletzt hinzugefügt</option>
           <option value="price-asc" ${activeSortOption === 'price-asc' ? 'selected' : ''}>Preis: Aufsteigend</option>
           <option value="price-desc" ${activeSortOption === 'price-desc' ? 'selected' : ''}>Preis: Absteigend</option>
           <option value="diff-desc" ${activeSortOption === 'diff-desc' ? 'selected' : ''}>Gewinn: Meiste %</option>
@@ -1970,7 +1977,13 @@ function renderCollectionTab(container) {
   const totalProfitPercent = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
 
   // Sorting
-  if (activeSortOption === 'price-asc') {
+  if (activeSortOption === 'date-desc') {
+    sortedCards.sort((a, b) => {
+      const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tB - tA;
+    });
+  } else if (activeSortOption === 'price-asc') {
     sortedCards.sort((a, b) => {
       const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : Infinity;
       const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : Infinity;
@@ -2041,6 +2054,7 @@ function renderCollectionTab(container) {
         </svg>
         <select id="select-collection-sort" class="watchlist-sort-select">
           <option value="custom" ${activeSortOption === 'custom' ? 'selected' : ''}>Eigene Reihenfolge</option>
+          <option value="date-desc" ${activeSortOption === 'date-desc' ? 'selected' : ''}>Zuletzt hinzugefügt</option>
           <option value="price-asc" ${activeSortOption === 'price-asc' ? 'selected' : ''}>Preis: Aufsteigend</option>
           <option value="price-desc" ${activeSortOption === 'price-desc' ? 'selected' : ''}>Preis: Absteigend</option>
           <option value="diff-desc" ${activeSortOption === 'diff-desc' ? 'selected' : ''}>Gewinn: Meiste %</option>
