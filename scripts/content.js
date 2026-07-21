@@ -696,9 +696,8 @@ function updateOverlay(status, details = {}) {
   const collectionTitle = isInCollection ? 'Karte aus Collection entfernen' : 'Karte zu Collection hinzufügen';
   const collectionClass = isInCollection ? 'cm-btn-collection collected' : 'cm-btn-collection';
   const collectionSvg = isInCollection
-    ? `<svg class="cm-collection-icon" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" stroke-width="2">
-         <rect x="3" y="3" width="12" height="12" rx="2" />
-         <path d="M9 15v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2" />
+    ? `<svg class="cm-collection-icon" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+         <polyline points="20 6 9 17 4 12" />
        </svg>`
     : `<svg class="cm-collection-icon" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2">
          <rect x="3" y="3" width="12" height="12" rx="2" />

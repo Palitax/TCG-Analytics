@@ -2430,11 +2430,18 @@ function renderDetail(container) {
 
   const updateCollectIconStyle = () => {
     if (details.isCollected) {
-      collectIcon.setAttribute('fill', '#34d399');
-      collectIcon.setAttribute('stroke', '#34d399');
+      collectBtn.innerHTML = `
+        <svg class="collection-icon" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="width: 24px; height: 24px;">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      `;
     } else {
-      collectIcon.setAttribute('fill', 'none');
-      collectIcon.setAttribute('stroke', 'rgba(255, 255, 255, 0.6)');
+      collectBtn.innerHTML = `
+        <svg class="collection-icon" viewBox="0 0 24 24" fill="none" stroke="rgba(255, 255, 255, 0.6)" stroke-width="2" style="width: 24px; height: 24px;">
+          <rect x="3" y="3" width="12" height="12" rx="2" />
+          <path d="M9 15v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2" />
+        </svg>
+      `;
     }
   };
   updateCollectIconStyle();
