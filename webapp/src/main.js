@@ -318,13 +318,13 @@ async function init() {
   setView('loading');
   
   // Listen for auth state changes
-  supabase.auth.onAuthStateChange(async (event, session) => {
+  supabase.auth.onAuthStateChange((event, session) => {
     try {
       if (session) {
         const isNewUser = !currentUser || currentUser.id !== session.user.id;
         currentUser = session.user;
         if (isNewUser) {
-          await Promise.all([fetchMarkedCards(), fetchCollectionCards()]);
+          loadCachedUserData(currentUser.id);
         }
         const currentPath = window.location.pathname + window.location.search;
         if (currentPath === '/login' || currentPath === '/') {
@@ -336,6 +336,7 @@ async function init() {
         currentUser = null;
         markedCards = [];
         collectionCards = [];
+        collectionValueHistory = [];
         navigate('/login', false);
       }
     } catch (err) {
@@ -350,7 +351,7 @@ async function init() {
     
     if (session) {
       currentUser = session.user;
-      await Promise.all([fetchMarkedCards(), fetchCollectionCards()]);
+      loadCachedUserData(currentUser.id);
       const currentPath = window.location.pathname + window.location.search;
       if (currentPath === '/' || currentPath === '/login') {
         navigate('/watchlist', false);
@@ -475,6 +476,7 @@ async function fetchCollectionCards() {
     }
 
     collectionCards = listData;
+    saveCachedUserData(currentUser?.id);
   } catch (err) {
     console.error('Error loading collection cards:', err.message);
   }
@@ -582,6 +584,7 @@ async function fetchMarkedCards() {
     }
 
     markedCards = listData;
+    saveCachedUserData(currentUser?.id);
   } catch (err) {
     console.error('Error loading bookmarks:', err.message);
   }
