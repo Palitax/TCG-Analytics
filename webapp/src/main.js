@@ -353,7 +353,7 @@ async function init() {
         if (isNewUser) {
           loadCachedUserData(currentUser.id);
         }
-        const currentPath = window.location.pathname + window.location.search;
+        const currentPath = window.location.hash.slice(1) || '/watchlist';
         if (currentPath === '/login' || currentPath === '/') {
           navigate('/watchlist', false);
         } else {
@@ -379,7 +379,7 @@ async function init() {
     if (session) {
       currentUser = session.user;
       loadCachedUserData(currentUser.id);
-      const currentPath = window.location.pathname + window.location.search;
+      const currentPath = window.location.hash.slice(1) || '/watchlist';
       if (currentPath === '/' || currentPath === '/login') {
         navigate('/watchlist', false);
       } else {
@@ -393,9 +393,9 @@ async function init() {
     navigate('/login', false);
   }
 
-  // Handle popstate for back/forward buttons
-  window.addEventListener('popstate', () => {
-    navigate(window.location.pathname + window.location.search, false);
+  // Handle hashchange for back/forward buttons
+  window.addEventListener('hashchange', () => {
+    navigate(window.location.hash.slice(1) || '/watchlist', false);
   });
 }
 
@@ -617,14 +617,18 @@ async function fetchMarkedCards() {
   }
 }
 
-// HTML5 history routing navigation helper
+// Hash-based routing navigation helper
 async function navigate(path, pushState = true) {
   if (pushState) {
-    history.pushState({ path }, '', path);
+    window.location.hash = path;
+    return;
   }
   
-  const url = new URL(window.location.href);
-  const pathname = url.pathname;
+  const hash = path || '/watchlist';
+  const queryIdx = hash.indexOf('?');
+  const pathname = queryIdx === -1 ? hash : hash.slice(0, queryIdx);
+  const search = queryIdx === -1 ? '' : hash.slice(queryIdx);
+  const searchParams = new URLSearchParams(search);
   
   if (pathname === '/login') {
     await setView('login');
@@ -695,8 +699,8 @@ async function navigate(path, pushState = true) {
       console.error('Background data update failed:', err);
     });
   } else if (pathname === '/detail') {
-    const cardId = url.searchParams.get('card_id');
-    const tcg = url.searchParams.get('tcg');
+    const cardId = searchParams.get('card_id');
+    const tcg = searchParams.get('tcg');
     if (cardId && tcg) {
       await loadCardDetails(cardId, tcg, false);
     } else {
@@ -2848,7 +2852,8 @@ async function loadLatestPriceForDashboard(card) {
 async function loadCardDetails(cardId, tcg, pushState = true) {
   setView('loading');
   if (pushState) {
-    history.pushState({ path: `/detail?card_id=${encodeURIComponent(cardId)}&tcg=${encodeURIComponent(tcg)}` }, '', `/detail?card_id=${encodeURIComponent(cardId)}&tcg=${encodeURIComponent(tcg)}`);
+    window.location.hash = `/detail?card_id=${encodeURIComponent(cardId)}&tcg=${encodeURIComponent(tcg)}`;
+    return;
   }
   try {
     const { data: historyData, error: historyErr } = await supabase
