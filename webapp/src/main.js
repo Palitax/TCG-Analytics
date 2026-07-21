@@ -2464,7 +2464,8 @@ function renderCollectionTab(container) {
           const { error } = await supabase
             .from('collection_cards')
             .update({ purchase_price: valToSet })
-            .eq('id', card.id);
+            .eq('user_id', currentUser.id)
+            .eq('card_id', card.card_id);
 
           if (error) throw error;
 

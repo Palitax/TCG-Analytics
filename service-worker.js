@@ -451,6 +451,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           if (!postRes.ok) {
             const errTxt = await postRes.text();
+            try {
+              const errObj = JSON.parse(errTxt);
+              if (errObj && errObj.code === "23505") {
+                // Already bookmarked - ignore error
+                return sendResponse({ success: true });
+              }
+            } catch (e) {}
             throw new Error(`Failed to bookmark card: ${postRes.statusText} - ${errTxt}`);
           }
         } else {
@@ -503,6 +510,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           if (!postRes.ok) {
             const errTxt = await postRes.text();
+            try {
+              const errObj = JSON.parse(errTxt);
+              if (errObj && errObj.code === "23505") {
+                // Already in collection - ignore error
+                return sendResponse({ success: true });
+              }
+            } catch (e) {}
             throw new Error(`Failed to add card to collection: ${postRes.statusText} - ${errTxt}`);
           }
         } else {
