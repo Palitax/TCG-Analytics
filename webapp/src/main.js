@@ -26,6 +26,7 @@ function safeSaveSearchHistory() {
 }
 
 let activeCardDetails = null; // Holds detail view data
+let activeSearchQuery = ''; // Active search query for filtering tabs
 
 function checkIsMobile() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
@@ -536,14 +537,39 @@ async function renderDashboard(container) {
   searchSection.className = 'search-container';
   searchSection.innerHTML = `
     <div class="search-input-wrapper">
-      <input type="text" id="inp-search" class="search-input" placeholder="Kartennummer suchen (z.B. OP15-119)..." autocomplete="off">
+      <input type="text" id="inp-search" class="search-input" placeholder="Kartennummer oder Name suchen..." autocomplete="off" value="${activeSearchQuery}">
+      <button id="btn-search-submit" class="btn-search-submit" title="Suchen">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <span>Suchen</span>
+      </button>
     </div>
     <div id="search-results" class="search-results-overlay" style="display: none;"></div>
   `;
   wrapper.appendChild(searchSection);
 
   const inpSearch = searchSection.querySelector('#inp-search');
+  const btnSearchSubmit = searchSection.querySelector('#btn-search-submit');
   const divResults = searchSection.querySelector('#search-results');
+
+  const executeSearch = () => {
+    clearTimeout(searchTimeout);
+    divResults.style.display = 'none';
+    activeSearchQuery = inpSearch.value.trim();
+    renderActiveTab();
+  };
+
+  inpSearch.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      executeSearch();
+    }
+  });
+
+  btnSearchSubmit.addEventListener('click', () => {
+    executeSearch();
+  });
 
   // Handle Search Input Typing
   let searchTimeout = null;
@@ -553,6 +579,10 @@ async function renderDashboard(container) {
 
     if (query === '') {
       divResults.style.display = 'none';
+      if (activeSearchQuery !== '') {
+        activeSearchQuery = '';
+        renderActiveTab();
+      }
       return;
     }
 
@@ -638,6 +668,7 @@ async function renderDashboard(container) {
             addToHistory(cardId, tcg);
             divResults.style.display = 'none';
             inpSearch.value = '';
+            activeSearchQuery = '';
             await loadCardDetails(cardId, tcg);
           });
         });
@@ -684,12 +715,12 @@ async function renderDashboard(container) {
   const btnWatchlist = buttonsSection.querySelector('#btn-tab-watchlist');
   const btnAnalytics = buttonsSection.querySelector('#btn-tab-analytics');
 
-  const renderActiveTab = () => {
+  const renderActiveTab = async () => {
     tabContentWrapper.innerHTML = '';
     if (activeDashboardTab === 'watchlist') {
       renderWatchlistTab(tabContentWrapper);
     } else {
-      renderAnalyticsTab(tabContentWrapper);
+      await renderAnalyticsTab(tabContentWrapper);
     }
   };
 
@@ -733,8 +764,19 @@ function renderWatchlistTab(container) {
     return;
   }
 
-  // Sort the cards based on selected sort option
+  // Filter cards by search query if present
   let sortedCards = [...markedCards];
+  if (activeSearchQuery) {
+    const q = activeSearchQuery.toLowerCase();
+    sortedCards = sortedCards.filter(c => {
+      const cardIdStr = (c.card_id || '').toLowerCase();
+      const cleanNameStr = cleanCardName(c.card_id).toLowerCase();
+      const tcgStr = (c.tcg || '').toLowerCase();
+      return cardIdStr.includes(q) || cleanNameStr.includes(q) || tcgStr.includes(q);
+    });
+  }
+
+  // Sort the cards based on selected sort option
   if (activeSortOption === 'price-asc') {
     sortedCards.sort((a, b) => {
       const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : Infinity;
@@ -767,7 +809,7 @@ function renderWatchlistTab(container) {
   headerSection.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; width: 100%; padding: 0 4px;';
   headerSection.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 12px;">
-      <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Watchlist (${markedCards.length})</span>
+      <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Watchlist (${sortedCards.length}${activeSearchQuery ? ` von ${markedCards.length}` : ''})</span>
       <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
         <button id="btn-web-sync-all" style="
           background-color: var(--primary);
@@ -811,6 +853,28 @@ function renderWatchlistTab(container) {
     </div>
   `;
   dashboard.appendChild(headerSection);
+
+  if (sortedCards.length === 0) {
+    const emptySearchEl = document.createElement('div');
+    emptySearchEl.className = 'empty-state glass-panel';
+    emptySearchEl.style.cssText = 'padding: 32px 16px; margin-top: 12px; text-align: center;';
+    emptySearchEl.innerHTML = `
+      <svg class="empty-state-icon" style="width: 32px; height: 32px; margin: 0 auto;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+      <p style="font-size: 0.85rem; margin-top: 8px;">Keine markierten Karten für "${activeSearchQuery}" auf deiner Watchlist gefunden.</p>
+      <button id="btn-reset-watchlist-search" style="margin-top: 12px; background: rgba(255,255,255,0.08); border: 1px solid var(--border-glass); color: #fff; padding: 6px 14px; border-radius: 6px; font-size: 0.8rem; cursor: pointer;">Suche zurücksetzen</button>
+    `;
+    dashboard.appendChild(emptySearchEl);
+    emptySearchEl.querySelector('#btn-reset-watchlist-search').addEventListener('click', () => {
+      activeSearchQuery = '';
+      const inpSearch = document.querySelector('#inp-search');
+      if (inpSearch) inpSearch.value = '';
+      container.innerHTML = '';
+      renderWatchlistTab(container);
+    });
+    return;
+  }
 
   const btnWebSyncAll = headerSection.querySelector('#btn-web-sync-all');
   const syncHint = headerSection.querySelector('#sync-all-hint');
@@ -1219,11 +1283,170 @@ function renderWatchlistTab(container) {
 }
 
 // Sub-Tab Analytics & Search History Renderer
-function renderAnalyticsTab(container) {
+async function renderAnalyticsTab(container) {
   const dashboard = document.createElement('div');
   dashboard.className = 'dashboard-content analytics-tab-view';
   dashboard.innerHTML = '';
   container.appendChild(dashboard);
+
+  if (activeSearchQuery) {
+    const loadingBox = document.createElement('div');
+    loadingBox.className = 'spinner-box';
+    loadingBox.style.height = '150px';
+    loadingBox.innerHTML = '<div class="spinner"></div>';
+    dashboard.appendChild(loadingBox);
+
+    try {
+      const { data, error } = await supabase
+        .from('price_history')
+        .select('card_id, tcg, price, comment, scanned_at')
+        .ilike('card_id', `%${activeSearchQuery}%`)
+        .order('scanned_at', { ascending: true });
+
+      if (error) throw error;
+
+      loadingBox.remove();
+
+      const uniqueCardsMap = {};
+      for (const row of data || []) {
+        if (!uniqueCardsMap[row.card_id]) {
+          uniqueCardsMap[row.card_id] = {
+            card_id: row.card_id,
+            tcg: row.tcg,
+            history: []
+          };
+        }
+        uniqueCardsMap[row.card_id].history.push(parseHistoryItem(row));
+      }
+
+      const scannedCards = Object.values(uniqueCardsMap).map(c => {
+        const history = c.history;
+        const latest = history[history.length - 1];
+        const baseline = history[0];
+        let img = null;
+        for (let i = history.length - 1; i >= 0; i--) {
+          if (history[i].imageUrl) {
+            img = history[i].imageUrl;
+            break;
+          }
+        }
+        return {
+          card_id: c.card_id,
+          tcg: c.tcg,
+          latest_price: latest ? latest.price : null,
+          diff_percent: (baseline && latest && baseline.price > 0) ? ((latest.price - baseline.price) / baseline.price) * 100 : 0,
+          image_url: img
+        };
+      });
+
+      // Enrich with global custom images
+      const cardIds = scannedCards.map(c => c.card_id);
+      if (cardIds.length > 0) {
+        try {
+          const { data: globalImages, error: globalImagesErr } = await supabase
+            .from('card_images')
+            .select('card_id, image_url')
+            .in('card_id', cardIds);
+
+          if (!globalImagesErr && globalImages) {
+            const imageMap = {};
+            for (const img of globalImages) {
+              imageMap[img.card_id] = img.image_url;
+            }
+            for (const c of scannedCards) {
+              if (imageMap[c.card_id]) {
+                c.image_url = imageMap[c.card_id];
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching global card images in analytics:', err.message);
+        }
+      }
+
+      if (scannedCards.length === 0) {
+        dashboard.innerHTML = `
+          <div class="empty-state glass-panel" style="padding: 32px 16px;">
+            <svg class="empty-state-icon" style="width: 32px; height: 32px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <p style="font-size: 0.85rem; margin-top: 8px;">Keine gescannten Karten für "${activeSearchQuery}" in der Datenbank gefunden.</p>
+            <button id="btn-clear-search-analytics" style="margin-top: 12px; background: rgba(255,255,255,0.08); border: 1px solid var(--border-glass); color: #fff; padding: 6px 14px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;">Suche zurücksetzen</button>
+          </div>
+        `;
+        const btnClear = dashboard.querySelector('#btn-clear-search-analytics');
+        if (btnClear) {
+          btnClear.addEventListener('click', () => {
+            activeSearchQuery = '';
+            const inpSearch = document.querySelector('#inp-search');
+            if (inpSearch) inpSearch.value = '';
+            container.innerHTML = '';
+            renderAnalyticsTab(container);
+          });
+        }
+        return;
+      }
+
+      const headerSec = document.createElement('div');
+      headerSec.style.cssText = 'display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 12px; padding: 0 4px;';
+      headerSec.innerHTML = `
+        <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Gescannte Karten (${scannedCards.length})</span>
+      `;
+      dashboard.appendChild(headerSec);
+
+      const list = document.createElement('div');
+      list.className = 'watchlist-list';
+      dashboard.appendChild(list);
+
+      for (const card of scannedCards) {
+        const priceText = card.latest_price !== null && card.latest_price !== undefined ? `${card.latest_price.toFixed(2)} €` : '-- €';
+        let diffText = '0.00%';
+        let diffClass = 'stable';
+        if (card.diff_percent < 0) {
+          diffText = `${card.diff_percent.toFixed(2)}%`;
+          diffClass = 'gain';
+        } else if (card.diff_percent > 0) {
+          diffText = `+${card.diff_percent.toFixed(2)}%`;
+          diffClass = 'loss';
+        }
+
+        const itemEl = document.createElement('div');
+        itemEl.className = 'watchlist-item-wrapper';
+        itemEl.innerHTML = `
+          <div class="watchlist-item glass-panel" data-card-id="${card.card_id}">
+            <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+            <div class="watchlist-item-info">
+              <span class="watchlist-item-tcg">${card.tcg}</span>
+              <span class="watchlist-item-name">${cleanCardName(card.card_id)}</span>
+            </div>
+            <div class="watchlist-item-price-col">
+              <span class="watchlist-item-price">${priceText}</span>
+              <span class="diff-badge ${diffClass}">${diffText}</span>
+            </div>
+          </div>
+        `;
+        list.appendChild(itemEl);
+
+        const cardEl = itemEl.querySelector('.watchlist-item');
+        cardEl.addEventListener('click', () => {
+          addToHistory(card.card_id, card.tcg);
+          loadCardDetails(card.card_id, card.tcg);
+        });
+
+        const imgEl = itemEl.querySelector('.watchlist-item-img');
+        if (imgEl) {
+          imgEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showLightbox(card.image_url || '/logo.png');
+          });
+        }
+      }
+    } catch (err) {
+      loadingBox.remove();
+      dashboard.innerHTML = `<p style="color: #f87171; padding: 16px;">Fehler beim Laden: ${err.message}</p>`;
+    }
+    return;
+  }
 
   const recentSearches = searchHistory.slice(0, 5);
 
@@ -1276,6 +1499,7 @@ function renderAnalyticsTab(container) {
       e.stopPropagation();
       searchHistory.splice(idx, 1);
       safeSaveSearchHistory();
+      container.innerHTML = '';
       renderAnalyticsTab(container);
     });
   });
