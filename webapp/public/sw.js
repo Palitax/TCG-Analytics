@@ -41,9 +41,15 @@ self.addEventListener('fetch', (e) => {
             return response;
           }
           // Fall back to index.html if network returns 404/500
-          return caches.match('/index.html');
+          return caches.match('/index.html').then((cached) => cached || response);
         })
-        .catch(() => caches.match('/index.html'))
+        .catch(() => caches.match('/index.html').then((cached) => {
+          if (cached) return cached;
+          return new Response('Offline / Fehler beim Laden der App', {
+            status: 503,
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+          });
+        }))
     );
     return;
   }
