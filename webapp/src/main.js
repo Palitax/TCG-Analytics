@@ -35,6 +35,35 @@ function checkIsMobile() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
 }
 
+function showLoadingProgress(show) {
+  let bar = document.getElementById('top-loading-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'top-loading-bar';
+    bar.className = 'top-loading-bar';
+    document.getElementById('app')?.appendChild(bar);
+  }
+  if (show) {
+    bar.style.width = '0%';
+    bar.style.opacity = '1';
+    bar.classList.add('active');
+    setTimeout(() => {
+      if (bar.classList.contains('active')) {
+        bar.style.width = '70%';
+      }
+    }, 50);
+  } else {
+    bar.style.width = '100%';
+    setTimeout(() => {
+      bar.style.opacity = '0';
+      bar.classList.remove('active');
+      setTimeout(() => {
+        bar.style.width = '0%';
+      }, 300);
+    }, 200);
+  }
+}
+
 // Language dictionary
 const LANGUAGE_NAMES_GERMAN = {
   "ALL": "Alle Sprachen",
@@ -511,10 +540,12 @@ async function navigate(path, pushState = true) {
     await setView('dashboard');
 
     // Trigger background fetch and re-render the active tab wrapper once loaded
+    showLoadingProgress(true);
     Promise.all([
       fetchMarkedCards(),
       fetchCollectionCards()
     ]).then(() => {
+      showLoadingProgress(false);
       const tabContentWrapper = document.getElementById('dashboard-tab-content');
       if (tabContentWrapper && currentView === 'dashboard') {
         if (activeDashboardTab === 'watchlist') {
@@ -524,6 +555,7 @@ async function navigate(path, pushState = true) {
         }
       }
     }).catch(err => {
+      showLoadingProgress(false);
       console.error('Background data update failed:', err);
     });
   } else if (pathname === '/detail') {
@@ -1233,11 +1265,28 @@ function renderWatchlistTab(container) {
     wrapper.setAttribute('draggable', activeSortOption === 'custom' ? 'true' : 'false');
 
     const isMobileDevice = checkIsMobile();
+    const isCollected = collectionCards.some(c => c.card_id === card.card_id);
+    
     const desktopDeleteBtnHtml = isMobileDevice ? '' : `
       <button class="watchlist-item-desktop-delete" title="Vom Merkzettel entfernen">
         <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="10" height="10">
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
         </svg>
+      </button>
+    `;
+
+    const desktopCollectBtnHtml = isMobileDevice ? '' : `
+      <button class="watchlist-item-desktop-collect ${isCollected ? 'collected' : ''}" title="${isCollected ? 'Aus Sammlung entfernen' : 'Zu Sammlung hinzufügen'}" style="position: absolute; top: 8px; right: 32px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.15); color: ${isCollected ? '#34d399' : 'rgba(255, 255, 255, 0.6)'}; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; z-index: 10;">
+        ${isCollected ? `
+          <svg fill="none" stroke="#34d399" stroke-width="3" viewBox="0 0 24 24" width="10" height="10" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        ` : `
+          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="10" height="10">
+            <rect x="3" y="3" width="12" height="12" rx="2" />
+            <path d="M9 15v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2" />
+          </svg>
+        `}
       </button>
     `;
 
@@ -1266,6 +1315,7 @@ function renderWatchlistTab(container) {
       </div>
       <div class="watchlist-item glass-panel" data-card-id="${card.id}" data-card-uuid="${card.card_id}">
         ${desktopDeleteBtnHtml}
+        ${desktopCollectBtnHtml}
         <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
         <div class="watchlist-item-info">
           <span class="watchlist-item-tcg">${card.tcg}</span>
@@ -1503,6 +1553,43 @@ function renderWatchlistTab(container) {
       imgEl.addEventListener('click', (e) => {
         e.stopPropagation(); // Avoid triggering details card navigation
         showLightbox(card.image_url || '/logo.png');
+      });
+    }
+
+    // Bind desktop '+' collect button click
+    const desktopCollectBtn = cardEl.querySelector('.watchlist-item-desktop-collect');
+    if (desktopCollectBtn) {
+      desktopCollectBtn.addEventListener('click', async (e) => {
+        e.stopPropagation(); // Avoid triggering details card navigation
+        desktopCollectBtn.disabled = true;
+        try {
+          if (isCollected) {
+            const { error } = await supabase
+              .from('collection_cards')
+              .delete()
+              .eq('user_id', currentUser.id)
+              .eq('card_id', card.card_id);
+            if (error) throw error;
+          } else {
+            const collectData = {
+              user_id: currentUser.id,
+              tcg: card.tcg,
+              card_id: card.card_id,
+              image_url: card.image_url
+            };
+            const { error } = await supabase
+              .from('collection_cards')
+              .insert(collectData);
+            if (error) throw error;
+          }
+          await fetchCollectionCards(); // Refresh collection list
+          container.innerHTML = '';
+          renderWatchlistTab(container); // Refresh watchlist view to update collect checkmark state
+        } catch (err) {
+          alert('Fehler beim Aktualisieren der Collection: ' + err.message);
+        } finally {
+          desktopCollectBtn.disabled = false;
+        }
       });
     }
 
