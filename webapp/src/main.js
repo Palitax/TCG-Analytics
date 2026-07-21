@@ -1427,7 +1427,7 @@ function renderWatchlistTab(container) {
         <div class="watchlist-item-info">
           <span class="watchlist-item-tcg">${card.tcg}</span>
           <span class="watchlist-item-name">${titleInfo.name}</span>
-          ${titleInfo.number ? `<span class="watchlist-item-number" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500; margin-top: 1px;">${titleInfo.number}</span>` : ''}
+          ${titleInfo.number ? `<span class="watchlist-item-number">${titleInfo.number}</span>` : ''}
         </div>
         <div class="watchlist-item-price-col">
           <span class="watchlist-item-price" id="price-${card.id}">${priceText}</span>
@@ -2154,7 +2154,7 @@ function renderCollectionTab(container) {
         <div class="watchlist-item-info">
           <span class="watchlist-item-tcg">${card.tcg}</span>
           <span class="watchlist-item-name">${titleInfo.name}</span>
-          ${titleInfo.number ? `<span class="watchlist-item-number" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500; margin-top: 1px;">${titleInfo.number}</span>` : ''}
+          ${titleInfo.number ? `<span class="watchlist-item-number">${titleInfo.number}</span>` : ''}
           <span class="collection-item-purchase-price" style="font-size: 0.72rem; color: var(--primary); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-weight: 500; text-decoration: underline;" data-action="set-purchase-price">
             <svg style="width: 10px; height: 10px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
