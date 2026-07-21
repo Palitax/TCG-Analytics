@@ -720,107 +720,10 @@ body {
   width: 100%;
 }
 
-.chart-y-axis {
+.chart-canvas-container {
   position: relative;
-  width: 60px;
-  height: 120px;
-  flex-shrink: 0;
-}
-
-.chart-y-axis span {
-  position: absolute;
-  right: 0;
-  transform: translateY(-50%);
-  text-align: right;
-  font-size: 0.68rem;
-  color: var(--text-muted);
-  font-weight: 500;
-  font-family: var(--font-family);
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.chart-y-axis span:nth-child(1) { top: 10%; } /* Align with grid line y=10 */
-.chart-y-axis span:nth-child(2) { top: 50%; } /* Align with grid line y=50 */
-.chart-y-axis span:nth-child(3) { top: 90%; } /* Align with grid line y=90 */
-
-.chart-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.chart-canvas {
-  height: 120px;
-  border: 1px solid var(--border-glass);
-  border-radius: 6px;
-  position: relative;
-  overflow: visible;
-}
-
-.chart-svg {
   width: 100%;
-  height: 100%;
-}
-
-.chart-line {
-  stroke: var(--primary);
-  stroke-width: 2;
-  fill: none;
-}
-
-.chart-grid {
-  stroke: rgba(255, 255, 255, 0.03);
-  stroke-width: 1;
-}
-
-.chart-x-axis {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.65rem;
-  color: var(--text-muted);
-}
-
-/* Touch dynamic cursor and labels */
-.chart-touch-line {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background-color: var(--primary);
-  pointer-events: none;
-  z-index: 10;
-}
-
-.chart-touch-dot {
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  background-color: var(--primary);
-  border: 2px solid white;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 11;
-  transform: translate(-50%, -50%);
-}
-
-.chart-touch-tooltip {
-  position: absolute;
-  background: rgba(15, 23, 42, 0.95);
-  border: 1px solid var(--border-glass);
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.65rem;
-  color: white;
-  pointer-events: none;
-  z-index: 12;
-  transform: translate(-50%, -100%);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 80px;
-  text-align: center;
+  height: 180px;
 }
 
 /* Condition Badges matching Cardmarket colors */
@@ -1396,12 +1299,8 @@ body {
     justify-content: space-between;
   }
 
-  .chart-canvas {
-    height: 290px; /* High chart for desktop visual clarity */
-  }
-  
-  .chart-y-axis {
-    height: 290px;
+  .chart-canvas-container {
+    height: 260px; /* High chart for desktop visual clarity */
   }
 
   .watchlist-item {

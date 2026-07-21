@@ -1,5 +1,7 @@
 import { supabase } from './supabase.js';
 import { animate } from 'motion';
+import { Chart, registerables } from 'chart.js';
+Chart.register(...registerables);
 
 // Global state variables
 let currentUser = null;
@@ -1735,7 +1737,7 @@ function renderWatchlistTab(container) {
   }
 }
 
-// Render collection cumulative value line graph using SVG
+// Render collection cumulative value line graph using Chart.js
 function drawCollectionChart(chartContainer, historyData) {
   if (!historyData || historyData.length < 2) {
     chartContainer.innerHTML = `
@@ -1747,91 +1749,123 @@ function drawCollectionChart(chartContainer, historyData) {
     return;
   }
 
-  const values = historyData.map(h => h.value);
-  const times = historyData.map(h => new Date(h.scanned_at).getTime());
-
-  const minVal = Math.min(...values);
-  const maxVal = Math.max(...values);
-  const minTime = Math.min(...times);
-  const maxTime = Math.max(...times);
-
-  const range = maxVal - minVal;
-  const timeRange = maxTime - minTime || 1.0;
-  let step;
-  if (range <= 0) {
-    step = Math.max(10, Math.ceil(maxVal * 0.1));
-  } else {
-    const rawStep = range / 2;
-    const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
-    const normalized = rawStep / magnitude;
-    let cleanNormalized;
-    if (normalized < 1.5) cleanNormalized = 1.0;
-    else if (normalized < 3.0) cleanNormalized = 2.0;
-    else if (normalized < 7.0) cleanNormalized = 5.0;
-    else cleanNormalized = 10.0;
-    step = cleanNormalized * magnitude;
-  }
-  
-  let yMin = Math.max(0, Math.floor(minVal / step) * step);
-  let yMax = Math.ceil(maxVal / step) * step;
-  if (yMin === yMax) {
-    yMin = Math.max(0, yMin - step);
-    yMax = yMax + step;
-  }
-  const avgVal = (yMin + yMax) / 2;
-  const yRange = yMax - yMin || 1.0;
-
-  const svgPoints = historyData.map(h => {
-    const t = new Date(h.scanned_at).getTime();
-    const x = ((t - minTime) / timeRange) * 100;
-    const y = 90 - ((h.value - yMin) / yRange) * 80;
-    return { x, y };
-  });
-
-  const pathData = svgPoints.map((p, i) => (i === 0 ? 'M' : 'L') + ' ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ');
-  const areaData = pathData + ' L ' + svgPoints[svgPoints.length - 1].x.toFixed(1) + ' 90 L ' + svgPoints[0].x.toFixed(1) + ' 90 Z';
-
-  const firstLabel = new Date(minTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-  const lastLabel = new Date(maxTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-
-  const formatPriceLabel = (v) => {
-    if (v % 1 === 0) return v.toFixed(0) + ' €';
-    return v.toFixed(2) + ' €';
-  };
+  const sortedHistory = [...historyData].sort((a, b) => new Date(a.scanned_at) - new Date(b.scanned_at));
+  const labels = sortedHistory.map(h => new Date(h.scanned_at).toLocaleDateString('de-DE', {
+    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+  }));
+  const values = sortedHistory.map(h => h.value);
 
   chartContainer.innerHTML = `
-    <div class="chart-header" style="margin-bottom: 8px;">
+    <div class="chart-header" style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
       <span class="chart-title" style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Sammlungswert-Verlauf</span>
     </div>
-    <div class="chart-body" style="display: flex; gap: 12px;">
-      <div class="chart-y-axis" style="display: flex; flex-direction: column; justify-content: space-between; font-size: 0.65rem; color: var(--text-muted); width: 60px; text-align: right; font-weight: 500; padding: 4px 0;">
-        <span>${formatPriceLabel(yMax)}</span>
-        <span>${formatPriceLabel(avgVal)}</span>
-        <span>${formatPriceLabel(yMin)}</span>
-      </div>
-      <div class="chart-main" style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
-        <div class="chart-canvas" style="position: relative; height: 180px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass); border-radius: 6px; overflow: hidden;">
-          <svg class="chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none" style="width: 100%; height: 100%;">
-            <defs>
-              <linearGradient id="col-chart-grad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#10b981" stop-opacity="0.2"/>
-                <stop offset="100%" stop-color="#10b981" stop-opacity="0.0"/>
-              </linearGradient>
-            </defs>
-            <line x1="0" y1="10" x2="100" y2="10" stroke="rgba(255,255,255,0.05)" stroke-width="0.5" stroke-dasharray="2" />
-            <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.05)" stroke-width="0.5" stroke-dasharray="2" />
-            <line x1="0" y1="90" x2="100" y2="90" stroke="rgba(255,255,255,0.05)" stroke-width="0.5" stroke-dasharray="2" />
-            <path d="${areaData}" fill="url(#col-chart-grad)" />
-            <path d="${pathData}" stroke="#10b981" stroke-width="2" fill="none" />
-          </svg>
-        </div>
-        <div class="chart-x-axis" style="display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-muted); font-weight: 500;">
-          <span>${firstLabel}</span>
-          <span>${lastLabel}</span>
-        </div>
-      </div>
+    <div class="chart-canvas-container">
+      <canvas id="collectionValueChart"></canvas>
     </div>
   `;
+
+  const canvas = chartContainer.querySelector('#collectionValueChart');
+  const ctx = canvas.getContext('2d');
+
+  // Create gradient
+  const gradient = ctx.createLinearGradient(0, 0, 0, 180);
+  gradient.addColorStop(0, 'rgba(16, 185, 129, 0.22)');
+  gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Wert',
+        data: values,
+        borderColor: '#10b981',
+        borderWidth: 2,
+        backgroundColor: gradient,
+        fill: true,
+        tension: 0.3,
+        pointRadius: values.length < 15 ? 3 : 0,
+        pointHoverRadius: 6,
+        pointBackgroundColor: '#10b981',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 1.5
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#94a3b8',
+          bodyColor: '#ffffff',
+          borderColor: 'rgba(255, 255, 255, 0.1)',
+          borderWidth: 1,
+          padding: 8,
+          bodyFont: {
+            family: '-apple-system, BlinkMacSystemFont, sans-serif',
+            size: 11,
+            weight: '600'
+          },
+          titleFont: {
+            family: '-apple-system, BlinkMacSystemFont, sans-serif',
+            size: 9
+          },
+          callbacks: {
+            label: function(context) {
+              let label = context.dataset.label || '';
+              if (label) {
+                label += ': ';
+              }
+              if (context.parsed.y !== null) {
+                label += context.parsed.y.toFixed(2) + ' €';
+              }
+              return label;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: {
+            display: false
+          },
+          ticks: {
+            color: 'rgba(255, 255, 255, 0.4)',
+            font: {
+              size: 9,
+              family: '-apple-system, BlinkMacSystemFont, sans-serif'
+            },
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 6
+          }
+        },
+        y: {
+          grid: {
+            color: 'rgba(255, 255, 255, 0.05)',
+            drawTicks: false
+          },
+          ticks: {
+            color: 'rgba(255, 255, 255, 0.4)',
+            font: {
+              size: 9,
+              family: '-apple-system, BlinkMacSystemFont, sans-serif'
+            },
+            padding: 8,
+            callback: function(value) {
+              return value.toFixed(0) + ' €';
+            }
+          }
+        }
+      }
+    }
+  });
 }
 
 // Sub-Tab Collection Renderer
@@ -3209,151 +3243,129 @@ function renderDetail(container) {
       return;
     }
 
-    // Chart boundary calculations
-    const prices = filteredHistory.map(h => h.price);
-    const times = filteredHistory.map(h => new Date(h.scanned_at).getTime());
-
-    const minPrice = Math.min(...prices);
-    const maxPrice = Math.max(...prices);
-    const minTime = Math.min(...times);
-    const maxTime = Math.max(...times);
-
-    const priceRange = maxPrice - minPrice;
-    const timeRange = maxTime - minTime || 1.0;
-
-    const avgPrice = (minPrice + maxPrice) / 2 || 1.0;
-    const minDelta = Math.max(1.0, avgPrice * 0.1);
-
-    let yMin, yMax;
-    if (priceRange < minDelta) {
-      yMin = avgPrice - minDelta / 2;
-      yMax = avgPrice + minDelta / 2;
-    } else {
-      yMin = minPrice - priceRange * 0.15;
-      yMax = maxPrice + priceRange * 0.15;
-    }
-    const yRange = yMax - yMin || 1.0;
-
-    const svgPoints = filteredHistory.map(h => {
-      const t = new Date(h.scanned_at).getTime();
-      const x = ((t - minTime) / timeRange) * 100;
-      const y = 90 - ((h.price - yMin) / yRange) * 80;
-      const dateText = new Date(h.scanned_at).toLocaleString('de-DE', {
-        day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit'
-      });
-      return { x, y, price: h.price, dateText, comment: h.comment || '' };
-    });
-
-    const pathData = svgPoints.map((p, i) => (i === 0 ? 'M' : 'L') + ' ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ');
-    const areaData = pathData + ' L ' + svgPoints[svgPoints.length - 1].x.toFixed(1) + ' 90 L ' + svgPoints[0].x.toFixed(1) + ' 90 Z';
-
-    const firstLabel = new Date(minTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-    const lastLabel = new Date(maxTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+    // Chart.js rendering for details view price history
+    const sortedHistory = [...filteredHistory].sort((a, b) => new Date(a.scanned_at) - new Date(b.scanned_at));
+    const labels = sortedHistory.map(h => new Date(h.scanned_at).toLocaleDateString('de-DE', {
+      day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit'
+    }));
+    const prices = sortedHistory.map(h => h.price);
+    const comments = sortedHistory.map(h => h.comment || '');
 
     chartSection.innerHTML = `
-      <div class="chart-header">
+      <div class="chart-header" style="margin-bottom: 8px;">
         <span class="chart-title">Preisentwicklung</span>
       </div>
-      <div class="chart-body">
-        <div class="chart-y-axis">
-          <span>${yMax.toFixed(2)}€</span>
-          <span>${avgPrice.toFixed(2)}€</span>
-          <span>${yMin.toFixed(2)}€</span>
-        </div>
-        <div class="chart-main">
-          <div class="chart-canvas" id="canvas-wrapper">
-            <svg class="chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="chart-grad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.25"/>
-                  <stop offset="100%" stop-color="#3b82f6" stop-opacity="0.0"/>
-                </linearGradient>
-              </defs>
-              <line x1="0" y1="10" x2="100" y2="10" class="chart-grid" />
-              <line x1="0" y1="50" x2="100" y2="50" class="chart-grid" />
-              <line x1="0" y1="90" x2="100" y2="90" class="chart-grid" />
-              <path d="${areaData}" fill="url(#chart-grad)" />
-              <path d="${pathData}" class="chart-line" />
-            </svg>
-            <div id="chart-cursor-line" class="chart-touch-line" style="display: none;"></div>
-            <div id="chart-cursor-dot" class="chart-touch-dot" style="display: none;"></div>
-            <div id="chart-cursor-tooltip" class="chart-touch-tooltip" style="display: none;"></div>
-          </div>
-          <div class="chart-x-axis">
-            <span>${firstLabel}</span>
-            <span>${lastLabel}</span>
-          </div>
-        </div>
+      <div class="chart-canvas-container">
+        <canvas id="detailsValueChart"></canvas>
       </div>
     `;
 
-    // 3. Interactive touch / hover dragging listeners inside WebApp
-    const wrapper = chartSection.querySelector('#canvas-wrapper');
-    const cursorLine = chartSection.querySelector('#chart-cursor-line');
-    const cursorDot = chartSection.querySelector('#chart-cursor-dot');
-    const cursorTooltip = chartSection.querySelector('#chart-cursor-tooltip');
+    const canvas = chartSection.querySelector('#detailsValueChart');
+    const ctx = canvas.getContext('2d');
 
-    const handlePointerMove = (clientX, clientY) => {
-      const rect = wrapper.getBoundingClientRect();
-      const mouseX = ((clientX - rect.left) / rect.width) * 100;
+    // Create gradient using var(--primary) which is #fb8500
+    const gradient = ctx.createLinearGradient(0, 0, 0, 180);
+    gradient.addColorStop(0, 'rgba(251, 133, 0, 0.25)');
+    gradient.addColorStop(1, 'rgba(251, 133, 0, 0.0)');
 
-      let closest = null;
-      let minDiff = Infinity;
-      for (const pt of svgPoints) {
-        const diff = Math.abs(pt.x - mouseX);
-        if (diff < minDiff) {
-          minDiff = diff;
-          closest = pt;
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Preis',
+          data: prices,
+          borderColor: '#fb8500',
+          borderWidth: 2,
+          backgroundColor: gradient,
+          fill: true,
+          tension: 0.3,
+          pointRadius: prices.length < 15 ? 3 : 0,
+          pointHoverRadius: 6,
+          pointBackgroundColor: '#fb8500',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 1.5
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            titleColor: '#94a3b8',
+            bodyColor: '#ffffff',
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+            borderWidth: 1,
+            padding: 8,
+            bodyFont: {
+              family: '-apple-system, BlinkMacSystemFont, sans-serif',
+              size: 11,
+              weight: '600'
+            },
+            titleFont: {
+              family: '-apple-system, BlinkMacSystemFont, sans-serif',
+              size: 9
+            },
+            callbacks: {
+              label: function(context) {
+                let label = context.dataset.label || '';
+                if (label) {
+                  label += ': ';
+                }
+                if (context.parsed.y !== null) {
+                  label += context.parsed.y.toFixed(2) + ' €';
+                }
+                const comment = comments[context.dataIndex];
+                if (comment) {
+                  return [label, `"${comment}"`];
+                }
+                return label;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: {
+              display: false
+            },
+            ticks: {
+              color: 'rgba(255, 255, 255, 0.4)',
+              font: {
+                size: 9,
+                family: '-apple-system, BlinkMacSystemFont, sans-serif'
+              },
+              maxRotation: 0,
+              autoSkip: true,
+              maxTicksLimit: 6
+            }
+          },
+          y: {
+            grid: {
+              color: 'rgba(255, 255, 255, 0.05)',
+              drawTicks: false
+            },
+            ticks: {
+              color: 'rgba(255, 255, 255, 0.4)',
+              font: {
+                size: 9,
+                family: '-apple-system, BlinkMacSystemFont, sans-serif'
+              },
+              padding: 8,
+              callback: function(value) {
+                return value.toFixed(2) + ' €';
+              }
+            }
+          }
         }
       }
-
-      if (closest) {
-        cursorLine.style.left = closest.x.toFixed(1) + '%';
-        cursorLine.style.display = 'block';
-
-        cursorDot.style.left = closest.x.toFixed(1) + '%';
-        cursorDot.style.top = closest.y.toFixed(1) + '%';
-        cursorDot.style.display = 'block';
-
-        // Tooltip position (keep within boundaries)
-        const tooltipX = clientX - rect.left;
-        cursorTooltip.style.left = tooltipX + 'px';
-        cursorTooltip.style.top = '10px';
-        cursorTooltip.style.display = 'block';
-
-        const commentHtml = closest.comment 
-          ? `<div style="font-size: 0.6rem; color: rgba(255,255,255,0.5); font-style: italic; max-width: 120px; white-space: normal; margin-top: 2px;">"${closest.comment}"</div>`
-          : '';
-
-        cursorTooltip.innerHTML = `
-          <div style="font-weight: 700;">${closest.price.toFixed(2)} €</div>
-          <div style="font-size: 0.55rem; color: rgba(255,255,255,0.4);">${closest.dateText}</div>
-          ${commentHtml}
-        `;
-      }
-    };
-
-    const handlePointerLeave = () => {
-      cursorLine.style.display = 'none';
-      cursorDot.style.display = 'none';
-      cursorTooltip.style.display = 'none';
-    };
-
-    // Mouse Events (Fallback)
-    wrapper.addEventListener('mousemove', (e) => {
-      handlePointerMove(e.clientX, e.clientY);
     });
-    wrapper.addEventListener('mouseleave', handlePointerLeave);
-
-    // Mobile Touch Events (Primary)
-    wrapper.addEventListener('touchstart', (e) => {
-      handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
-    });
-    wrapper.addEventListener('touchmove', (e) => {
-      e.preventDefault(); // Prevents page scrolling while scrubbing graph
-      handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
-    });
-    wrapper.addEventListener('touchend', handlePointerLeave);
   };
 
   // Bind dropdown filters selectors change event
