@@ -30,6 +30,7 @@ let activeSearchQuery = ''; // Active search query for filtering tabs
 let collectionCards = []; // Cards in collection
 let activeTcgFilter = 'all'; // TCG filter for tabs ('all', 'OnePiece', 'Pokemon', 'Riftbound', 'DragonBall')
 let collectionValueHistory = []; // Historical values of collection market value
+let isBackgroundFetching = false; // Flag to indicate active database load operation
 
 function checkIsMobile() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
@@ -572,11 +573,24 @@ async function navigate(path, pushState = true) {
 
     // Trigger background fetch and re-render the active tab wrapper once loaded
     showLoadingProgress(true);
+    isBackgroundFetching = true;
+
+    // Immediately trigger a rendering of the tab so if the memory is empty, the skeletons appear
+    const initialTabWrapper = document.getElementById('dashboard-tab-content');
+    if (initialTabWrapper && currentView === 'dashboard') {
+      if (activeDashboardTab === 'watchlist') {
+        renderWatchlistTab(initialTabWrapper);
+      } else if (activeDashboardTab === 'collection') {
+        renderCollectionTab(initialTabWrapper);
+      }
+    }
+
     Promise.all([
       fetchMarkedCards(),
       fetchCollectionCards()
     ]).then(() => {
       showLoadingProgress(false);
+      isBackgroundFetching = false;
       const tabContentWrapper = document.getElementById('dashboard-tab-content');
       if (tabContentWrapper && currentView === 'dashboard') {
         if (activeDashboardTab === 'watchlist') {
@@ -587,6 +601,7 @@ async function navigate(path, pushState = true) {
       }
     }).catch(err => {
       showLoadingProgress(false);
+      isBackgroundFetching = false;
       console.error('Background data update failed:', err);
     });
   } else if (pathname === '/detail') {
@@ -1032,14 +1047,34 @@ function renderWatchlistTab(container) {
   container.appendChild(dashboard);
 
   if (markedCards.length === 0) {
-    dashboard.innerHTML += `
-      <div class="empty-state glass-panel">
-        <svg class="empty-state-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499c.151-.377.728-.377.879 0l2.09 5.011 5.4 1.018a.5.5 0 01.29.839l-3.834 3.738 1.05 5.378a.5.5 0 01-.707.567L12 17.766l-4.664 2.483a.5.5 0 01-.707-.567l1.05-5.378-3.834-3.738a.5.5 0 01.29-.839l5.4-1.018 2.09-5.011z" />
-        </svg>
-        <p>Deine Watchlist ist leer. Scanne eine Karte mit dem Addon und markiere sie mit dem Stern.</p>
-      </div>
-    `;
+    if (isBackgroundFetching) {
+      dashboard.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+          ${Array(3).fill().map(() => `
+            <div class="skeleton-item glass-panel" style="display: flex; align-items: center; padding: 12px 14px; gap: 16px; min-height: 116px; opacity: 0.6; animation: skeleton-pulse 1.5s infinite ease-in-out;">
+              <div style="width: 66px; height: 92px; background: rgba(255,255,255,0.06); border-radius: 6px;"></div>
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+                <div style="width: 60px; height: 12px; background: rgba(255,255,255,0.06); border-radius: 4px;"></div>
+                <div style="width: 140px; height: 16px; background: rgba(255,255,255,0.06); border-radius: 4px;"></div>
+              </div>
+              <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px; width: 80px;">
+                <div style="width: 60px; height: 16px; background: rgba(255,255,255,0.06); border-radius: 4px;"></div>
+                <div style="width: 45px; height: 18px; background: rgba(255,255,255,0.06); border-radius: 4px;"></div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } else {
+      dashboard.innerHTML += `
+        <div class="empty-state glass-panel">
+          <svg class="empty-state-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499c.151-.377.728-.377.879 0l2.09 5.011 5.4 1.018a.5.5 0 01.29.839l-3.834 3.738 1.05 5.378a.5.5 0 01-.707.567L12 17.766l-4.664 2.483a.5.5 0 01-.707-.567l1.05-5.378-3.834-3.738a.5.5 0 01.29-.839l5.4-1.018 2.09-5.011z" />
+          </svg>
+          <p>Deine Watchlist ist leer. Scanne eine Karte mit dem Addon und markiere sie mit dem Stern.</p>
+        </div>
+      `;
+    }
     return;
   }
 
@@ -1762,15 +1797,35 @@ function renderCollectionTab(container) {
   container.appendChild(dashboard);
 
   if (collectionCards.length === 0) {
-    dashboard.innerHTML += `
-      <div class="empty-state glass-panel">
-        <svg class="empty-state-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width: 32px; height: 32px; stroke: var(--text-muted); margin: 0 auto 12px auto;">
-          <rect x="3" y="3" width="12" height="12" rx="2" />
-          <path d="M9 15v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2" />
-        </svg>
-        <p>Deine Collection ist leer. Scanne eine Karte mit der Erweiterung und füge sie mit dem Collection-Symbol zu deiner Sammlung hinzu.</p>
-      </div>
-    `;
+    if (isBackgroundFetching) {
+      dashboard.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+          ${Array(3).fill().map(() => `
+            <div class="skeleton-item glass-panel" style="display: flex; align-items: center; padding: 12px 14px; gap: 16px; min-height: 116px; opacity: 0.6; animation: skeleton-pulse 1.5s infinite ease-in-out;">
+              <div style="width: 66px; height: 92px; background: rgba(255,255,255,0.06); border-radius: 6px;"></div>
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+                <div style="width: 60px; height: 12px; background: rgba(255,255,255,0.06); border-radius: 4px;"></div>
+                <div style="width: 140px; height: 16px; background: rgba(255,255,255,0.06); border-radius: 4px;"></div>
+              </div>
+              <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px; width: 80px;">
+                <div style="width: 60px; height: 16px; background: rgba(255,255,255,0.06); border-radius: 4px;"></div>
+                <div style="width: 45px; height: 18px; background: rgba(255,255,255,0.06); border-radius: 4px;"></div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    } else {
+      dashboard.innerHTML += `
+        <div class="empty-state glass-panel">
+          <svg class="empty-state-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width: 32px; height: 32px; stroke: var(--text-muted); margin: 0 auto 12px auto;">
+            <rect x="3" y="3" width="12" height="12" rx="2" />
+            <path d="M9 15v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2" />
+          </svg>
+          <p>Deine Collection ist leer. Scanne eine Karte mit der Erweiterung und füge sie mit dem Collection-Symbol zu deiner Sammlung hinzu.</p>
+        </div>
+      `;
+    }
     return;
   }
 
