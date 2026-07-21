@@ -1454,6 +1454,7 @@ async function runScan(force = false) {
         blocked: dbResponse.blocked || false,
         remainingTime: dbResponse.remainingTime || 0,
         isMarked: dbResponse.isMarked || false,
+        isInCollection: dbResponse.isInCollection || false,
         isAdmin: dbResponse.isAdmin || false
       });
 

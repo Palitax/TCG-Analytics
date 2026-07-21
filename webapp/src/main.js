@@ -475,13 +475,8 @@ async function navigate(path, pushState = true) {
     }
   }
 
-  // Pre-fetch marked cards & collection cards if we are going to dashboard
+  // Navigate to dashboard instantly and fetch data in the background
   if (pathname === '/' || pathname === '/watchlist' || pathname === '/analytics' || pathname === '/collection') {
-    await Promise.all([
-      fetchMarkedCards(),
-      fetchCollectionCards()
-    ]);
-    
     // Determine target tab
     if (pathname === '/analytics') {
       activeDashboardTab = 'analytics';
@@ -491,7 +486,25 @@ async function navigate(path, pushState = true) {
       activeDashboardTab = 'watchlist';
     }
     
+    // Render view instantly using currently loaded data
     await setView('dashboard');
+
+    // Trigger background fetch and re-render the active tab wrapper once loaded
+    Promise.all([
+      fetchMarkedCards(),
+      fetchCollectionCards()
+    ]).then(() => {
+      const tabContentWrapper = document.getElementById('dashboard-tab-content');
+      if (tabContentWrapper && currentView === 'dashboard') {
+        if (activeDashboardTab === 'watchlist') {
+          renderWatchlistTab(tabContentWrapper);
+        } else if (activeDashboardTab === 'collection') {
+          renderCollectionTab(tabContentWrapper);
+        }
+      }
+    }).catch(err => {
+      console.error('Background data update failed:', err);
+    });
   } else if (pathname === '/detail') {
     const cardId = url.searchParams.get('card_id');
     const tcg = url.searchParams.get('tcg');

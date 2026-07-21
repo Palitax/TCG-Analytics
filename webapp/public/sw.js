@@ -32,8 +32,24 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
+  // SPA fallback: Return index.html for all navigation requests if network fails or returns 404
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request)
+        .then((response) => {
+          if (response.ok) {
+            return response;
+          }
+          // Fall back to index.html if network returns 404/500
+          return caches.match('/index.html');
+        })
+        .catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
   // Network First for HTML and root navigation requests
-  if (e.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html')) {
+  if (url.pathname === '/' || url.pathname.endsWith('.html')) {
     e.respondWith(
       fetch(e.request)
         .then((response) => {
