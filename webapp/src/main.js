@@ -27,6 +27,8 @@ function safeSaveSearchHistory() {
 
 let activeCardDetails = null; // Holds detail view data
 let activeSearchQuery = ''; // Active search query for filtering tabs
+let collectionCards = []; // Cards in collection
+let activeTcgFilter = 'all'; // TCG filter for tabs ('all', 'OnePiece', 'Pokemon', 'Riftbound', 'DragonBall')
 
 function checkIsMobile() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
@@ -192,39 +194,148 @@ function parseHistoryItem(item) {
 // Initialize PWA App
 async function init() {
   setView('loading');
+  
+  // Listen for auth state changes
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    try {
+      if (session) {
+        const isNewUser = !currentUser || currentUser.id !== session.user.id;
+        currentUser = session.user;
+        if (isNewUser) {
+          await Promise.all([fetchMarkedCards(), fetchCollectionCards()]);
+        }
+        const currentPath = window.location.pathname + window.location.search;
+        if (currentPath === '/login' || currentPath === '/') {
+          navigate('/watchlist', false);
+        } else {
+          navigate(currentPath, false);
+        }
+      } else {
+        currentUser = null;
+        markedCards = [];
+        collectionCards = [];
+        navigate('/login', false);
+      }
+    } catch (err) {
+      console.error('Auth state change handler failed:', err);
+      navigate('/login', false);
+    }
+  });
+
   try {
     const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
     if (sessionErr) throw sessionErr;
     
     if (session) {
       currentUser = session.user;
-      await fetchMarkedCards();
-      setView('dashboard');
+      await Promise.all([fetchMarkedCards(), fetchCollectionCards()]);
+      const currentPath = window.location.pathname + window.location.search;
+      if (currentPath === '/' || currentPath === '/login') {
+        navigate('/watchlist', false);
+      } else {
+        navigate(currentPath, false);
+      }
     } else {
-      setView('login');
+      navigate('/login', false);
     }
   } catch (err) {
     console.error('Initialization failed, falling back to login screen:', err);
-    setView('login');
+    navigate('/login', false);
   }
 
-  // Listen for auth state changes
-  supabase.auth.onAuthStateChange(async (event, session) => {
-    try {
-      if (session) {
-        currentUser = session.user;
-        await fetchMarkedCards();
-        setView('dashboard');
-      } else {
-        currentUser = null;
-        markedCards = [];
-        setView('login');
-      }
-    } catch (err) {
-      console.error('Auth state change handler failed:', err);
-      setView('login');
-    }
+  // Handle popstate for back/forward buttons
+  window.addEventListener('popstate', () => {
+    navigate(window.location.pathname + window.location.search, false);
   });
+}
+
+// Fetch collection cards for active user
+async function fetchCollectionCards() {
+  if (!currentUser) return;
+  try {
+    const { data, error } = await supabase
+      .from('collection_cards')
+      .select('*')
+      .eq('user_id', currentUser.id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    
+    let listData = data || [];
+    const cardIds = listData.map(c => c.card_id);
+    if (cardIds.length > 0) {
+      try {
+        const { data: globalImages, error: globalImagesErr } = await supabase
+          .from('card_images')
+          .select('card_id, image_url')
+          .in('card_id', cardIds);
+        
+        if (!globalImagesErr && globalImages) {
+          const imageMap = {};
+          for (const img of globalImages) {
+            imageMap[img.card_id] = img.image_url;
+          }
+          for (const card of listData) {
+            if (imageMap[card.card_id]) {
+              card.image_url = imageMap[card.card_id];
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching global card images for collection:', err.message);
+      }
+
+      // Bulk fetch price history for all cards
+      try {
+        const { data: priceData, error: priceErr } = await supabase
+          .from('price_history')
+          .select('card_id, price, comment, scanned_at')
+          .in('card_id', cardIds)
+          .order('scanned_at', { ascending: true });
+
+        if (!priceErr && priceData) {
+          const historyMap = {};
+          for (const row of priceData) {
+            if (!historyMap[row.card_id]) {
+              historyMap[row.card_id] = [];
+            }
+            historyMap[row.card_id].push(parseHistoryItem(row));
+          }
+
+          for (const card of listData) {
+            const history = historyMap[card.card_id] || [];
+            if (history.length > 0) {
+              const latest = history[history.length - 1];
+              const baseline = history[0];
+              card.latest_price = latest.price;
+              card.baseline_price = baseline.price;
+              card.diff_percent = baseline.price > 0 ? ((latest.price - baseline.price) / baseline.price) * 100 : 0;
+
+              // Fallback image url from history
+              if (!card.image_url) {
+                for (let i = history.length - 1; i >= 0; i--) {
+                  if (history[i].imageUrl) {
+                    card.image_url = history[i].imageUrl;
+                    break;
+                  }
+                }
+              }
+            } else {
+              card.latest_price = null;
+              card.baseline_price = null;
+              card.diff_percent = 0;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching collection bulk prices:', err.message);
+      }
+    }
+
+    collectionCards = listData;
+  } catch (err) {
+    console.error('Error loading collection cards:', err.message);
+  }
 }
 
 // Fetch bookmarked cards for active user
@@ -331,6 +442,67 @@ async function fetchMarkedCards() {
     markedCards = listData;
   } catch (err) {
     console.error('Error loading bookmarks:', err.message);
+  }
+}
+
+// HTML5 history routing navigation helper
+async function navigate(path, pushState = true) {
+  if (pushState) {
+    history.pushState({ path }, '', path);
+  }
+  
+  const url = new URL(window.location.href);
+  const pathname = url.pathname;
+  
+  if (pathname === '/login') {
+    await setView('login');
+    return;
+  }
+  
+  if (!currentUser) {
+    // Try to get session
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        currentUser = session.user;
+      } else {
+        await setView('login');
+        return;
+      }
+    } catch (e) {
+      await setView('login');
+      return;
+    }
+  }
+
+  // Pre-fetch marked cards & collection cards if we are going to dashboard
+  if (pathname === '/' || pathname === '/watchlist' || pathname === '/analytics' || pathname === '/collection') {
+    await Promise.all([
+      fetchMarkedCards(),
+      fetchCollectionCards()
+    ]);
+    
+    // Determine target tab
+    if (pathname === '/analytics') {
+      activeDashboardTab = 'analytics';
+    } else if (pathname === '/collection') {
+      activeDashboardTab = 'collection';
+    } else {
+      activeDashboardTab = 'watchlist';
+    }
+    
+    await setView('dashboard');
+  } else if (pathname === '/detail') {
+    const cardId = url.searchParams.get('card_id');
+    const tcg = url.searchParams.get('tcg');
+    if (cardId && tcg) {
+      await loadCardDetails(cardId, tcg, false);
+    } else {
+      await navigate('/watchlist', false);
+    }
+  } else {
+    // Fallback
+    await navigate('/watchlist', false);
   }
 }
 
@@ -686,7 +858,7 @@ async function renderDashboard(container) {
     }
   });
 
-  // Render 2 Landing Buttons for Tab toggles below the search input
+  // Render 3 Landing Buttons for Tab toggles below the search input
   const buttonsSection = document.createElement('div');
   buttonsSection.className = 'cm-landing-buttons-container';
   buttonsSection.innerHTML = `
@@ -696,6 +868,13 @@ async function renderDashboard(container) {
           <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499c.151-.377.728-.377.879 0l2.09 5.011 5.4 1.018a.5.5 0 01.29.839l-3.834 3.738 1.05 5.378a.5.5 0 01-.707.567L12 17.766l-4.664 2.483a.5.5 0 01-.707-.567l1.05-5.378-3.834-3.738a.5.5 0 01.29-.839l5.4-1.018 2.09-5.011z" />
         </svg>
         Watchlist (${markedCards.length})
+      </button>
+      <button id="btn-tab-collection" class="cm-landing-btn ${activeDashboardTab === 'collection' ? 'active' : ''}">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width: 14px; height: 14px;">
+          <rect x="3" y="3" width="12" height="12" rx="2" />
+          <path d="M9 15v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2" />
+        </svg>
+        Collection (${collectionCards.length})
       </button>
       <button id="btn-tab-analytics" class="cm-landing-btn ${activeDashboardTab === 'analytics' ? 'active' : ''}">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -713,12 +892,15 @@ async function renderDashboard(container) {
   wrapper.appendChild(tabContentWrapper);
 
   const btnWatchlist = buttonsSection.querySelector('#btn-tab-watchlist');
+  const btnCollection = buttonsSection.querySelector('#btn-tab-collection');
   const btnAnalytics = buttonsSection.querySelector('#btn-tab-analytics');
 
   const renderActiveTab = async () => {
     tabContentWrapper.innerHTML = '';
     if (activeDashboardTab === 'watchlist') {
       renderWatchlistTab(tabContentWrapper);
+    } else if (activeDashboardTab === 'collection') {
+      renderCollectionTab(tabContentWrapper);
     } else {
       await renderAnalyticsTab(tabContentWrapper);
     }
@@ -726,18 +908,17 @@ async function renderDashboard(container) {
 
   btnWatchlist.addEventListener('click', () => {
     if (activeDashboardTab === 'watchlist') return;
-    activeDashboardTab = 'watchlist';
-    btnWatchlist.classList.add('active');
-    btnAnalytics.classList.remove('active');
-    renderActiveTab();
+    navigate('/watchlist');
+  });
+
+  btnCollection.addEventListener('click', () => {
+    if (activeDashboardTab === 'collection') return;
+    navigate('/collection');
   });
 
   btnAnalytics.addEventListener('click', () => {
     if (activeDashboardTab === 'analytics') return;
-    activeDashboardTab = 'analytics';
-    btnAnalytics.classList.add('active');
-    btnWatchlist.classList.remove('active');
-    renderActiveTab();
+    navigate('/analytics');
   });
 
   // Render initial selected tab content
@@ -773,6 +954,21 @@ function renderWatchlistTab(container) {
       const cleanNameStr = cleanCardName(c.card_id).toLowerCase();
       const tcgStr = (c.tcg || '').toLowerCase();
       return cardIdStr.includes(q) || cleanNameStr.includes(q) || tcgStr.includes(q);
+    });
+  }
+
+  // Filter cards by TCG if present
+  if (activeTcgFilter !== 'all') {
+    const filterTcg = activeTcgFilter.toLowerCase();
+    sortedCards = sortedCards.filter(c => {
+      const tcgStr = (c.tcg || '').toLowerCase();
+      if (filterTcg === 'onepiece') {
+        return tcgStr === 'onepiece' || tcgStr === 'one piece';
+      }
+      if (filterTcg === 'dragonball') {
+        return tcgStr === 'dragonball' || tcgStr === 'dragon ball' || tcgStr === 'dragonballsuper' || tcgStr === 'dragon ball super';
+      }
+      return tcgStr === filterTcg;
     });
   }
 
@@ -837,7 +1033,7 @@ function renderWatchlistTab(container) {
       </div>
     </div>
     
-    <div class="watchlist-filter-row" style="display: flex; justify-content: flex-start; align-items: center; gap: 12px; width: 100%;">
+    <div class="watchlist-filter-row" style="display: flex; justify-content: flex-start; align-items: center; gap: 12px; width: 100%; flex-wrap: wrap;">
       <div class="watchlist-sort-container">
         <svg style="width: 14px; height: 14px; color: var(--text-muted);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
@@ -848,6 +1044,20 @@ function renderWatchlistTab(container) {
           <option value="price-desc" ${activeSortOption === 'price-desc' ? 'selected' : ''}>Preis: Absteigend</option>
           <option value="diff-desc" ${activeSortOption === 'diff-desc' ? 'selected' : ''}>Gewinn: Meiste %</option>
           <option value="diff-asc" ${activeSortOption === 'diff-asc' ? 'selected' : ''}>Verlust: Meiste %</option>
+        </select>
+      </div>
+
+      <div class="watchlist-sort-container">
+        <svg style="width: 14px; height: 14px; color: var(--text-muted);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 8v8M8 12h8" />
+        </svg>
+        <select id="select-watchlist-tcg" class="watchlist-sort-select">
+          <option value="all" ${activeTcgFilter === 'all' ? 'selected' : ''}>Alle TCGs</option>
+          <option value="OnePiece" ${activeTcgFilter === 'OnePiece' ? 'selected' : ''}>One Piece</option>
+          <option value="Pokemon" ${activeTcgFilter === 'Pokemon' ? 'selected' : ''}>Pokémon</option>
+          <option value="Riftbound" ${activeTcgFilter === 'Riftbound' ? 'selected' : ''}>Riftbound</option>
+          <option value="DragonBall" ${activeTcgFilter === 'DragonBall' ? 'selected' : ''}>Dragon Ball</option>
         </select>
       </div>
     </div>
@@ -879,12 +1089,19 @@ function renderWatchlistTab(container) {
   const btnWebSyncAll = headerSection.querySelector('#btn-web-sync-all');
   const syncHint = headerSection.querySelector('#sync-all-hint');
   const selectSort = headerSection.querySelector('#select-watchlist-sort');
+  const selectTcg = headerSection.querySelector('#select-watchlist-tcg');
 
   selectSort.addEventListener('change', () => {
     activeSortOption = selectSort.value;
     try {
       localStorage.setItem('watchlist_sort_option', activeSortOption);
     } catch (e) {}
+    container.innerHTML = '';
+    renderWatchlistTab(container);
+  });
+
+  selectTcg.addEventListener('change', () => {
+    activeTcgFilter = selectTcg.value;
     container.innerHTML = '';
     renderWatchlistTab(container);
   });
@@ -1282,6 +1499,516 @@ function renderWatchlistTab(container) {
   }
 }
 
+// Sub-Tab Collection Renderer
+function renderCollectionTab(container) {
+  const dashboard = document.createElement('div');
+  dashboard.className = 'dashboard-content';
+  dashboard.innerHTML = '';
+  container.appendChild(dashboard);
+
+  if (collectionCards.length === 0) {
+    dashboard.innerHTML += `
+      <div class="empty-state glass-panel">
+        <svg class="empty-state-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width: 32px; height: 32px; stroke: var(--text-muted); margin: 0 auto 12px auto;">
+          <rect x="3" y="3" width="12" height="12" rx="2" />
+          <path d="M9 15v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2" />
+        </svg>
+        <p>Deine Collection ist leer. Scanne eine Karte mit der Erweiterung und füge sie mit dem Collection-Symbol zu deiner Sammlung hinzu.</p>
+      </div>
+    `;
+    return;
+  }
+
+  // Filter cards by search query & TCG
+  let sortedCards = [...collectionCards];
+  if (activeSearchQuery) {
+    const q = activeSearchQuery.toLowerCase();
+    sortedCards = sortedCards.filter(c => {
+      const cardIdStr = (c.card_id || '').toLowerCase();
+      const cleanNameStr = cleanCardName(c.card_id).toLowerCase();
+      const tcgStr = (c.tcg || '').toLowerCase();
+      return cardIdStr.includes(q) || cleanNameStr.includes(q) || tcgStr.includes(q);
+    });
+  }
+
+  if (activeTcgFilter !== 'all') {
+    const filterTcg = activeTcgFilter.toLowerCase();
+    sortedCards = sortedCards.filter(c => {
+      const tcgStr = (c.tcg || '').toLowerCase();
+      if (filterTcg === 'onepiece') {
+        return tcgStr === 'onepiece' || tcgStr === 'one piece';
+      }
+      if (filterTcg === 'dragonball') {
+        return tcgStr === 'dragonball' || tcgStr === 'dragon ball' || tcgStr === 'dragonballsuper' || tcgStr === 'dragon ball super';
+      }
+      return tcgStr === filterTcg;
+    });
+  }
+
+  // Calculate total collection value
+  const totalValue = sortedCards.reduce((sum, card) => sum + (card.latest_price || 0), 0);
+
+  // Sorting
+  if (activeSortOption === 'price-asc') {
+    sortedCards.sort((a, b) => {
+      const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : Infinity;
+      const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : Infinity;
+      return pA - pB;
+    });
+  } else if (activeSortOption === 'price-desc') {
+    sortedCards.sort((a, b) => {
+      const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : -Infinity;
+      const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : -Infinity;
+      return pB - pA;
+    });
+  } else if (activeSortOption === 'diff-desc') {
+    sortedCards.sort((a, b) => {
+      const dA = a.diff_percent !== undefined ? a.diff_percent : 0;
+      const dB = b.diff_percent !== undefined ? b.diff_percent : 0;
+      return dB - dA;
+    });
+  } else if (activeSortOption === 'diff-asc') {
+    sortedCards.sort((a, b) => {
+      const dA = a.diff_percent !== undefined ? a.diff_percent : 0;
+      const dB = b.diff_percent !== undefined ? b.diff_percent : 0;
+      return dA - dB;
+    });
+  }
+
+  // Display Total Value card at the top
+  const valueCard = document.createElement('div');
+  valueCard.className = 'collection-value-card glass-panel';
+  valueCard.style.cssText = 'padding: 20px; margin-bottom: 20px; text-align: center; border: 1px solid var(--primary); box-shadow: 0 4px 20px rgba(251, 133, 0, 0.15); border-radius: 12px;';
+  valueCard.innerHTML = `
+    <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">Gesamtwert Sammlung</span>
+    <h2 style="font-size: 2.2rem; font-weight: 800; color: #34d399; margin: 6px 0 0 0; text-shadow: 0 0 10px rgba(52, 211, 153, 0.2);">${totalValue.toFixed(2)} €</h2>
+  `;
+  dashboard.appendChild(valueCard);
+
+  // Header & Controls
+  const headerSection = document.createElement('div');
+  headerSection.className = 'watchlist-header-actions';
+  headerSection.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; width: 100%; padding: 0 4px;';
+  headerSection.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 12px;">
+      <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Sammlung (${sortedCards.length}${activeSearchQuery || activeTcgFilter !== 'all' ? ` von ${collectionCards.length}` : ''})</span>
+    </div>
+    
+    <div class="watchlist-filter-row" style="display: flex; justify-content: flex-start; align-items: center; gap: 12px; width: 100%; flex-wrap: wrap;">
+      <div class="watchlist-sort-container">
+        <svg style="width: 14px; height: 14px; color: var(--text-muted);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+        </svg>
+        <select id="select-collection-sort" class="watchlist-sort-select">
+          <option value="custom" ${activeSortOption === 'custom' ? 'selected' : ''}>Eigene Reihenfolge</option>
+          <option value="price-asc" ${activeSortOption === 'price-asc' ? 'selected' : ''}>Preis: Aufsteigend</option>
+          <option value="price-desc" ${activeSortOption === 'price-desc' ? 'selected' : ''}>Preis: Absteigend</option>
+          <option value="diff-desc" ${activeSortOption === 'diff-desc' ? 'selected' : ''}>Gewinn: Meiste %</option>
+          <option value="diff-asc" ${activeSortOption === 'diff-asc' ? 'selected' : ''}>Verlust: Meiste %</option>
+        </select>
+      </div>
+
+      <div class="watchlist-sort-container">
+        <svg style="width: 14px; height: 14px; color: var(--text-muted);" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 8v8M8 12h8" />
+        </svg>
+        <select id="select-collection-tcg" class="watchlist-sort-select">
+          <option value="all" ${activeTcgFilter === 'all' ? 'selected' : ''}>Alle TCGs</option>
+          <option value="OnePiece" ${activeTcgFilter === 'OnePiece' ? 'selected' : ''}>One Piece</option>
+          <option value="Pokemon" ${activeTcgFilter === 'Pokemon' ? 'selected' : ''}>Pokémon</option>
+          <option value="Riftbound" ${activeTcgFilter === 'Riftbound' ? 'selected' : ''}>Riftbound</option>
+          <option value="DragonBall" ${activeTcgFilter === 'DragonBall' ? 'selected' : ''}>Dragon Ball</option>
+        </select>
+      </div>
+    </div>
+  `;
+  dashboard.appendChild(headerSection);
+
+  const selectSort = headerSection.querySelector('#select-collection-sort');
+  const selectTcg = headerSection.querySelector('#select-collection-tcg');
+
+  selectSort.addEventListener('change', () => {
+    activeSortOption = selectSort.value;
+    try {
+      localStorage.setItem('watchlist_sort_option', activeSortOption);
+    } catch (e) {}
+    container.innerHTML = '';
+    renderCollectionTab(container);
+  });
+
+  selectTcg.addEventListener('change', () => {
+    activeTcgFilter = selectTcg.value;
+    container.innerHTML = '';
+    renderCollectionTab(container);
+  });
+
+  if (sortedCards.length === 0) {
+    const emptySearchEl = document.createElement('div');
+    emptySearchEl.className = 'empty-state glass-panel';
+    emptySearchEl.style.cssText = 'padding: 32px 16px; margin-top: 12px; text-align: center;';
+    emptySearchEl.innerHTML = `
+      <svg class="empty-state-icon" style="width: 32px; height: 32px; margin: 0 auto;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+      <p style="font-size: 0.85rem; margin-top: 8px;">Keine passende Karten in deiner Sammlung gefunden.</p>
+      <button id="btn-reset-collection-search" style="margin-top: 12px; background: rgba(255,255,255,0.08); border: 1px solid var(--border-glass); color: #fff; padding: 6px 14px; border-radius: 6px; font-size: 0.8rem; cursor: pointer;">Suche zurücksetzen</button>
+    `;
+    dashboard.appendChild(emptySearchEl);
+    emptySearchEl.querySelector('#btn-reset-collection-search').addEventListener('click', () => {
+      activeSearchQuery = '';
+      activeTcgFilter = 'all';
+      const inpSearch = document.querySelector('#inp-search');
+      if (inpSearch) inpSearch.value = '';
+      container.innerHTML = '';
+      renderCollectionTab(container);
+    });
+    return;
+  }
+
+  const list = document.createElement('div');
+  list.className = 'watchlist-list';
+  dashboard.appendChild(list);
+
+  let draggedItem = null;
+  list.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (activeSortOption !== 'custom') return;
+    if (!draggedItem) return;
+    const afterElement = getDragAfterElement(list, e.clientY);
+    if (afterElement == null) {
+      list.appendChild(draggedItem);
+    } else {
+      list.insertBefore(draggedItem, afterElement);
+    }
+  });
+
+  function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.watchlist-item-wrapper:not(.dragging)')];
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) {
+        return { offset: offset, element: child };
+      } else {
+        return closest;
+      }
+    }, { offset: -Infinity }).element;
+  }
+
+  function saveCollectionOrder() {
+    const newOrder = Array.from(list.querySelectorAll('.watchlist-item-wrapper')).map(el => {
+      const cardEl = el.querySelector('.watchlist-item');
+      return cardEl.dataset.cardUuid;
+    });
+    const orderKey = `collection_order_${currentUser.id}`;
+    try {
+      localStorage.setItem(orderKey, JSON.stringify(newOrder));
+    } catch (e) {}
+    collectionCards.sort((a, b) => {
+      const idxA = newOrder.indexOf(a.card_id);
+      const idxB = newOrder.indexOf(b.card_id);
+      if (idxA === -1 && idxB === -1) return 0;
+      if (idxA === -1) return 1;
+      if (idxB === -1) return -1;
+      return idxA - idxB;
+    });
+  }
+
+  for (const card of sortedCards) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'watchlist-item-wrapper';
+    wrapper.setAttribute('draggable', activeSortOption === 'custom' ? 'true' : 'false');
+
+    const isMobileDevice = checkIsMobile();
+    const desktopDeleteBtnHtml = isMobileDevice ? '' : `
+      <button class="watchlist-item-desktop-delete" title="Aus Sammlung entfernen">
+        <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="10" height="10">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    `;
+
+    const priceText = card.latest_price !== null && card.latest_price !== undefined ? `${card.latest_price.toFixed(2)} €` : '-- €';
+    let diffText = '...';
+    let diffClass = '';
+    if (card.diff_percent !== undefined) {
+      if (card.diff_percent < 0) {
+        diffText = `${card.diff_percent.toFixed(2)}%`;
+        diffClass = 'gain';
+      } else if (card.diff_percent > 0) {
+        diffText = `+${card.diff_percent.toFixed(2)}%`;
+        diffClass = 'loss';
+      } else {
+        diffText = '0.00%';
+        diffClass = 'stable';
+      }
+    }
+
+    wrapper.innerHTML = `
+      <div class="watchlist-item-swipe-bg">
+        <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="20" height="20">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+        <span>Entfernen</span>
+      </div>
+      <div class="watchlist-item glass-panel" data-card-id="${card.id}" data-card-uuid="${card.card_id}">
+        ${desktopDeleteBtnHtml}
+        <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+        <div class="watchlist-item-info">
+          <span class="watchlist-item-tcg">${card.tcg}</span>
+          <span class="watchlist-item-name">${cleanCardName(card.card_id)}</span>
+        </div>
+        <div class="watchlist-item-price-col">
+          <span class="watchlist-item-price" id="collection-price-${card.id}">${priceText}</span>
+          <span class="diff-badge ${diffClass}" id="collection-diff-${card.id}">${diffText}</span>
+        </div>
+      </div>
+    `;
+    list.appendChild(wrapper);
+
+    wrapper.addEventListener('dragstart', (e) => {
+      if (activeSortOption !== 'custom') {
+        e.preventDefault();
+        return;
+      }
+      if (e.target.closest('button, img, a')) {
+        e.preventDefault();
+        return;
+      }
+      draggedItem = wrapper;
+      wrapper.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    wrapper.addEventListener('dragend', () => {
+      wrapper.classList.remove('dragging');
+      draggedItem = null;
+      saveCollectionOrder();
+    });
+
+    const cardEl = wrapper.querySelector('.watchlist-item');
+    let startX = 0;
+    let startY = 0;
+    let currentX = 0;
+    let isDragging = false;
+    let hasMoved = false;
+    let isSwiping = false;
+    let isSorting = false;
+    let touchDraggedItem = null;
+    const threshold = 120;
+    let wrappers = [];
+    let currentIndex = -1;
+    let itemHeight = 0;
+
+    const handleStart = (clientX, clientY) => {
+      if (!checkIsMobile()) return;
+      startX = clientX;
+      startY = clientY;
+      isDragging = true;
+      hasMoved = false;
+      isSwiping = false;
+      isSorting = false;
+      cardEl.style.transition = 'none';
+      wrappers = [...list.querySelectorAll('.watchlist-item-wrapper')];
+      currentIndex = wrappers.indexOf(wrapper);
+      itemHeight = wrapper.offsetHeight;
+    };
+
+    const handleMove = (clientX, clientY) => {
+      if (!isDragging) return;
+      const deltaX = clientX - startX;
+      const deltaY = clientY - startY;
+
+      if (!isSwiping && !isSorting) {
+        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+          isSwiping = true;
+        } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+          if (activeSortOption === 'custom') {
+            isSorting = true;
+            touchDraggedItem = wrapper;
+            touchDraggedItem.classList.add('dragging');
+            touchDraggedItem.style.zIndex = '1000';
+          }
+        }
+      }
+
+      if (isSwiping) {
+        if (deltaX < 0) {
+          currentX = deltaX;
+          cardEl.style.transform = `translateX(${deltaX}px)`;
+          if (Math.abs(deltaX) > 10) {
+            hasMoved = true;
+          }
+        }
+      } else if (isSorting && touchDraggedItem) {
+        hasMoved = true;
+        touchDraggedItem.style.transform = `translateY(${deltaY}px)`;
+
+        const shift = Math.round(deltaY / itemHeight);
+        const targetIndex = Math.max(0, Math.min(wrappers.length - 1, currentIndex + shift));
+
+        wrappers.forEach((w, idx) => {
+          if (w === wrapper) return;
+          w.style.transition = 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)';
+          if (currentIndex < targetIndex) {
+            if (idx > currentIndex && idx <= targetIndex) {
+              w.style.transform = `translateY(${-itemHeight}px)`;
+            } else {
+              w.style.transform = '';
+            }
+          } else if (currentIndex > targetIndex) {
+            if (idx < currentIndex && idx >= targetIndex) {
+              w.style.transform = `translateY(${itemHeight}px)`;
+            } else {
+              w.style.transform = '';
+            }
+          } else {
+            w.style.transform = '';
+          }
+        });
+      }
+    };
+
+    const handleEnd = (changedTouches) => {
+      if (!isDragging) return;
+      isDragging = false;
+      
+      if (isSwiping) {
+        cardEl.style.transition = 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
+        if (currentX < -threshold) {
+          cardEl.style.transform = 'translateX(-100%)';
+          setTimeout(async () => {
+            if (confirm(`Möchtest du "${cleanCardName(card.card_id)}" wirklich aus deiner Sammlung entfernen?`)) {
+              try {
+                const { error } = await supabase
+                  .from('collection_cards')
+                  .delete()
+                  .eq('user_id', currentUser.id)
+                  .eq('card_id', card.card_id);
+
+                if (error) throw error;
+                await fetchCollectionCards();
+                container.innerHTML = '';
+                renderCollectionTab(container);
+              } catch (err) {
+                alert("Fehler beim Entfernen: " + err.message);
+                cardEl.style.transform = 'translateX(0)';
+              }
+            } else {
+              cardEl.style.transform = 'translateX(0)';
+            }
+          }, 150);
+        } else {
+          cardEl.style.transform = 'translateX(0)';
+        }
+      } else if (isSorting && touchDraggedItem) {
+        touchDraggedItem.classList.remove('dragging');
+        wrappers.forEach(w => {
+          w.style.transform = '';
+          w.style.transition = '';
+          w.style.zIndex = '';
+        });
+        touchDraggedItem.style.transform = '';
+        touchDraggedItem.style.zIndex = '';
+
+        const clientY = (changedTouches && changedTouches[0]) ? changedTouches[0].clientY : startY;
+        const finalDeltaY = clientY - startY;
+        const finalShift = Math.round(finalDeltaY / itemHeight);
+        const finalTargetIndex = Math.max(0, Math.min(wrappers.length - 1, currentIndex + finalShift));
+
+        if (finalTargetIndex !== currentIndex) {
+          if (finalTargetIndex === wrappers.length - 1) {
+            list.appendChild(wrapper);
+          } else {
+            const referenceNode = wrappers[finalTargetIndex + (finalTargetIndex > currentIndex ? 1 : 0)];
+            list.insertBefore(wrapper, referenceNode);
+          }
+          saveCollectionOrder();
+        }
+        touchDraggedItem = null;
+      }
+      currentX = 0;
+      isSwiping = false;
+      isSorting = false;
+    };
+
+    cardEl.addEventListener('touchstart', (e) => {
+      handleStart(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true });
+
+    cardEl.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      const touch = e.touches[0];
+      const deltaX = touch.clientX - startX;
+      const deltaY = touch.clientY - startY;
+
+      if (!isSwiping && !isSorting) {
+        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+          isSwiping = true;
+        } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 10) {
+          if (activeSortOption === 'custom') {
+            isSorting = true;
+            touchDraggedItem = wrapper;
+            touchDraggedItem.classList.add('dragging');
+            touchDraggedItem.style.zIndex = '1000';
+          }
+        }
+      }
+
+      if (isSorting) {
+        if (e.cancelable) e.preventDefault();
+        handleMove(touch.clientX, touch.clientY);
+      } else if (isSwiping) {
+        handleMove(touch.clientX, touch.clientY);
+      }
+    }, { passive: false });
+
+    cardEl.addEventListener('touchend', (e) => handleEnd(e.changedTouches), { passive: true });
+
+    cardEl.addEventListener('click', () => {
+      if (hasMoved) {
+        hasMoved = false;
+        return;
+      }
+      loadCardDetails(card.card_id, card.tcg);
+    });
+
+    const imgEl = cardEl.querySelector('.watchlist-item-img');
+    if (imgEl) {
+      imgEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showLightbox(card.image_url || '/logo.png');
+      });
+    }
+
+    const desktopDeleteBtn = cardEl.querySelector('.watchlist-item-desktop-delete');
+    if (desktopDeleteBtn) {
+      desktopDeleteBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (confirm(`Möchtest du "${cleanCardName(card.card_id)}" wirklich aus deiner Sammlung entfernen?`)) {
+          try {
+            desktopDeleteBtn.disabled = true;
+            const { error } = await supabase
+              .from('collection_cards')
+              .delete()
+              .eq('user_id', currentUser.id)
+              .eq('card_id', card.card_id);
+
+            if (error) throw error;
+            await fetchCollectionCards();
+            container.innerHTML = '';
+            renderCollectionTab(container);
+          } catch (err) {
+            alert("Fehler beim Entfernen: " + err.message);
+            desktopDeleteBtn.disabled = false;
+          }
+        }
+      });
+    }
+  }
+}
+
 // Sub-Tab Analytics & Search History Renderer
 async function renderAnalyticsTab(container) {
   const dashboard = document.createElement('div');
@@ -1578,8 +2305,11 @@ async function loadLatestPriceForDashboard(card) {
 }
 
 // Load full price list and filters for card details panel
-async function loadCardDetails(cardId, tcg) {
+async function loadCardDetails(cardId, tcg, pushState = true) {
   setView('loading');
+  if (pushState) {
+    history.pushState({ path: `/detail?card_id=${encodeURIComponent(cardId)}&tcg=${encodeURIComponent(tcg)}` }, '', `/detail?card_id=${encodeURIComponent(cardId)}&tcg=${encodeURIComponent(tcg)}`);
+  }
   try {
     const { data: historyData, error: historyErr } = await supabase
       .from('price_history')
@@ -1618,6 +2348,11 @@ async function loadCardDetails(cardId, tcg) {
     const isCurrentlyMarked = !!bookmarkRecord;
     const bookmarkImageUrl = bookmarkRecord ? bookmarkRecord.image_url : null;
 
+    // Read initial collection state
+    const collectionRecord = collectionCards.find(m => m.card_id === cardId);
+    const isCurrentlyCollected = !!collectionRecord;
+    const collectionImageUrl = collectionRecord ? collectionRecord.image_url : null;
+
     activeCardDetails = {
       cardId,
       tcg,
@@ -1626,7 +2361,8 @@ async function loadCardDetails(cardId, tcg) {
       locations: locations.sort(),
       languages: languages.sort(),
       isMarked: isCurrentlyMarked,
-      imageUrl: globalImageUrl || bookmarkImageUrl || (parsedHistory.length > 0 ? parsedHistory[0].imageUrl : null),
+      isCollected: isCurrentlyCollected,
+      imageUrl: globalImageUrl || bookmarkImageUrl || collectionImageUrl || (parsedHistory.length > 0 ? parsedHistory[0].imageUrl : null),
       
       // Default initial local filters: matching first scanned entry configuration
       selectedCondition: conditions[0] || 'NM',
@@ -1638,7 +2374,7 @@ async function loadCardDetails(cardId, tcg) {
 
   } catch (err) {
     console.error('Error loading card details view:', err.message);
-    setView('dashboard');
+    navigate('/watchlist', false);
   }
 }
 
@@ -1660,16 +2396,26 @@ function renderDetail(container) {
       </svg>
       Zurück
     </button>
-    <button id="btn-detail-star" class="btn-detail-star" title="Merkzettel umschalten">
-      <svg class="star-icon" viewBox="0 0 24 24" stroke-width="2">
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-      </svg>
-    </button>
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <button id="btn-detail-collection" class="btn-detail-collection" title="Sammlung umschalten">
+        <svg class="collection-icon" viewBox="0 0 24 24" stroke-width="2">
+          <rect x="3" y="3" width="12" height="12" rx="2" />
+          <path d="M9 15v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2" />
+        </svg>
+      </button>
+      <button id="btn-detail-star" class="btn-detail-star" title="Merkzettel umschalten">
+        <svg class="star-icon" viewBox="0 0 24 24" stroke-width="2">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+      </button>
+    </div>
   `;
   wrapper.appendChild(header);
 
   const starBtn = header.querySelector('#btn-detail-star');
   const starIcon = starBtn.querySelector('svg');
+  const collectBtn = header.querySelector('#btn-detail-collection');
+  const collectIcon = collectBtn.querySelector('svg');
   
   const updateStarIconStyle = () => {
     if (details.isMarked) {
@@ -1682,9 +2428,23 @@ function renderDetail(container) {
   };
   updateStarIconStyle();
 
-  header.querySelector('#btn-back').addEventListener('click', async () => {
-    await fetchMarkedCards();
-    setView('dashboard');
+  const updateCollectIconStyle = () => {
+    if (details.isCollected) {
+      collectIcon.setAttribute('fill', '#34d399');
+      collectIcon.setAttribute('stroke', '#34d399');
+    } else {
+      collectIcon.setAttribute('fill', 'none');
+      collectIcon.setAttribute('stroke', 'rgba(255, 255, 255, 0.6)');
+    }
+  };
+  updateCollectIconStyle();
+
+  header.querySelector('#btn-back').addEventListener('click', () => {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      navigate('/watchlist');
+    }
   });
 
   // Toggle bookmark in DB
@@ -1723,6 +2483,45 @@ function renderDetail(container) {
       console.error('Bookmark toggle failed:', err.message);
     } finally {
       starBtn.style.pointerEvents = 'auto';
+    }
+  });
+
+  // Toggle collection in DB
+  collectBtn.addEventListener('click', async () => {
+    collectBtn.style.pointerEvents = 'none';
+    const originalCollectedState = details.isCollected;
+    try {
+      if (originalCollectedState) {
+        // Delete collection card
+        const { error } = await supabase
+          .from('collection_cards')
+          .delete()
+          .eq('user_id', currentUser.id)
+          .eq('card_id', details.cardId);
+
+        if (error) throw error;
+        details.isCollected = false;
+      } else {
+        // Create collection card
+        const collectData = {
+          user_id: currentUser.id,
+          tcg: details.tcg,
+          card_id: details.cardId,
+          image_url: details.imageUrl
+        };
+        const { error } = await supabase
+          .from('collection_cards')
+          .insert(collectData);
+
+        if (error) throw error;
+        details.isCollected = true;
+      }
+      await fetchCollectionCards(); // Refresh collectionCards local copy from database!
+      updateCollectIconStyle();
+    } catch (err) {
+      console.error('Collection toggle failed:', err.message);
+    } finally {
+      collectBtn.style.pointerEvents = 'auto';
     }
   });
   const detailBody = document.createElement('div');

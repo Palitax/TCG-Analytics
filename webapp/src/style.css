@@ -468,6 +468,19 @@ body {
   height: 24px;
 }
 
+.btn-detail-collection {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.btn-detail-collection svg {
+  width: 24px;
+  height: 24px;
+}
+
 .detail-meta-header {
   display: flex;
   flex-direction: column;
@@ -1343,6 +1356,14 @@ body {
 
   .watchlist-item-desktop-delete {
     display: flex;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, background-color 0.2s;
+  }
+
+  .watchlist-item:hover .watchlist-item-desktop-delete {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .lightbox-close {

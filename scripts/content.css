@@ -917,3 +917,31 @@
 .cm-btn-bookmark.marked svg {
   filter: drop-shadow(0 0 4px rgba(250, 204, 21, 0.4));
 }
+
+/* Collection button styles */
+.cm-btn-collection {
+  border-radius: 50%;
+  padding: 4px;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cm-btn-collection:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(1.1);
+}
+
+.cm-btn-collection svg {
+  width: 18px;
+  height: 18px;
+  transition: all 0.2s ease;
+}
+
+.cm-btn-collection.collected svg {
+  filter: drop-shadow(0 0 4px rgba(52, 211, 153, 0.4));
+}

@@ -301,6 +301,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           console.error("Failed to query marked status:", err);
         }
 
+        // Query collection state from the database
+        let isInCollection = false;
+        try {
+          const collectionUrl = `${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}`;
+          const collectionResponse = await fetch(collectionUrl, {
+            method: "GET",
+            headers: {
+              "apikey": SUPABASE_ANON_KEY,
+              "Authorization": `Bearer ${accessToken}`
+            }
+          });
+          if (collectionResponse.ok) {
+            const collectionItems = await collectionResponse.json();
+            isInCollection = collectionItems.length > 0;
+          }
+        } catch (err) {
+          console.error("Failed to query collection status:", err);
+        }
+
         const payload = decodeJWT(accessToken);
         const isAdmin = payload && (
           payload.app_metadata?.role === 'admin' ||
@@ -318,6 +337,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           blocked: blocked,
           remainingTime: remainingTime,
           isMarked: isMarked,
+          isInCollection: isInCollection,
           isAdmin: !!isAdmin
         });
       }
@@ -446,6 +466,58 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (!deleteRes.ok) {
             const errTxt = await deleteRes.text();
             throw new Error(`Failed to remove bookmark: ${deleteRes.statusText} - ${errTxt}`);
+          }
+        }
+
+        sendResponse({ success: true });
+      }
+
+      else if (message.action === "toggleCollection") {
+        const session = await getSession();
+        if (!session) {
+          return sendResponse({ error: "UNAUTHENTICATED" });
+        }
+
+        const { tcg, cardId, shouldCollect } = message;
+        const accessToken = session.access_token;
+        const userId = session.user.id;
+
+        if (shouldCollect) {
+          const collectData = {
+            user_id: userId,
+            tcg: tcg,
+            card_id: cardId,
+            image_url: null
+          };
+
+          const postRes = await fetch(`${SUPABASE_URL}/rest/v1/collection_cards`, {
+            method: "POST",
+            headers: {
+              "apikey": SUPABASE_ANON_KEY,
+              "Authorization": `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+              "Prefer": "return=representation"
+            },
+            body: JSON.stringify(collectData)
+          });
+
+          if (!postRes.ok) {
+            const errTxt = await postRes.text();
+            throw new Error(`Failed to add card to collection: ${postRes.statusText} - ${errTxt}`);
+          }
+        } else {
+          const deleteUrl = `${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}`;
+          const deleteRes = await fetch(deleteUrl, {
+            method: "DELETE",
+            headers: {
+              "apikey": SUPABASE_ANON_KEY,
+              "Authorization": `Bearer ${accessToken}`
+            }
+          });
+
+          if (!deleteRes.ok) {
+            const errTxt = await deleteRes.text();
+            throw new Error(`Failed to remove card from collection: ${deleteRes.statusText} - ${errTxt}`);
           }
         }
 

@@ -666,6 +666,7 @@ function updateOverlay(status, details = {}) {
     forceSyncRemaining = 0,
     forceSyncKey = null,
     isMarked = false,
+    isInCollection = false,
     isAdmin = false
   } = details;
 
@@ -692,6 +693,18 @@ function updateOverlay(status, details = {}) {
          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
        </svg>`;
 
+  const collectionTitle = isInCollection ? 'Karte aus Collection entfernen' : 'Karte zu Collection hinzufügen';
+  const collectionClass = isInCollection ? 'cm-btn-collection collected' : 'cm-btn-collection';
+  const collectionSvg = isInCollection
+    ? `<svg class="cm-collection-icon" viewBox="0 0 24 24" fill="#34d399" stroke="#34d399" stroke-width="2">
+         <rect x="3" y="3" width="12" height="12" rx="2" />
+         <path d="M9 15v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2" />
+       </svg>`
+    : `<svg class="cm-collection-icon" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="2">
+         <rect x="3" y="3" width="12" height="12" rx="2" />
+         <path d="M9 15v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2" />
+       </svg>`;
+
   const headerHtml = `
     <div class="cm-tracker-header" style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
       <div style="display: flex; align-items: center; gap: 8px;">
@@ -700,9 +713,14 @@ function updateOverlay(status, details = {}) {
         ${adminBadgeHtml}
         ${blockIndicatorHtml}
       </div>
-      <button id="cm-btn-bookmark" class="${starClass}" title="${starTitle}">
-        ${starSvg}
-      </button>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button id="cm-btn-collection" class="${collectionClass}" title="${collectionTitle}">
+          ${collectionSvg}
+        </button>
+        <button id="cm-btn-bookmark" class="${starClass}" title="${starTitle}">
+          ${starSvg}
+        </button>
+      </div>
     </div>
   `;
 
@@ -1187,6 +1205,34 @@ function attachListeners() {
             await chrome.storage.local.set({ [cardPrefsKey]: cardPrefs });
           }
           runScan();
+        }
+      });
+    });
+  }
+
+  // Collection button click binding
+  const btnCollection = document.getElementById('cm-btn-collection');
+  if (btnCollection) {
+    btnCollection.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const isCollected = btnCollection.classList.contains('collected');
+      const { tcg, cardId } = getTcgAndCardId();
+      if (!tcg || !cardId) return;
+
+      btnCollection.style.pointerEvents = 'none';
+      chrome.runtime.sendMessage({
+        action: "toggleCollection",
+        tcg: tcg,
+        cardId: cardId,
+        shouldCollect: !isCollected
+      }, async (response) => {
+        btnCollection.style.pointerEvents = 'auto';
+        if (response && response.success) {
+          runScan();
+        } else if (response && response.error === 'UNAUTHENTICATED') {
+          alert('Bitte logge dich über das Extension-Popup ein!');
+        } else {
+          alert('Fehler beim Aktualisieren der Collection: ' + (response?.error || 'unbekannt'));
         }
       });
     });
