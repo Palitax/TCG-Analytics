@@ -353,9 +353,9 @@ body {
 .watchlist-item-name {
   font-size: 0.95rem;
   font-weight: 600;
-  white-space: normal;
-  word-break: break-word;
-  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--text-primary);
 }
 
@@ -1316,10 +1316,11 @@ body {
 
   .watchlist-item-wrapper {
     overflow: visible;
+    background: transparent;
   }
 
-  .watchlist-item-price-col {
-    margin-right: 96px;
+  .watchlist-item-swipe-bg {
+    display: none;
   }
 
   /* Watchlist list grid layout */
