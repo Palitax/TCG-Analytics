@@ -34,6 +34,33 @@ let activeTcgFilter = 'all'; // TCG filter for tabs ('all', 'OnePiece', 'Pokemon
 let collectionValueHistory = []; // Historical values of collection market value
 let isBackgroundFetching = false; // Flag to indicate active database load operation
 
+function loadCachedUserData(userId) {
+  if (!userId) return;
+  try {
+    const cachedMarked = localStorage.getItem(`cache_marked_${userId}`);
+    if (cachedMarked) markedCards = JSON.parse(cachedMarked);
+
+    const cachedColl = localStorage.getItem(`cache_coll_${userId}`);
+    if (cachedColl) collectionCards = JSON.parse(cachedColl);
+
+    const cachedHist = localStorage.getItem(`cache_hist_${userId}`);
+    if (cachedHist) collectionValueHistory = JSON.parse(cachedHist);
+  } catch (e) {
+    console.warn('Failed to load cached user data:', e);
+  }
+}
+
+function saveCachedUserData(userId) {
+  if (!userId) return;
+  try {
+    localStorage.setItem(`cache_marked_${userId}`, JSON.stringify(markedCards));
+    localStorage.setItem(`cache_coll_${userId}`, JSON.stringify(collectionCards));
+    localStorage.setItem(`cache_hist_${userId}`, JSON.stringify(collectionValueHistory));
+  } catch (e) {
+    console.warn('Failed to save user data cache:', e);
+  }
+}
+
 function checkIsMobile() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
 }
