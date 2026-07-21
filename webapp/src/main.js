@@ -29,6 +29,7 @@ let activeCardDetails = null; // Holds detail view data
 let activeSearchQuery = ''; // Active search query for filtering tabs
 let collectionCards = []; // Cards in collection
 let activeTcgFilter = 'all'; // TCG filter for tabs ('all', 'OnePiece', 'Pokemon', 'Riftbound', 'DragonBall')
+let collectionValueHistory = []; // Historical values of collection market value
 
 function checkIsMobile() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
@@ -295,12 +296,32 @@ async function fetchCollectionCards() {
 
         if (!priceErr && priceData) {
           const historyMap = {};
+          const latestPrices = {};
+          const historyPoints = [];
+
           for (const row of priceData) {
             if (!historyMap[row.card_id]) {
               historyMap[row.card_id] = [];
             }
             historyMap[row.card_id].push(parseHistoryItem(row));
+
+            // Track cumulative collection value at this time point
+            latestPrices[row.card_id] = parseFloat(row.price);
+            const currentTotal = Object.values(latestPrices).reduce((sum, p) => sum + p, 0);
+            historyPoints.push({
+              scanned_at: row.scanned_at,
+              value: currentTotal
+            });
           }
+
+          // Downsample to daily points for smooth rendering
+          const dayMap = {};
+          for (const pt of historyPoints) {
+            const dayStr = new Date(pt.scanned_at).toISOString().split('T')[0];
+            dayMap[dayStr] = pt; // keep the latest cumulative point of that day
+          }
+          const sortedDays = Object.keys(dayMap).sort();
+          collectionValueHistory = sortedDays.map(day => dayMap[day]);
 
           for (const card of listData) {
             const history = historyMap[card.card_id] || [];
@@ -941,6 +962,7 @@ async function renderDashboard(container) {
 
 // Sub-Tab Watchlist Renderer
 function renderWatchlistTab(container) {
+  container.innerHTML = '';
   const dashboard = document.createElement('div');
   dashboard.className = 'dashboard-content';
   dashboard.innerHTML = '';
@@ -1512,8 +1534,93 @@ function renderWatchlistTab(container) {
   }
 }
 
+// Render collection cumulative value line graph using SVG
+function drawCollectionChart(chartContainer, historyData) {
+  if (!historyData || historyData.length < 2) {
+    chartContainer.innerHTML = `
+      <div class="chart-header" style="margin-bottom: 4px;">
+        <span class="chart-title" style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Sammlungswert-Verlauf</span>
+      </div>
+      <p style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 16px 0;">Sammle mehr historische Preisdaten, um den Verlaufsgraphen anzuzeigen.</p>
+    `;
+    return;
+  }
+
+  const values = historyData.map(h => h.value);
+  const times = historyData.map(h => new Date(h.scanned_at).getTime());
+
+  const minVal = Math.min(...values);
+  const maxVal = Math.max(...values);
+  const minTime = Math.min(...times);
+  const maxTime = Math.max(...times);
+
+  const valRange = maxVal - minVal;
+  const timeRange = maxTime - minTime || 1.0;
+
+  const avgVal = (minVal + maxVal) / 2 || 1.0;
+  const minDelta = Math.max(5.0, avgVal * 0.1);
+
+  let yMin, yMax;
+  if (valRange < minDelta) {
+    yMin = Math.max(0, avgVal - minDelta / 2);
+    yMax = avgVal + minDelta / 2;
+  } else {
+    yMin = Math.max(0, minVal - valRange * 0.15);
+    yMax = maxVal + valRange * 0.15;
+  }
+  const yRange = yMax - yMin || 1.0;
+
+  const svgPoints = historyData.map(h => {
+    const t = new Date(h.scanned_at).getTime();
+    const x = ((t - minTime) / timeRange) * 100;
+    const y = 90 - ((h.value - yMin) / yRange) * 80;
+    return { x, y };
+  });
+
+  const pathData = svgPoints.map((p, i) => (i === 0 ? 'M' : 'L') + ' ' + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ');
+  const areaData = pathData + ' L ' + svgPoints[svgPoints.length - 1].x.toFixed(1) + ' 90 L ' + svgPoints[0].x.toFixed(1) + ' 90 Z';
+
+  const firstLabel = new Date(minTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+  const lastLabel = new Date(maxTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+
+  chartContainer.innerHTML = `
+    <div class="chart-header" style="margin-bottom: 8px;">
+      <span class="chart-title" style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Sammlungswert-Verlauf</span>
+    </div>
+    <div class="chart-body" style="display: flex; gap: 8px;">
+      <div class="chart-y-axis" style="display: flex; flex-direction: column; justify-content: space-between; font-size: 0.65rem; color: var(--text-muted); width: 45px; text-align: right; font-weight: 500;">
+        <span>${yMax.toFixed(2)}€</span>
+        <span>${avgVal.toFixed(2)}€</span>
+        <span>${yMin.toFixed(2)}€</span>
+      </div>
+      <div class="chart-main" style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+        <div class="chart-canvas" style="position: relative; height: 100px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass); border-radius: 6px; overflow: hidden;">
+          <svg class="chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none" style="width: 100%; height: 100%;">
+            <defs>
+              <linearGradient id="col-chart-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#10b981" stop-opacity="0.2"/>
+                <stop offset="100%" stop-color="#10b981" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="10" x2="100" y2="10" stroke="rgba(255,255,255,0.05)" stroke-width="0.5" stroke-dasharray="2" />
+            <line x1="0" y1="50" x2="100" y2="50" stroke="rgba(255,255,255,0.05)" stroke-width="0.5" stroke-dasharray="2" />
+            <line x1="0" y1="90" x2="100" y2="90" stroke="rgba(255,255,255,0.05)" stroke-width="0.5" stroke-dasharray="2" />
+            <path d="${areaData}" fill="url(#col-chart-grad)" />
+            <path d="${pathData}" stroke="#10b981" stroke-width="2" fill="none" />
+          </svg>
+        </div>
+        <div class="chart-x-axis" style="display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-muted); font-weight: 500;">
+          <span>${firstLabel}</span>
+          <span>${lastLabel}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // Sub-Tab Collection Renderer
 function renderCollectionTab(container) {
+  container.innerHTML = '';
   const dashboard = document.createElement('div');
   dashboard.className = 'dashboard-content';
   dashboard.innerHTML = '';
@@ -1558,8 +1665,22 @@ function renderCollectionTab(container) {
     });
   }
 
+  // Sort collectionCards / sortedCards by resolving latest price and purchase price diffs:
+  for (const card of sortedCards) {
+    const buyPrice = card.purchase_price !== null && card.purchase_price !== undefined ? parseFloat(card.purchase_price) : null;
+    const basePrice = buyPrice !== null ? buyPrice : (card.baseline_price || 0);
+    const latestPrice = card.latest_price || 0;
+    card.resolved_diff_percent = basePrice > 0 ? ((latestPrice - basePrice) / basePrice) * 100 : 0;
+  }
+
   // Calculate total collection value
   const totalValue = sortedCards.reduce((sum, card) => sum + (card.latest_price || 0), 0);
+  const totalCost = sortedCards.reduce((sum, card) => {
+    const buyPrice = card.purchase_price !== null && card.purchase_price !== undefined ? parseFloat(card.purchase_price) : (card.baseline_price || 0);
+    return sum + buyPrice;
+  }, 0);
+  const totalProfit = totalValue - totalCost;
+  const totalProfitPercent = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
 
   // Sorting
   if (activeSortOption === 'price-asc') {
@@ -1576,27 +1697,46 @@ function renderCollectionTab(container) {
     });
   } else if (activeSortOption === 'diff-desc') {
     sortedCards.sort((a, b) => {
-      const dA = a.diff_percent !== undefined ? a.diff_percent : 0;
-      const dB = b.diff_percent !== undefined ? b.diff_percent : 0;
+      const dA = a.resolved_diff_percent !== undefined ? a.resolved_diff_percent : 0;
+      const dB = b.resolved_diff_percent !== undefined ? b.resolved_diff_percent : 0;
       return dB - dA;
     });
   } else if (activeSortOption === 'diff-asc') {
     sortedCards.sort((a, b) => {
-      const dA = a.diff_percent !== undefined ? a.diff_percent : 0;
-      const dB = b.diff_percent !== undefined ? b.diff_percent : 0;
+      const dA = a.resolved_diff_percent !== undefined ? a.resolved_diff_percent : 0;
+      const dB = b.resolved_diff_percent !== undefined ? b.resolved_diff_percent : 0;
       return dA - dB;
     });
   }
 
-  // Display Total Value card at the top
-  const valueCard = document.createElement('div');
-  valueCard.className = 'collection-value-card glass-panel';
-  valueCard.style.cssText = 'padding: 20px; margin-bottom: 20px; text-align: center; border: 1px solid var(--primary); box-shadow: 0 4px 20px rgba(251, 133, 0, 0.15); border-radius: 12px;';
-  valueCard.innerHTML = `
-    <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700;">Gesamtwert Sammlung</span>
-    <h2 style="font-size: 2.2rem; font-weight: 800; color: #34d399; margin: 6px 0 0 0; text-shadow: 0 0 10px rgba(52, 211, 153, 0.2);">${totalValue.toFixed(2)} €</h2>
+  // Display Summary Container (Current Value & Profit/Loss)
+  const summaryContainer = document.createElement('div');
+  summaryContainer.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px;';
+  
+  const profitColor = totalProfit >= 0 ? '#34d399' : '#f87171';
+  const profitSign = totalProfit >= 0 ? '+' : '';
+  
+  summaryContainer.innerHTML = `
+    <div class="collection-value-card glass-panel" style="padding: 16px; text-align: center; border-radius: 12px;">
+      <span style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Wert Sammlung</span>
+      <h2 style="font-size: 1.6rem; font-weight: 800; color: #34d399; margin: 4px 0 0 0; text-shadow: 0 0 10px rgba(52, 211, 153, 0.2);">${totalValue.toFixed(2)} €</h2>
+    </div>
+    <div class="collection-value-card glass-panel" style="padding: 16px; text-align: center; border-radius: 12px; border: 1.5px solid ${totalProfit >= 0 ? '#10b981' : '#f43f5e'};">
+      <span style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Gewinn / Verlust</span>
+      <h2 style="font-size: 1.6rem; font-weight: 800; color: ${profitColor}; margin: 4px 0 0 0;">
+        ${profitSign}${totalProfit.toFixed(2)} € 
+        <span style="font-size: 0.85rem; font-weight: 600;">(${profitSign}${totalProfitPercent.toFixed(2)}%)</span>
+      </h2>
+    </div>
   `;
-  dashboard.appendChild(valueCard);
+  dashboard.appendChild(summaryContainer);
+
+  // Render Collection Chart Container
+  const chartCard = document.createElement('div');
+  chartCard.className = 'glass-panel';
+  chartCard.style.cssText = 'padding: 16px; margin-bottom: 20px; border-radius: 12px;';
+  dashboard.appendChild(chartCard);
+  drawCollectionChart(chartCard, collectionValueHistory);
 
   // Header & Controls
   const headerSection = document.createElement('div');
@@ -1743,19 +1883,27 @@ function renderCollectionTab(container) {
     `;
 
     const priceText = card.latest_price !== null && card.latest_price !== undefined ? `${card.latest_price.toFixed(2)} €` : '-- €';
+    const buyPrice = card.purchase_price !== null && card.purchase_price !== undefined ? parseFloat(card.purchase_price) : null;
+    const basePrice = buyPrice !== null ? buyPrice : (card.baseline_price || 0);
+    const latestPrice = card.latest_price || 0;
+    
     let diffText = '...';
     let diffClass = '';
-    if (card.diff_percent !== undefined) {
-      if (card.diff_percent < 0) {
-        diffText = `${card.diff_percent.toFixed(2)}%`;
+    
+    const profit = latestPrice - basePrice;
+    const profitPercent = basePrice > 0 ? (profit / basePrice) * 100 : 0;
+
+    if (latestPrice > 0 && basePrice > 0) {
+      if (profit >= 0) {
+        diffText = `+${profitPercent.toFixed(2)}%`;
         diffClass = 'gain';
-      } else if (card.diff_percent > 0) {
-        diffText = `+${card.diff_percent.toFixed(2)}%`;
-        diffClass = 'loss';
       } else {
-        diffText = '0.00%';
-        diffClass = 'stable';
+        diffText = `${profitPercent.toFixed(2)}%`;
+        diffClass = 'loss';
       }
+    } else {
+      diffText = '0.00%';
+      diffClass = 'stable';
     }
 
     wrapper.innerHTML = `
@@ -1771,6 +1919,12 @@ function renderCollectionTab(container) {
         <div class="watchlist-item-info">
           <span class="watchlist-item-tcg">${card.tcg}</span>
           <span class="watchlist-item-name">${cleanCardName(card.card_id)}</span>
+          <span class="collection-item-purchase-price" style="font-size: 0.72rem; color: var(--primary); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-weight: 500; text-decoration: underline;" data-action="set-purchase-price">
+            <svg style="width: 10px; height: 10px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+            </svg>
+            EK: ${buyPrice !== null ? `${buyPrice.toFixed(2)} €` : '-- €'}
+          </span>
         </div>
         <div class="watchlist-item-price-col">
           <span class="watchlist-item-price" id="collection-price-${card.id}">${priceText}</span>
@@ -1978,6 +2132,40 @@ function renderCollectionTab(container) {
     }, { passive: false });
 
     cardEl.addEventListener('touchend', (e) => handleEnd(e.changedTouches), { passive: true });
+
+    const setPurchaseBtn = cardEl.querySelector('[data-action="set-purchase-price"]');
+    if (setPurchaseBtn) {
+      setPurchaseBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const currentVal = card.purchase_price !== null && card.purchase_price !== undefined ? card.purchase_price : '';
+        const newPriceStr = prompt(`Gib deinen Einkaufspreis (EK) für "${cleanCardName(card.card_id)}" ein (€) (leer lassen zum Zurücksetzen):`, currentVal);
+        if (newPriceStr === null) return; // Cancel
+        
+        let valToSet = null;
+        if (newPriceStr.trim() !== '') {
+          const parsed = parseFloat(newPriceStr.trim().replace(',', '.'));
+          if (isNaN(parsed) || parsed < 0) {
+            alert('Bitte gib eine gültige positive Zahl ein.');
+            return;
+          }
+          valToSet = parsed;
+        }
+
+        try {
+          const { error } = await supabase
+            .from('collection_cards')
+            .update({ purchase_price: valToSet })
+            .eq('id', card.id);
+
+          if (error) throw error;
+          await fetchCollectionCards();
+          container.innerHTML = '';
+          renderCollectionTab(container);
+        } catch (err) {
+          alert('Fehler beim Aktualisieren des Einkaufspreises: ' + err.message);
+        }
+      });
+    }
 
     cardEl.addEventListener('click', () => {
       if (hasMoved) {
