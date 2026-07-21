@@ -2496,45 +2496,10 @@ function renderCollectionTab(container) {
 
           if (error) throw error;
 
-          // Update local in-memory card object and cache
-          card.purchase_price = valToSet;
-          const found = collectionCards.find(c => c.id === card.id);
-          if (found) {
-            found.purchase_price = valToSet;
-          }
-          saveCachedUserData(currentUser?.id);
-
-          // Update EK label inline on the card element without view re-render
-          if (setPurchaseBtn) {
-            setPurchaseBtn.innerHTML = `
-              <svg style="width: 10px; height: 10px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
-              </svg>
-              EK: ${valToSet !== null ? `${valToSet.toFixed(2)} €` : '-- €'}
-            `;
-          }
-
-          // Update diff badge inline
-          const diffBadgeEl = cardEl.querySelector(`#collection-diff-${card.id}`);
-          if (diffBadgeEl) {
-            const buyPrice = valToSet !== null ? valToSet : (card.baseline_price || 0);
-            const latestPrice = card.latest_price || 0;
-            const profit = latestPrice - buyPrice;
-            const profitPercent = buyPrice > 0 ? (profit / buyPrice) * 100 : 0;
-
-            if (latestPrice > 0 && buyPrice > 0) {
-              if (profit >= 0) {
-                diffBadgeEl.textContent = `+${profitPercent.toFixed(2)}%`;
-                diffBadgeEl.className = 'diff-badge gain';
-              } else {
-                diffBadgeEl.textContent = `${profitPercent.toFixed(2)}%`;
-                diffBadgeEl.className = 'diff-badge loss';
-              }
-            } else {
-              diffBadgeEl.textContent = '0.00%';
-              diffBadgeEl.className = 'diff-badge stable';
-            }
-          }
+          // Fetch latest data and fully refresh the collection view
+          await fetchCollectionCards();
+          container.innerHTML = '';
+          renderCollectionTab(container);
         } catch (err) {
           alert('Fehler beim Aktualisieren des Einkaufspreises: ' + err.message);
         }
