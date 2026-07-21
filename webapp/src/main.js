@@ -146,6 +146,47 @@ function cleanCardName(cardId) {
   return clean;
 }
 
+// Split card name into Character Name and Card Number, replacing hyphens with spaces
+function splitCardTitle(cardId) {
+  const clean = cleanCardName(cardId);
+  const parts = clean.split('-');
+  if (parts.length <= 1) {
+    return { name: clean.replace(/-/g, ' ').trim(), number: '' };
+  }
+  
+  let numberStartIndex = parts.length;
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    if (
+      /^[A-Za-z]+\d+$/.test(part) || 
+      /^\d+$/.test(part) ||          
+      part.toUpperCase() === 'P' ||  
+      part.toUpperCase() === 'V1' ||
+      part.toUpperCase() === 'V2' ||
+      part.toUpperCase() === 'SEC'
+    ) {
+      numberStartIndex = i;
+      break;
+    }
+  }
+  
+  if (numberStartIndex === parts.length) {
+    if (parts.length >= 3) {
+      numberStartIndex = parts.length - 2;
+    } else {
+      numberStartIndex = parts.length - 1;
+    }
+  }
+  
+  const nameParts = parts.slice(0, numberStartIndex);
+  const numberParts = parts.slice(numberStartIndex);
+  
+  const name = nameParts.join(' ').replace(/\s+/g, ' ').trim();
+  const number = numberParts.join(' ').replace(/\s+/g, ' ').trim();
+  
+  return { name, number };
+}
+
 // Compress and resize base64 image using canvas to save storage
 function compressImage(base64Str, maxWidth = 400) {
   return new Promise((resolve) => {
@@ -1372,6 +1413,8 @@ function renderWatchlistTab(container) {
       }
     }
 
+    const titleInfo = splitCardTitle(card.card_id);
+
     wrapper.innerHTML = `
       <div class="watchlist-item-swipe-bg">
         <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="20" height="20">
@@ -1380,17 +1423,18 @@ function renderWatchlistTab(container) {
         <span>Löschen</span>
       </div>
       <div class="watchlist-item glass-panel" data-card-id="${card.id}" data-card-uuid="${card.card_id}">
-        ${desktopDeleteBtnHtml}
-        ${desktopCollectBtnHtml}
         <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
         <div class="watchlist-item-info">
           <span class="watchlist-item-tcg">${card.tcg}</span>
-          <span class="watchlist-item-name">${cleanCardName(card.card_id)}</span>
+          <span class="watchlist-item-name">${titleInfo.name}</span>
+          ${titleInfo.number ? `<span class="watchlist-item-number" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500; margin-top: 1px;">${titleInfo.number}</span>` : ''}
         </div>
         <div class="watchlist-item-price-col">
           <span class="watchlist-item-price" id="price-${card.id}">${priceText}</span>
           <span class="diff-badge ${diffClass}" id="diff-${card.id}">${diffText}</span>
         </div>
+        ${desktopDeleteBtnHtml}
+        ${desktopCollectBtnHtml}
       </div>
     `;
     list.appendChild(wrapper);
@@ -2096,6 +2140,8 @@ function renderCollectionTab(container) {
       diffClass = 'stable';
     }
 
+    const titleInfo = splitCardTitle(card.card_id);
+
     wrapper.innerHTML = `
       <div class="watchlist-item-swipe-bg">
         <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="20" height="20">
@@ -2104,11 +2150,11 @@ function renderCollectionTab(container) {
         <span>Entfernen</span>
       </div>
       <div class="watchlist-item glass-panel" data-card-id="${card.id}" data-card-uuid="${card.card_id}">
-        ${desktopDeleteBtnHtml}
         <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
         <div class="watchlist-item-info">
           <span class="watchlist-item-tcg">${card.tcg}</span>
-          <span class="watchlist-item-name">${cleanCardName(card.card_id)}</span>
+          <span class="watchlist-item-name">${titleInfo.name}</span>
+          ${titleInfo.number ? `<span class="watchlist-item-number" style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500; margin-top: 1px;">${titleInfo.number}</span>` : ''}
           <span class="collection-item-purchase-price" style="font-size: 0.72rem; color: var(--primary); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-weight: 500; text-decoration: underline;" data-action="set-purchase-price">
             <svg style="width: 10px; height: 10px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
@@ -2120,6 +2166,7 @@ function renderCollectionTab(container) {
           <span class="watchlist-item-price" id="collection-price-${card.id}">${priceText}</span>
           <span class="diff-badge ${diffClass}" id="collection-diff-${card.id}">${diffText}</span>
         </div>
+        ${desktopDeleteBtnHtml}
       </div>
     `;
     list.appendChild(wrapper);
