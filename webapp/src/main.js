@@ -1423,7 +1423,11 @@ function renderWatchlistTab(container) {
         <span>Löschen</span>
       </div>
       <div class="watchlist-item glass-panel" data-card-id="${card.id}" data-card-uuid="${card.card_id}">
-        <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+        <div class="watchlist-item-img-container">
+          <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+          ${desktopCollectBtnHtml}
+          ${desktopDeleteBtnHtml}
+        </div>
         <div class="watchlist-item-info">
           <span class="watchlist-item-tcg">${card.tcg}</span>
           <span class="watchlist-item-name">${titleInfo.name}</span>
@@ -1432,10 +1436,6 @@ function renderWatchlistTab(container) {
         <div class="watchlist-item-price-col">
           <span class="watchlist-item-price" id="price-${card.id}">${priceText}</span>
           <span class="diff-badge ${diffClass}" id="diff-${card.id}">${diffText}</span>
-        </div>
-        <div class="watchlist-item-actions">
-          ${desktopCollectBtnHtml}
-          ${desktopDeleteBtnHtml}
         </div>
       </div>
     `;
@@ -2152,7 +2152,10 @@ function renderCollectionTab(container) {
         <span>Entfernen</span>
       </div>
       <div class="watchlist-item glass-panel" data-card-id="${card.id}" data-card-uuid="${card.card_id}">
-        <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+        <div class="watchlist-item-img-container">
+          <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+          ${desktopDeleteBtnHtml}
+        </div>
         <div class="watchlist-item-info">
           <span class="watchlist-item-tcg">${card.tcg}</span>
           <span class="watchlist-item-name">${titleInfo.name}</span>
@@ -2167,9 +2170,6 @@ function renderCollectionTab(container) {
         <div class="watchlist-item-price-col">
           <span class="watchlist-item-price" id="collection-price-${card.id}">${priceText}</span>
           <span class="diff-badge ${diffClass}" id="collection-diff-${card.id}">${diffText}</span>
-        </div>
-        <div class="watchlist-item-actions">
-          ${desktopDeleteBtnHtml}
         </div>
       </div>
     `;
