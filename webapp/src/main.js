@@ -1433,8 +1433,10 @@ function renderWatchlistTab(container) {
           <span class="watchlist-item-price" id="price-${card.id}">${priceText}</span>
           <span class="diff-badge ${diffClass}" id="diff-${card.id}">${diffText}</span>
         </div>
-        ${desktopDeleteBtnHtml}
-        ${desktopCollectBtnHtml}
+        <div class="watchlist-item-actions">
+          ${desktopCollectBtnHtml}
+          ${desktopDeleteBtnHtml}
+        </div>
       </div>
     `;
     list.appendChild(wrapper);
@@ -2166,7 +2168,9 @@ function renderCollectionTab(container) {
           <span class="watchlist-item-price" id="collection-price-${card.id}">${priceText}</span>
           <span class="diff-badge ${diffClass}" id="collection-diff-${card.id}">${diffText}</span>
         </div>
-        ${desktopDeleteBtnHtml}
+        <div class="watchlist-item-actions">
+          ${desktopDeleteBtnHtml}
+        </div>
       </div>
     `;
     list.appendChild(wrapper);
