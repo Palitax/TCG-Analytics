@@ -64,6 +64,37 @@ function showLoadingProgress(show) {
   }
 }
 
+function showToast(message) {
+  let toastContainer = document.getElementById('toast-container');
+  if (!toastContainer) {
+    toastContainer = document.createElement('div');
+    toastContainer.id = 'toast-container';
+    toastContainer.style.cssText = 'position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 10000; display: flex; flex-direction: column; gap: 8px; pointer-events: none;';
+    document.body.appendChild(toastContainer);
+  }
+  
+  const toast = document.createElement('div');
+  toast.className = 'glass-panel';
+  toast.style.cssText = 'padding: 12px 20px; border-radius: 8px; border-left: 4px solid #10b981; color: white; font-size: 0.85rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: auto; display: flex; align-items: center; gap: 8px; background: rgba(5,8,14,0.85);';
+  toast.innerHTML = `
+    <svg style="width: 16px; height: 16px; color: #10b981;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <span>${message}</span>
+  `;
+  toastContainer.appendChild(toast);
+  
+  // Animate in
+  animate(toast, { opacity: [0, 1], y: [20, 0] }, { duration: 0.25, ease: "easeOut" });
+  
+  // Remove after 3 seconds
+  setTimeout(() => {
+    animate(toast, { opacity: 0, y: -20 }, { duration: 0.25, ease: "easeIn" }).then(() => {
+      toast.remove();
+    });
+  }, 3000);
+}
+
 // Language dictionary
 const LANGUAGE_NAMES_GERMAN = {
   "ALL": "Alle Sprachen",
@@ -1269,20 +1300,20 @@ function renderWatchlistTab(container) {
     
     const desktopDeleteBtnHtml = isMobileDevice ? '' : `
       <button class="watchlist-item-desktop-delete" title="Vom Merkzettel entfernen">
-        <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="10" height="10">
+        <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="16" height="16">
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
     `;
 
     const desktopCollectBtnHtml = isMobileDevice ? '' : `
-      <button class="watchlist-item-desktop-collect ${isCollected ? 'collected' : ''}" title="${isCollected ? 'Aus Sammlung entfernen' : 'Zu Sammlung hinzufügen'}" style="position: absolute; top: 8px; right: 32px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.15); color: ${isCollected ? '#34d399' : 'rgba(255, 255, 255, 0.6)'}; width: 20px; height: 20px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; z-index: 10;">
+      <button class="watchlist-item-desktop-collect ${isCollected ? 'collected' : ''}" title="${isCollected ? 'Aus Sammlung entfernen' : 'Zu Sammlung hinzufügen'}" style="color: ${isCollected ? '#34d399' : 'rgba(255, 255, 255, 0.6)'};">
         ${isCollected ? `
-          <svg fill="none" stroke="#34d399" stroke-width="3" viewBox="0 0 24 24" width="10" height="10" stroke-linecap="round" stroke-linejoin="round">
+          <svg fill="none" stroke="#34d399" stroke-width="3" viewBox="0 0 24 24" width="16" height="16" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
         ` : `
-          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="10" height="10">
+          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="16" height="16">
             <rect x="3" y="3" width="12" height="12" rx="2" />
             <path d="M9 15v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2" />
           </svg>
@@ -1570,6 +1601,7 @@ function renderWatchlistTab(container) {
               .eq('user_id', currentUser.id)
               .eq('card_id', card.card_id);
             if (error) throw error;
+            showToast('Karte aus Collection entfernt!');
           } else {
             const collectData = {
               user_id: currentUser.id,
@@ -1581,6 +1613,7 @@ function renderWatchlistTab(container) {
               .from('collection_cards')
               .insert(collectData);
             if (error) throw error;
+            showToast('Karte zur Collection hinzugefügt!');
           }
           await fetchCollectionCards(); // Refresh collection list
           container.innerHTML = '';
@@ -1641,20 +1674,30 @@ function drawCollectionChart(chartContainer, historyData) {
   const minTime = Math.min(...times);
   const maxTime = Math.max(...times);
 
-  const valRange = maxVal - minVal;
+  const range = maxVal - minVal;
   const timeRange = maxTime - minTime || 1.0;
-
-  const avgVal = (minVal + maxVal) / 2 || 1.0;
-  const minDelta = Math.max(5.0, avgVal * 0.1);
-
-  let yMin, yMax;
-  if (valRange < minDelta) {
-    yMin = Math.max(0, avgVal - minDelta / 2);
-    yMax = avgVal + minDelta / 2;
+  let step;
+  if (range <= 0) {
+    step = Math.max(10, Math.ceil(maxVal * 0.1));
   } else {
-    yMin = Math.max(0, minVal - valRange * 0.15);
-    yMax = maxVal + valRange * 0.15;
+    const rawStep = range / 2;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+    const normalized = rawStep / magnitude;
+    let cleanNormalized;
+    if (normalized < 1.5) cleanNormalized = 1.0;
+    else if (normalized < 3.0) cleanNormalized = 2.0;
+    else if (normalized < 7.0) cleanNormalized = 5.0;
+    else cleanNormalized = 10.0;
+    step = cleanNormalized * magnitude;
   }
+  
+  let yMin = Math.max(0, Math.floor(minVal / step) * step);
+  let yMax = Math.ceil(maxVal / step) * step;
+  if (yMin === yMax) {
+    yMin = Math.max(0, yMin - step);
+    yMax = yMax + step;
+  }
+  const avgVal = (yMin + yMax) / 2;
   const yRange = yMax - yMin || 1.0;
 
   const svgPoints = historyData.map(h => {
@@ -1670,18 +1713,23 @@ function drawCollectionChart(chartContainer, historyData) {
   const firstLabel = new Date(minTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
   const lastLabel = new Date(maxTime).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
 
+  const formatPriceLabel = (v) => {
+    if (v % 1 === 0) return v.toFixed(0) + ' €';
+    return v.toFixed(2) + ' €';
+  };
+
   chartContainer.innerHTML = `
     <div class="chart-header" style="margin-bottom: 8px;">
       <span class="chart-title" style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Sammlungswert-Verlauf</span>
     </div>
-    <div class="chart-body" style="display: flex; gap: 8px;">
-      <div class="chart-y-axis" style="display: flex; flex-direction: column; justify-content: space-between; font-size: 0.65rem; color: var(--text-muted); width: 45px; text-align: right; font-weight: 500;">
-        <span>${yMax.toFixed(2)}€</span>
-        <span>${avgVal.toFixed(2)}€</span>
-        <span>${yMin.toFixed(2)}€</span>
+    <div class="chart-body" style="display: flex; gap: 12px;">
+      <div class="chart-y-axis" style="display: flex; flex-direction: column; justify-content: space-between; font-size: 0.65rem; color: var(--text-muted); width: 60px; text-align: right; font-weight: 500; padding: 4px 0;">
+        <span>${formatPriceLabel(yMax)}</span>
+        <span>${formatPriceLabel(avgVal)}</span>
+        <span>${formatPriceLabel(yMin)}</span>
       </div>
       <div class="chart-main" style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
-        <div class="chart-canvas" style="position: relative; height: 100px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass); border-radius: 6px; overflow: hidden;">
+        <div class="chart-canvas" style="position: relative; height: 180px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-glass); border-radius: 6px; overflow: hidden;">
           <svg class="chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none" style="width: 100%; height: 100%;">
             <defs>
               <linearGradient id="col-chart-grad" x1="0" y1="0" x2="0" y2="1">
@@ -2796,6 +2844,7 @@ function renderDetail(container) {
 
         if (error) throw error;
         details.isCollected = false;
+        showToast('Karte aus Collection entfernt!');
       } else {
         // Create collection card
         const collectData = {
@@ -2810,6 +2859,7 @@ function renderDetail(container) {
 
         if (error) throw error;
         details.isCollected = true;
+        showToast('Karte zur Collection hinzugefügt!');
       }
       await fetchCollectionCards(); // Refresh collectionCards local copy from database!
       updateCollectIconStyle();
