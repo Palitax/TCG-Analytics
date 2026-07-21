@@ -69,7 +69,7 @@ function showToast(message) {
   if (!toastContainer) {
     toastContainer = document.createElement('div');
     toastContainer.id = 'toast-container';
-    toastContainer.style.cssText = 'position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 10000; display: flex; flex-direction: column; gap: 8px; pointer-events: none;';
+    toastContainer.style.cssText = 'position: fixed; top: 24px; left: 50%; transform: translateX(-50%); z-index: 10000; display: flex; flex-direction: column; gap: 8px; pointer-events: none;';
     document.body.appendChild(toastContainer);
   }
   
@@ -84,8 +84,8 @@ function showToast(message) {
   `;
   toastContainer.appendChild(toast);
   
-  // Animate in
-  animate(toast, { opacity: [0, 1], y: [20, 0] }, { duration: 0.25, ease: "easeOut" });
+  // Animate in from top
+  animate(toast, { opacity: [0, 1], y: [-20, 0] }, { duration: 0.25, ease: "easeOut" });
   
   // Remove after 3 seconds
   setTimeout(() => {
