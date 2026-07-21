@@ -44,12 +44,28 @@ function showLoadingProgress(show) {
     bar = document.createElement('div');
     bar.id = 'top-loading-bar';
     bar.className = 'top-loading-bar';
-    document.getElementById('app')?.appendChild(bar);
+    document.body.appendChild(bar);
   }
+
+  let overlay = document.getElementById('center-loading-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'center-loading-overlay';
+    overlay.className = 'center-loading-overlay';
+    overlay.innerHTML = `
+      <div class="center-loading-card glass-panel">
+        <div class="spinner"></div>
+        <span class="loading-status-text">Daten werden geladen...</span>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  }
+
   if (show) {
     bar.style.width = '0%';
     bar.style.opacity = '1';
     bar.classList.add('active');
+    overlay.classList.add('active');
     setTimeout(() => {
       if (bar.classList.contains('active')) {
         bar.style.width = '70%';
@@ -60,6 +76,7 @@ function showLoadingProgress(show) {
     setTimeout(() => {
       bar.style.opacity = '0';
       bar.classList.remove('active');
+      overlay.classList.remove('active');
       setTimeout(() => {
         bar.style.width = '0%';
       }, 300);
@@ -916,8 +933,8 @@ async function renderDashboard(container) {
     searchTimeout = setTimeout(async () => {
       divResults.style.display = 'block';
       divResults.innerHTML = `
-        <div class="spinner-box" style="height: 100px;">
-          <div class="spinner" style="width: 24px; height: 24px;"></div>
+        <div class="spinner-box" style="min-height: 120px; padding: 20px;">
+          <div class="spinner"></div>
         </div>
       `;
 
