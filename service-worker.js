@@ -648,12 +648,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               const { session } = await chrome.storage.local.get('session');
               if (session && session.access_token) {
                 const accessToken = session.access_token;
+                let finalImageUrl = base64;
+
+                // Attempt to upload image to Supabase Storage bucket 'card-images'
+                try {
+                  const mimeType = base64.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+                  const ext = mimeType === 'image/png' ? 'png' : 'jpg';
+                  const base64Clean = base64.includes(',') ? base64.split(',')[1] : base64;
+                  const byteCharacters = atob(base64Clean);
+                  const byteNumbers = new Array(byteCharacters.length);
+                  for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                  }
+                  const byteArray = new Uint8Array(byteNumbers);
+                  const blob = new Blob([byteArray], { type: mimeType });
+                  const fileName = `${encodeURIComponent(cardId)}_${Date.now()}.${ext}`;
+
+                  const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/card-images/${fileName}`, {
+                    method: "POST",
+                    headers: {
+                      "apikey": SUPABASE_ANON_KEY,
+                      "Authorization": `Bearer ${accessToken}`,
+                      "Content-Type": mimeType,
+                      "x-upsert": "true"
+                    },
+                    body: blob
+                  });
+
+                  if (storageRes.ok) {
+                    finalImageUrl = `${SUPABASE_URL}/storage/v1/object/public/card-images/${fileName}`;
+                  }
+                } catch (stErr) {
+                  console.warn("Storage upload in background failed, falling back to base64:", stErr);
+                }
                 
                 // 1. Upsert into card_images
                 const imgData = {
                   card_id: cardId,
                   tcg: tcg,
-                  image_url: base64,
+                  image_url: finalImageUrl,
                   updated_at: new Date().toISOString()
                 };
 
@@ -682,7 +715,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                       "Authorization": `Bearer ${accessToken}`,
                       "Content-Type": "application/json"
                     },
-                    body: JSON.stringify({ image_url: base64 })
+                    body: JSON.stringify({ image_url: finalImageUrl })
                   });
 
                   if (!updateRes.ok) {

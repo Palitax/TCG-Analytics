@@ -233,8 +233,40 @@ function splitCardTitle(cardId) {
   return { name, number };
 }
 
+// Local browser image cache helpers
+function getCachedCardImage(cardId) {
+  if (!cardId) return null;
+  try {
+    return localStorage.getItem(`img_cache_${cardId}`);
+  } catch (e) {
+    return null;
+  }
+}
+
+function setCachedCardImage(cardId, imageUrl) {
+  if (!cardId || !imageUrl) return;
+  try {
+    if (imageUrl.startsWith('data:') && imageUrl.length > 150000) return;
+    localStorage.setItem(`img_cache_${cardId}`, imageUrl);
+  } catch (e) {
+    // LocalStorage quota reached, ignore
+  }
+}
+
+// Convert Base64 data URL to Blob for Supabase Storage upload
+function base64ToBlob(base64Str) {
+  const parts = base64Str.split(';base64,');
+  const contentType = (parts[0] && parts[0].split(':')[1]) || 'image/jpeg';
+  const raw = window.atob(parts[1] || parts[0]);
+  const uInt8Array = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; ++i) {
+    uInt8Array[i] = raw.charCodeAt(i);
+  }
+  return new Blob([uInt8Array], { type: contentType });
+}
+
 // Compress and resize base64 image using canvas to save storage
-function compressImage(base64Str, maxWidth = 400) {
+function compressImage(base64Str, maxWidth = 350) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -253,12 +285,47 @@ function compressImage(base64Str, maxWidth = 400) {
       canvas.height = height;
 
       ctx.drawImage(img, 0, 0, width, height);
-      const compressed = canvas.toDataURL('image/jpeg', 0.75);
+      const compressed = canvas.toDataURL('image/jpeg', 0.65);
       resolve(compressed);
     };
     img.onerror = () => resolve(base64Str);
     img.src = base64Str;
   });
+}
+
+// Upload image to Supabase Storage bucket 'card-images'
+async function uploadImageToStorage(cardId, base64Str) {
+  try {
+    const compressed = await compressImage(base64Str, 350);
+    const blob = base64ToBlob(compressed);
+    const fileName = `${encodeURIComponent(cardId)}_${Date.now()}.jpg`;
+
+    const { data, error } = await supabase.storage
+      .from('card-images')
+      .upload(fileName, blob, {
+        contentType: 'image/jpeg',
+        upsert: true
+      });
+
+    if (error) {
+      console.warn('Supabase storage upload failed, falling back to compressed base64:', error.message);
+      setCachedCardImage(cardId, compressed);
+      return compressed;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('card-images')
+      .getPublicUrl(fileName);
+
+    const publicUrl = publicUrlData?.publicUrl || compressed;
+    setCachedCardImage(cardId, publicUrl);
+    return publicUrl;
+  } catch (err) {
+    console.warn('Storage upload exception, using compressed base64:', err.message);
+    const compressed = await compressImage(base64Str, 350);
+    setCachedCardImage(cardId, compressed);
+    return compressed;
+  }
 }
 
 // Return stored image URL directly (Base64 or standard asset link)
@@ -405,7 +472,7 @@ async function fetchCollectionCards() {
   try {
     const { data, error } = await supabase
       .from('collection_cards')
-      .select('*')
+      .select('id, card_id, tcg, buy_price, buy_date, comment, created_at')
       .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false });
 
@@ -414,25 +481,26 @@ async function fetchCollectionCards() {
     let listData = data || [];
     const cardIds = listData.map(c => c.card_id);
     if (cardIds.length > 0) {
-      try {
-        const { data: globalImages, error: globalImagesErr } = await supabase
-          .from('card_images')
-          .select('card_id, image_url')
-          .in('card_id', cardIds);
-        
-        if (!globalImagesErr && globalImages) {
-          const imageMap = {};
-          for (const img of globalImages) {
-            imageMap[img.card_id] = img.image_url;
-          }
-          for (const card of listData) {
-            if (imageMap[card.card_id]) {
-              card.image_url = imageMap[card.card_id];
+      const missingCardIds = cardIds.filter(id => !getCachedCardImage(id));
+      if (missingCardIds.length > 0) {
+        try {
+          const { data: globalImages, error: globalImagesErr } = await supabase
+            .from('card_images')
+            .select('card_id, image_url')
+            .in('card_id', missingCardIds);
+          
+          if (!globalImagesErr && globalImages) {
+            for (const img of globalImages) {
+              setCachedCardImage(img.card_id, img.image_url);
             }
           }
+        } catch (err) {
+          console.error('Error fetching global card images for collection:', err.message);
         }
-      } catch (err) {
-        console.error('Error fetching global card images for collection:', err.message);
+      }
+
+      for (const card of listData) {
+        card.image_url = getCachedCardImage(card.card_id) || null;
       }
 
       // Bulk fetch price history for all cards
@@ -481,11 +549,12 @@ async function fetchCollectionCards() {
               card.baseline_price = baseline.price;
               card.diff_percent = baseline.price > 0 ? ((latest.price - baseline.price) / baseline.price) * 100 : 0;
 
-              // Fallback image url from history
+              // Fallback image url from history if still missing
               if (!card.image_url) {
                 for (let i = history.length - 1; i >= 0; i--) {
                   if (history[i].imageUrl) {
                     card.image_url = history[i].imageUrl;
+                    setCachedCardImage(card.card_id, card.image_url);
                     break;
                   }
                 }
@@ -515,7 +584,7 @@ async function fetchMarkedCards() {
   try {
     const { data, error } = await supabase
       .from('marked_cards')
-      .select('*')
+      .select('id, card_id, tcg, comment, target_price, condition, language, seller_country, created_at')
       .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false });
 
@@ -539,28 +608,28 @@ async function fetchMarkedCards() {
       });
     }
 
-    // Fetch global card images if any
     const cardIds = listData.map(c => c.card_id);
     if (cardIds.length > 0) {
-      try {
-        const { data: globalImages, error: globalImagesErr } = await supabase
-          .from('card_images')
-          .select('card_id, image_url')
-          .in('card_id', cardIds);
-        
-        if (!globalImagesErr && globalImages) {
-          const imageMap = {};
-          for (const img of globalImages) {
-            imageMap[img.card_id] = img.image_url;
-          }
-          for (const card of listData) {
-            if (imageMap[card.card_id]) {
-              card.image_url = imageMap[card.card_id];
+      const missingCardIds = cardIds.filter(id => !getCachedCardImage(id));
+      if (missingCardIds.length > 0) {
+        try {
+          const { data: globalImages, error: globalImagesErr } = await supabase
+            .from('card_images')
+            .select('card_id, image_url')
+            .in('card_id', missingCardIds);
+          
+          if (!globalImagesErr && globalImages) {
+            for (const img of globalImages) {
+              setCachedCardImage(img.card_id, img.image_url);
             }
           }
+        } catch (err) {
+          console.error('Error fetching global card images:', err.message);
         }
-      } catch (err) {
-        console.error('Error fetching global card images:', err.message);
+      }
+
+      for (const card of listData) {
+        card.image_url = getCachedCardImage(card.card_id) || null;
       }
 
       // Bulk fetch price history for all cards
@@ -3138,8 +3207,8 @@ function renderDetail(container) {
           reader.readAsDataURL(file);
         });
 
-        // Compress to Max Width 400px (ideal thumbnail resolution)
-        const compressedBase64 = await compressImage(base64Raw, 400);
+        // Upload to Storage or compress base64 fallback
+        const uploadedUrl = await uploadImageToStorage(details.cardId, base64Raw);
 
         // 1. Save globally in card_images table (replaces the previous one if it exists)
         const { error: globalErr } = await supabase
@@ -3147,7 +3216,7 @@ function renderDetail(container) {
           .upsert({
             card_id: details.cardId,
             tcg: details.tcg,
-            image_url: compressedBase64,
+            image_url: uploadedUrl,
             updated_at: new Date().toISOString()
           });
 
@@ -3166,17 +3235,18 @@ function renderDetail(container) {
             user_id: currentUser.id,
             tcg: details.tcg,
             card_id: details.cardId,
-            image_url: compressedBase64
+            image_url: uploadedUrl
           });
 
         if (error) throw error;
 
+        setCachedCardImage(details.cardId, uploadedUrl);
         await fetchMarkedCards(); // Refresh local watchlist copy in memory!
 
-        details.imageUrl = compressedBase64;
+        details.imageUrl = uploadedUrl;
         const heroImg = imageBox.querySelector('.hero-img');
         if (heroImg) {
-          heroImg.src = compressedBase64;
+          heroImg.src = uploadedUrl;
         }
 
         alert("Bild erfolgreich hochgeladen und gespeichert!");
@@ -3565,7 +3635,7 @@ function renderDetail(container) {
       imgBtn.addEventListener('click', async () => {
         if (confirm("Möchtest du dieses geclippte Bild als Anzeigebild für diese Karte übernehmen?")) {
           try {
-            const compressedBase64 = await compressImage(imgRecord.image, 400);
+            const uploadedUrl = await uploadImageToStorage(details.cardId, imgRecord.image);
 
             // 1. Save globally in card_images table
             const { error: globalErr } = await supabase
@@ -3573,7 +3643,7 @@ function renderDetail(container) {
               .upsert({
                 card_id: details.cardId,
                 tcg: details.tcg,
-                image_url: compressedBase64,
+                image_url: uploadedUrl,
                 updated_at: new Date().toISOString()
               });
 
@@ -3592,16 +3662,17 @@ function renderDetail(container) {
                 user_id: currentUser.id,
                 tcg: details.tcg,
                 card_id: details.cardId,
-                image_url: compressedBase64
+                image_url: uploadedUrl
               });
 
             if (error) throw error;
 
+            setCachedCardImage(details.cardId, uploadedUrl);
             await fetchMarkedCards(); // Refresh local watchlist copy
-            details.imageUrl = compressedBase64;
+            details.imageUrl = uploadedUrl;
             const heroImg = detailBody.querySelector('.hero-img');
             if (heroImg) {
-              heroImg.src = compressedBase64;
+              heroImg.src = uploadedUrl;
             }
             alert("Bild erfolgreich übernommen!");
           } catch (err) {
