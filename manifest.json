@@ -12,7 +12,7 @@
   ],
   "host_permissions": [
     "https://*.cardmarket.com/*",
-    "https://pjorjwwhiinaaebxvhhi.supabase.co/*",
+    "https://api-supabase.rohdedigital.de/*",
     "https://*/*"
   ],
   "action": {

@@ -1,5 +1,5 @@
-const SUPABASE_URL = "https://pjorjwwhiinaaebxvhhi.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBqb3Jqd3doaWluYWFlYnh2aGhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5MjQ4NzEsImV4cCI6MjA5OTUwMDg3MX0.T8Gs9JaF9X-DbEgx0fSN9VeSEUPsV6nlFMd0RRW2hOs";
+const SUPABASE_URL = "https://api-supabase.rohdedigital.de";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNjQxNzY5MjAwLCJleHAiOjI3OTk1MzU2MDB9.dLVXX_m4DKuyn028uVpXtQOI_Kp08FmTZ8GvTqT0DSk";
 
 
 
