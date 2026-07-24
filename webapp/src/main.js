@@ -2978,21 +2978,30 @@ async function renderAnalyticsTab(container) {
   });
 }
 
-// Cardmarket Search URL builder helper (Always uses Card Name + Code e.g. "Pikachu DP16" with '+' searchString)
+// Cardmarket Search URL builder helper (Combines Card Name + Set Name + Card Number e.g. "Pikachu Mysterious Treasures 94/123")
 function buildCardmarketSearchUrl(item) {
   const code = (item.detectedCode || item.rawCode || '').trim();
-  let rawName = (item.detectedName || item.rawName || '').replace(/\([^)]*\)/g, '').trim();
-  let mainName = rawName.split(/\s+LV\./i)[0].trim();
-  if (!mainName || mainName.toLowerCase() === 'karte') mainName = '';
+  const rawFullName = item.detectedName || item.rawName || '';
 
-  let searchQuery = '';
-  if (mainName && code) {
-    searchQuery = `${mainName} ${code}`;
-  } else if (code) {
-    searchQuery = code;
-  } else {
-    searchQuery = mainName;
+  // Extract set name from rawSet, cardDetails or parentheses e.g. "Pikachu (Mysterious Treasures)"
+  let extractedSet = item.rawSet || item.cardDetails?.set_name || item.cardDetails?.expansion || '';
+  if (!extractedSet) {
+    const parentheticalMatch = rawFullName.match(/\(([^)]+)\)/);
+    if (parentheticalMatch && parentheticalMatch[1]) {
+      extractedSet = parentheticalMatch[1].trim();
+    }
   }
+
+  // Clean main name: remove parentheses and LV.XX info if any
+  let cleanName = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
+  if (!cleanName || cleanName.toLowerCase() === 'karte') cleanName = '';
+
+  // Clean set name
+  let cleanSet = extractedSet.trim();
+
+  // Combine: [Card Name] [Set Name] [Code]
+  const queryParts = [cleanName, cleanSet, code].filter(p => p && p.length > 0);
+  const searchQuery = queryParts.join(' ').trim();
 
   // Auto-detect TCG path for Cardmarket
   let game = 'Pokemon';
@@ -3002,7 +3011,7 @@ function buildCardmarketSearchUrl(item) {
     game = 'YuGiOh';
   }
 
-  const encodedQuery = encodeURIComponent(searchQuery.trim()).replace(/%20/g, '+');
+  const encodedQuery = encodeURIComponent(searchQuery).replace(/%20/g, '+');
   return `https://www.cardmarket.com/de/${game}/Products/Search?searchString=${encodedQuery}`;
 }
 
