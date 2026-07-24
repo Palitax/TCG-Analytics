@@ -105,9 +105,7 @@ export class StreamOverlay {
     if (totalCards === 0) {
       this.container.innerHTML = `
         <div class="stream-overlay-empty glass-panel">
-          <div class="empty-icon" style="display: flex; justify-content: center; margin-bottom: 1rem;">
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#fb8500" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-          </div>
+          <div class="empty-icon">📱</div>
           <h2>Stream Overlay bereit</h2>
           <p>Importiere eine CSV-Datei im <strong>Bulk Scan / CSV</strong> Tab und klicke auf <em>"An Stream Overlay senden"</em>, um die Karten hier auf dem Tablet nacheinander anzuzeigen.</p>
         </div>
@@ -118,10 +116,7 @@ export class StreamOverlay {
     if (isFinished) {
       this.container.innerHTML = `
         <div class="stream-overlay-finished glass-panel">
-          <div class="finished-badge" style="display: inline-flex; align-items: center; gap: 6px;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fb8500" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            CSV-Durchgang beendet!
-          </div>
+          <div class="finished-badge">🎉 CSV-Durchgang beendet!</div>
           <h2>Alle gescannten Karten verarbeitet!</h2>
           <div class="session-stats">
             <div class="stat-box">
@@ -133,10 +128,7 @@ export class StreamOverlay {
               <span class="stat-val">${this.totalSoldValue.toFixed(2)} €</span>
             </div>
           </div>
-          <button class="btn btn-primary btn-lg" id="so-restart-btn" style="display: inline-flex; align-items: center; gap: 8px;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-            Durchgang neu starten
-          </button>
+          <button class="btn btn-primary btn-lg" id="so-restart-btn">🔄 Durchgang neu starten</button>
         </div>
       `;
 
@@ -180,8 +172,7 @@ export class StreamOverlay {
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div class="so-card-badge">${cardCode}</div>
               <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 6px 14px; font-size: 0.85rem; background: rgba(251, 133, 0, 0.15); border: 1px solid rgba(251, 133, 0, 0.4); color: #fb8500; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
-                Check price now
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                Check price now ↗
               </a>
             </div>
             <h1 class="so-card-title">${cardName}</h1>
@@ -189,7 +180,7 @@ export class StreamOverlay {
             <div class="so-price-cards">
               <div class="so-price-card primary">
                 <span class="price-label">Letzter CM Preis</span>
-                <span class="price-value" style="color: ${hasPrice ? '#10b981' : '#a1a1aa'};">${priceDisplay}</span>
+                <span class="price-value" style="color: ${hasPrice ? '#10b981' : '#94a3b8'};">${priceDisplay}</span>
               </div>
               <div class="so-price-card trend">
                 <span class="price-label">Letzter Check</span>
@@ -205,7 +196,7 @@ export class StreamOverlay {
 
             <div class="so-action-bar">
               <button class="so-btn-sold" id="so-sold-btn">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                <span class="sold-icon">✔</span>
                 <span class="sold-text">VERKAUFT</span>
               </button>
             </div>
