@@ -35,32 +35,19 @@ async function convertImageBlobToWebP(blob, maxDimension = 800, quality = 0.8) {
   }
 }
 
-// Fetch remote image and convert to Base64 in service worker background thread
-async function fetchAndConvertToBase64(url) {
+// Fetch remote image directly as a binary Blob in background service worker
+async function fetchImageBlob(url) {
   if (!url) return null;
-  if (url.startsWith('data:')) return url;
-  
   try {
-    // Route through our Vercel Image Proxy to bypass Amazon S3 referer & CORS blocks
-    const proxyUrl = `https://tcg-analytics-chi.vercel.app/api/image-proxy?url=${encodeURIComponent(url)}`;
-    const response = await fetch(proxyUrl);
-    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-    
-    const blob = await response.blob();
-    const buffer = await blob.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    
-    let binary = '';
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    if (url.startsWith('data:')) {
+      const res = await fetch(url);
+      return await res.blob();
     }
-    
-    const base64 = btoa(binary);
-    const mimeType = blob.type || 'image/jpeg';
-    return `data:${mimeType};base64,${base64}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.blob();
   } catch (err) {
-    console.error("Failed to convert image to base64 via proxy:", err);
+    console.error("Failed to fetch image blob directly:", err);
     return null;
   }
 }
@@ -655,74 +642,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const { cardId, tcg, imageUrl } = message;
         (async () => {
           try {
-            const base64 = await fetchAndConvertToBase64(imageUrl);
-            if (!base64) {
-              throw new Error("Failed to convert image to base64");
+            const rawBlob = await fetchImageBlob(imageUrl);
+            if (!rawBlob) {
+              throw new Error("Failed to fetch image blob");
             }
+
+            const webpBlob = await convertImageBlobToWebP(rawBlob, 800, 0.8);
             
-            const { clippedImages = [] } = await chrome.storage.local.get('clippedImages');
-            const exists = clippedImages.some(img => img.cardId === cardId && img.image === base64);
-            if (!exists) {
-              clippedImages.unshift({
-                cardId,
-                tcg,
-                image: base64,
-                timestamp: Date.now()
-              });
-              if (clippedImages.length > 50) {
-                clippedImages.pop();
-              }
-              await chrome.storage.local.set({ clippedImages });
-            }
+            const sanitizedId = cardId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+            const sanitizedTcg = tcg ? tcg.toLowerCase() : 'tcg';
+            const fileName = `${sanitizedTcg}_${sanitizedId}.webp`;
+            const bucketName = 'card-images';
+            let finalImageUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucketName}/${fileName}`;
 
             // Sync with Supabase: save to card_images and update marked_cards
             try {
               const { session } = await chrome.storage.local.get('session');
               if (session && session.access_token) {
                 const accessToken = session.access_token;
-                let finalImageUrl = base64;
 
-                // Attempt to upload image to Supabase Storage bucket 'card-images'
+                // Deduplication Pre-check: HEAD request to check if file already exists in Storage
+                let fileExists = false;
                 try {
-                  const sanitizedId = cardId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-                  const sanitizedTcg = tcg ? tcg.toLowerCase() : 'tcg';
-                  const fileName = `${sanitizedTcg}_${sanitizedId}.webp`;
-                  const bucketName = 'card-images';
-                  const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucketName}/${fileName}`;
-
-                  // Deduplication Pre-check: HEAD request to check if file already exists in Storage
-                  let fileExists = false;
-                  try {
-                    const headCheck = await fetch(publicUrl, { method: 'HEAD' });
-                    if (headCheck.ok) {
-                      fileExists = true;
-                      finalImageUrl = publicUrl;
-                    }
-                  } catch (e) {}
-
-                  if (!fileExists) {
-                    const rawResponse = await fetch(`https://tcg-analytics-chi.vercel.app/api/image-proxy?url=${encodeURIComponent(imageUrl)}`);
-                    let rawBlob = await rawResponse.blob();
-                    let webpBlob = await convertImageBlobToWebP(rawBlob, 800, 0.8);
-
-                    const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucketName}/${fileName}`, {
-                      method: "POST",
-                      headers: {
-                        "apikey": SUPABASE_ANON_KEY,
-                        "Authorization": `Bearer ${accessToken}`,
-                        "Content-Type": "image/webp",
-                        "cache-control": "31536000",
-                        "x-upsert": "true"
-                      },
-                      body: webpBlob
-                    });
-
-                    if (storageRes.ok) {
-                      finalImageUrl = publicUrl;
-                    }
+                  const headCheck = await fetch(finalImageUrl, { method: 'HEAD' });
+                  if (headCheck.ok) {
+                    fileExists = true;
                   }
-                } catch (stErr) {
-                  console.warn("Storage upload in background failed, falling back to base64:", stErr);
+                } catch (e) {}
+
+                if (!fileExists && webpBlob) {
+                  const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucketName}/${fileName}`, {
+                    method: "POST",
+                    headers: {
+                      "apikey": SUPABASE_ANON_KEY,
+                      "Authorization": `Bearer ${accessToken}`,
+                      "Content-Type": "image/webp",
+                      "cache-control": "31536000",
+                      "x-upsert": "true"
+                    },
+                    body: webpBlob
+                  });
+
+                  if (!storageRes.ok) {
+                    console.warn("Storage upload in background failed:", storageRes.status, await storageRes.text());
+                  }
                 }
                 
                 // 1. Upsert into card_images
@@ -770,7 +733,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               console.error("Failed syncing clipped image to Supabase:", syncErr);
             }
 
-            sendResponse({ success: true, image: base64 });
+            sendResponse({ success: true, imageUrl: finalImageUrl });
           } catch (err) {
             console.error("Failed to save clipped image:", err);
             sendResponse({ error: err.message });
