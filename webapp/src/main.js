@@ -1,13 +1,18 @@
 import { supabase } from './supabase.js';
 import { animate } from 'motion';
 import { Chart, registerables } from 'chart.js';
+import { BulkScanner } from './bulk-scanner.js';
+import { StreamOverlay } from './stream-overlay.js';
 Chart.register(...registerables);
 
 // Global state variables
 let currentUser = null;
 let currentView = 'loading'; // 'loading', 'login', 'dashboard', 'detail'
-let activeDashboardTab = 'watchlist'; // 'watchlist', 'collection', or 'analytics'
+let activeDashboardTab = 'watchlist'; // 'watchlist', 'collection', 'analytics', 'bulk-scan', or 'stream-overlay'
 let lastOriginScreen = 'watchlist';
+let activeStreamQueue = [];
+let streamOverlayInstance = null;
+let bulkScannerInstance = new BulkScanner();
 let markedCards = [];
 let activeSortOption = 'custom';
 try {
@@ -918,7 +923,7 @@ async function navigate(path, pushState = true) {
   }
 
   // Navigate to dashboard instantly and fetch data in the background
-  if (pathname === '/' || pathname === '/watchlist' || pathname === '/analytics' || pathname === '/collection') {
+  if (pathname === '/' || pathname === '/watchlist' || pathname === '/analytics' || pathname === '/collection' || pathname === '/bulk-scan' || pathname === '/stream-overlay') {
     // Determine target tab and track origin screen
     if (pathname === '/analytics' || pathname === '/search') {
       activeDashboardTab = 'analytics';
@@ -926,6 +931,12 @@ async function navigate(path, pushState = true) {
     } else if (pathname === '/collection') {
       activeDashboardTab = 'collection';
       lastOriginScreen = 'collection';
+    } else if (pathname === '/bulk-scan') {
+      activeDashboardTab = 'bulk-scan';
+      lastOriginScreen = 'bulk-scan';
+    } else if (pathname === '/stream-overlay') {
+      activeDashboardTab = 'stream-overlay';
+      lastOriginScreen = 'stream-overlay';
     } else {
       activeDashboardTab = 'watchlist';
       lastOriginScreen = 'watchlist';
@@ -934,15 +945,16 @@ async function navigate(path, pushState = true) {
     // Render view instantly using currently loaded data
     await setView('dashboard');
 
-    // Render view instantly using currently loaded memory/localStorage cache
-    await setView('dashboard');
-
     const initialTabWrapper = document.getElementById('dashboard-tab-content');
     if (initialTabWrapper && currentView === 'dashboard') {
       if (activeDashboardTab === 'watchlist') {
         renderWatchlistTab(initialTabWrapper);
       } else if (activeDashboardTab === 'collection') {
         renderCollectionTab(initialTabWrapper);
+      } else if (activeDashboardTab === 'bulk-scan') {
+        renderBulkScanTab(initialTabWrapper);
+      } else if (activeDashboardTab === 'stream-overlay') {
+        renderStreamOverlayTab(initialTabWrapper);
       }
     }
 
@@ -1367,6 +1379,18 @@ async function renderDashboard(container) {
         </svg>
         Analytics
       </button>
+      <button id="btn-tab-bulk-scan" class="cm-landing-btn ${activeDashboardTab === 'bulk-scan' ? 'active' : ''}">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width: 14px; height: 14px;">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+        </svg>
+        Bulk Scan / CSV
+      </button>
+      <button id="btn-tab-stream-overlay" class="cm-landing-btn ${activeDashboardTab === 'stream-overlay' ? 'active' : ''}">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width: 14px; height: 14px;">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+        Stream Overlay
+      </button>
     </div>
   `;
   wrapper.appendChild(buttonsSection);
@@ -1379,6 +1403,8 @@ async function renderDashboard(container) {
   const btnWatchlist = buttonsSection.querySelector('#btn-tab-watchlist');
   const btnCollection = buttonsSection.querySelector('#btn-tab-collection');
   const btnAnalytics = buttonsSection.querySelector('#btn-tab-analytics');
+  const btnBulkScan = buttonsSection.querySelector('#btn-tab-bulk-scan');
+  const btnStreamOverlay = buttonsSection.querySelector('#btn-tab-stream-overlay');
 
   const renderActiveTab = async () => {
     tabContentWrapper.innerHTML = '';
@@ -1386,6 +1412,10 @@ async function renderDashboard(container) {
       renderWatchlistTab(tabContentWrapper);
     } else if (activeDashboardTab === 'collection') {
       renderCollectionTab(tabContentWrapper);
+    } else if (activeDashboardTab === 'bulk-scan') {
+      renderBulkScanTab(tabContentWrapper);
+    } else if (activeDashboardTab === 'stream-overlay') {
+      renderStreamOverlayTab(tabContentWrapper);
     } else {
       await renderAnalyticsTab(tabContentWrapper);
     }
@@ -1404,6 +1434,16 @@ async function renderDashboard(container) {
   btnAnalytics.addEventListener('click', () => {
     if (activeDashboardTab === 'analytics') return;
     navigate('/analytics');
+  });
+
+  btnBulkScan.addEventListener('click', () => {
+    if (activeDashboardTab === 'bulk-scan') return;
+    navigate('/bulk-scan');
+  });
+
+  btnStreamOverlay.addEventListener('click', () => {
+    if (activeDashboardTab === 'stream-overlay') return;
+    navigate('/stream-overlay');
   });
 
   // Render initial selected tab content
@@ -2936,6 +2976,207 @@ async function renderAnalyticsTab(container) {
       renderAnalyticsTab(container);
     });
   });
+}
+
+// Bulk Scan Tab Renderer
+function renderBulkScanTab(container) {
+  container.innerHTML = '';
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'dashboard-content bulk-scan-view';
+  wrapper.innerHTML = `
+    <div class="glass-panel bulk-scan-container">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+        <div>
+          <h2 style="font-size: 1.5rem; font-weight: 700; color: #fff; margin: 0 0 0.25rem 0;">🖨️ Bulk Scan & CSV Importer</h2>
+          <p style="color: #94a3b8; font-size: 0.9rem; margin: 0;">Lade eine PaperStream Index-CSV oder Standard-Karten-CSV hoch, um Kartendaten & Marktpreise abzufragen.</p>
+        </div>
+      </div>
+
+      <div class="dropzone-box" id="csv-dropzone">
+        <div class="dropzone-icon">📁</div>
+        <h3 style="color: #f8fafc; font-size: 1.1rem; margin: 0 0 0.5rem 0;">PaperStream / TCG CSV-Datei hier ablegen</h3>
+        <p style="color: #94a3b8; font-size: 0.85rem; margin: 0 0 1rem 0;">oder Klicke zum Durchsuchen deiner Dateien</p>
+        <input type="file" id="csv-file-input" accept=".csv,.txt" style="display: none;" />
+        <button class="btn btn-primary" id="btn-select-csv">CSV-Datei auswählen</button>
+      </div>
+
+      <div id="bulk-processing-indicator" style="display: none; text-align: center; padding: 2rem;">
+        <div class="spinner" style="margin: 0 auto 1rem auto;"></div>
+        <p style="color: #e2e8f0; font-size: 0.95rem;">Analysiere Scans & frage Cardmarket Live-Preise ab...</p>
+      </div>
+
+      <div id="bulk-results-area" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1rem 0; flex-wrap: wrap; gap: 1rem;">
+          <h3 style="color: #fff; font-size: 1.1rem; margin: 0;" id="scan-summary-title">Gescannt: 0 Karten</h3>
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button class="btn btn-primary" id="btn-send-to-overlay">📱 An Stream Overlay senden</button>
+            <button class="btn btn-secondary" id="btn-save-scans-coll">💾 In Sammlung speichern</button>
+            <button class="btn btn-secondary" id="btn-export-enriched-csv">📥 CSV herunterladen</button>
+          </div>
+        </div>
+
+        <div class="review-table-container glass-panel">
+          <table class="review-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Karte / Code</th>
+                <th>Titel</th>
+                <th>Low (€)</th>
+                <th>Trend (€)</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="scan-review-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+  container.appendChild(wrapper);
+
+  const dropzone = wrapper.querySelector('#csv-dropzone');
+  const fileInput = wrapper.querySelector('#csv-file-input');
+  const btnSelect = wrapper.querySelector('#btn-select-csv');
+  const processingInd = wrapper.querySelector('#bulk-processing-indicator');
+  const resultsArea = wrapper.querySelector('#bulk-results-area');
+  const tbody = wrapper.querySelector('#scan-review-tbody');
+  const summaryTitle = wrapper.querySelector('#scan-summary-title');
+  const btnSendOverlay = wrapper.querySelector('#btn-send-to-overlay');
+  const btnSaveColl = wrapper.querySelector('#btn-save-scans-coll');
+  const btnExportCsv = wrapper.querySelector('#btn-export-enriched-csv');
+
+  btnSelect.addEventListener('click', () => fileInput.click());
+
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('drag-over');
+  });
+
+  dropzone.addEventListener('dragleave', () => {
+    dropzone.classList.remove('drag-over');
+  });
+
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('drag-over');
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files && e.target.files[0]) {
+      handleFile(e.target.files[0]);
+    }
+  });
+
+  async function handleFile(file) {
+    dropzone.style.display = 'none';
+    processingInd.style.display = 'block';
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target.result;
+      const items = await bulkScannerInstance.processCSVText(text);
+
+      processingInd.style.display = 'none';
+      resultsArea.style.display = 'block';
+      renderResults(items);
+    };
+    reader.readAsText(file);
+  }
+
+  function renderResults(items) {
+    summaryTitle.textContent = `Gescannt: ${items.length} Karten`;
+    tbody.innerHTML = '';
+
+    items.forEach((item, index) => {
+      const tr = document.createElement('tr');
+      const lowPrice = item.marketPrices?.lowPrice ? `${item.marketPrices.lowPrice.toFixed(2)} €` : 'N/A';
+      const trendPrice = item.marketPrices?.trendPrice ? `${item.marketPrices.trendPrice.toFixed(2)} €` : 'N/A';
+      const isMatched = item.status === 'matched';
+
+      tr.innerHTML = `
+        <td>${index + 1}</td>
+        <td>
+          <input type="text" class="form-input code-input" value="${item.detectedCode || ''}" style="width: 110px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 8px;" />
+        </td>
+        <td><strong>${item.detectedName || item.rawName || 'Karte'}</strong></td>
+        <td style="color: #10b981; font-weight: 700;">${lowPrice}</td>
+        <td style="color: #818cf8; font-weight: 600;">${trendPrice}</td>
+        <td>
+          <span class="status-badge ${isMatched ? 'matched' : 'needs_review'}">
+            ${isMatched ? '✅ Erkannt' : '⚠️ Prüfen'}
+          </span>
+        </td>
+      `;
+
+      const codeInput = tr.querySelector('.code-input');
+      codeInput.addEventListener('change', async (e) => {
+        item.detectedCode = e.target.value;
+        await bulkScannerInstance.enrichItemWithMarketData(item);
+        renderResults(bulkScannerInstance.scanItems);
+      });
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  btnSendOverlay.addEventListener('click', () => {
+    if (bulkScannerInstance.scanItems.length === 0) return;
+    activeStreamQueue = [...bulkScannerInstance.scanItems];
+    navigate('/stream-overlay');
+  });
+
+  btnSaveColl.addEventListener('click', () => {
+    if (bulkScannerInstance.scanItems.length === 0) return;
+    const newCollItems = bulkScannerInstance.scanItems.map(item => ({
+      card_id: item.detectedCode || item.rawCode || `SCAN_${Date.now()}`,
+      name: item.detectedName || item.rawName || 'Gescannte Karte',
+      price: item.marketPrices?.lowPrice || item.rawPrice || 0,
+      condition: item.rawCondition || 'Near Mint',
+      tcg: 'OnePiece',
+      added_at: new Date().toISOString()
+    }));
+
+    collectionCards.push(...newCollItems);
+    saveCachedUserData(currentUser?.id);
+    alert(`${newCollItems.length} Karten wurden erfolgreich in deine Sammlung übernommen!`);
+  });
+
+  btnExportCsv.addEventListener('click', () => {
+    const csvContent = bulkScannerInstance.exportEnrichedCSV();
+    if (!csvContent) return;
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `card_tracker_scans_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+}
+
+// Stream Overlay Tab Renderer
+function renderStreamOverlayTab(container) {
+  container.innerHTML = '';
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'dashboard-content stream-overlay-view';
+  wrapper.id = 'stream-overlay-view-wrapper';
+  container.appendChild(wrapper);
+
+  streamOverlayInstance = new StreamOverlay(wrapper);
+
+  if (activeStreamQueue.length > 0) {
+    streamOverlayInstance.loadQueue(activeStreamQueue);
+  } else {
+    streamOverlayInstance.render();
+  }
 }
 
 // Search History storage helpers
