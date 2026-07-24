@@ -3021,14 +3021,22 @@ function renderBulkScanTab(container) {
     <div class="glass-panel bulk-scan-container">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
         <div>
-          <h2 style="font-size: 1.5rem; font-weight: 700; color: #fff; margin: 0 0 0.25rem 0;">🖨️ Bulk Scan & CSV Importer</h2>
+          <h2 style="font-size: 1.5rem; font-weight: 700; color: #fff; margin: 0 0 0.25rem 0; display: flex; align-items: center;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fb8500" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 10px;"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+            Bulk Scan & CSV Importer
+          </h2>
           <p style="color: #94a3b8; font-size: 0.9rem; margin: 0;">Lade eine PaperStream Index-CSV oder Standard-Karten-CSV hoch, um Kartendaten & Marktpreise abzufragen.</p>
         </div>
-        <button class="btn btn-secondary" id="btn-new-csv-upload" style="display: none;">📁 Neue CSV laden</button>
+        <button class="btn btn-secondary" id="btn-new-csv-upload" style="display: none; align-items: center;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          Neue CSV laden
+        </button>
       </div>
 
       <div class="dropzone-box" id="csv-dropzone">
-        <div class="dropzone-icon">📁</div>
+        <div class="dropzone-icon" style="display: flex; justify-content: center; margin-bottom: 1rem;">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#fb8500" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>
+        </div>
         <h3 style="color: #f8fafc; font-size: 1.1rem; margin: 0 0 0.5rem 0;">PaperStream / TCG CSV-Datei hier ablegen</h3>
         <p style="color: #94a3b8; font-size: 0.85rem; margin: 0 0 1rem 0;">oder Klicke zum Durchsuchen deiner Dateien</p>
         <input type="file" id="csv-file-input" accept=".csv,.txt" style="display: none;" />
@@ -3044,9 +3052,18 @@ function renderBulkScanTab(container) {
         <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1rem 0; flex-wrap: wrap; gap: 1rem;">
           <h3 style="color: #fff; font-size: 1.1rem; margin: 0;" id="scan-summary-title">Gescannt: 0 Karten</h3>
           <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-            <button class="btn btn-primary" id="btn-send-to-overlay">📱 An Stream Overlay senden</button>
-            <button class="btn btn-secondary" id="btn-save-scans-coll">💾 In Sammlung speichern</button>
-            <button class="btn btn-secondary" id="btn-export-enriched-csv">📥 CSV herunterladen</button>
+            <button class="btn btn-primary" id="btn-send-to-overlay" style="display: inline-flex; align-items: center;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+              An Stream Overlay senden
+            </button>
+            <button class="btn btn-secondary" id="btn-save-scans-coll" style="display: inline-flex; align-items: center;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              In Sammlung speichern
+            </button>
+            <button class="btn btn-secondary" id="btn-export-enriched-csv" style="display: inline-flex; align-items: center;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              CSV herunterladen
+            </button>
           </div>
         </div>
 
@@ -3126,7 +3143,7 @@ function renderBulkScanTab(container) {
 
       processingInd.style.display = 'none';
       resultsArea.style.display = 'block';
-      btnNewUpload.style.display = 'inline-block';
+      btnNewUpload.style.display = 'inline-flex';
       renderResults(items);
     };
     reader.readAsText(file);
@@ -3146,6 +3163,10 @@ function renderBulkScanTab(container) {
       const cmUrl = buildCardmarketSearchUrl(item);
       const imgMarkup = item.imageUrl ? `<img src="${getProxiedImageUrl(item.imageUrl)}" class="scan-card-thumb" style="width: 28px; height: 38px; object-fit: cover; border-radius: 4px; cursor: pointer; border: 1px solid rgba(255,255,255,0.2);" alt="Thumb" title="Klicken für Großansicht" />` : '';
 
+      const badgeContent = isMatched
+        ? `<span class="status-badge matched"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fb8500" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> In DB</span>`
+        : `<span class="status-badge needs_review"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#d4d4d8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Nicht in DB</span>`;
+
       tr.innerHTML = `
         <td>${index + 1}</td>
         <td>
@@ -3157,14 +3178,11 @@ function renderBulkScanTab(container) {
         <td><strong>${item.detectedName || item.rawName || 'Karte'}</strong></td>
         <td style="color: ${hasPrice ? '#fb8500' : '#a1a1aa'}; font-weight: 700;">${priceText}</td>
         <td style="color: #a1a1aa; font-size: 0.85rem;">${checkDetails}</td>
-        <td>
-          <span class="status-badge ${isMatched ? 'matched' : 'needs_review'}">
-            ${isMatched ? '✅ In DB' : '⚠️ Nicht in DB'}
-          </span>
-        </td>
+        <td>${badgeContent}</td>
         <td style="text-align: right;">
-          <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 0.8rem; background: rgba(251, 133, 0, 0.15); border: 1px solid rgba(251, 133, 0, 0.4); color: #fb8500; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;">
-            Check price now ↗
+          <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 0.8rem; background: rgba(251, 133, 0, 0.15); border: 1px solid rgba(251, 133, 0, 0.4); color: #fb8500; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-weight: 600;">
+            Check price now
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           </a>
         </td>
       `;
