@@ -577,12 +577,11 @@ async function init() {
         if (isNewUser) {
           loadCachedUserData(currentUser.id);
         }
-        const currentPath = window.location.hash.slice(1) || '/watchlist';
-        if (currentPath === '/login' || currentPath === '/') {
-          navigate('/watchlist', false);
-        } else {
-          navigate(currentPath, false);
+        let currentPath = window.location.hash.slice(1) || '/watchlist';
+        if (currentPath.startsWith('access_token=') || currentPath.startsWith('error=') || currentPath.includes('provider_token') || currentPath === '/login' || currentPath === '/') {
+          currentPath = '/watchlist';
         }
+        navigate(currentPath, false);
       } else {
         currentUser = null;
         markedCards = [];
@@ -603,12 +602,11 @@ async function init() {
     if (session) {
       currentUser = session.user;
       loadCachedUserData(currentUser.id);
-      const currentPath = window.location.hash.slice(1) || '/watchlist';
-      if (currentPath === '/' || currentPath === '/login') {
-        navigate('/watchlist', false);
-      } else {
-        navigate(currentPath, false);
+      let currentPath = window.location.hash.slice(1) || '/watchlist';
+      if (currentPath.startsWith('access_token=') || currentPath.startsWith('error=') || currentPath.includes('provider_token') || currentPath === '/' || currentPath === '/login') {
+        currentPath = '/watchlist';
       }
+      navigate(currentPath, false);
     } else {
       navigate('/login', false);
     }

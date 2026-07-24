@@ -42,13 +42,14 @@ export class BulkScanner {
     if (code) item.detectedCode = code;
 
     try {
+      const safeCode = code.replace(/[\/\\%_]/g, '');
       const altCode = code.replace('/', '-');
       const numberPart = code.includes('/') ? code.split('/')[0] : (code.includes('-') ? code.split('-')[1] : code);
 
-      // Build OR query candidates for global price_history table
+      // Build OR query candidates for global price_history table (no unescaped slashes in PostgREST .or())
       const queryCandidates = [];
-      if (code) queryCandidates.push(`card_id.ilike.%${code}%`);
-      if (altCode && altCode !== code) queryCandidates.push(`card_id.ilike.%${altCode}%`);
+      if (altCode) queryCandidates.push(`card_id.ilike.%${altCode}%`);
+      if (safeCode && safeCode !== altCode) queryCandidates.push(`card_id.ilike.%${safeCode}%`);
       if (numberPart && numberPart.length >= 2) queryCandidates.push(`card_id.ilike.%${numberPart}%`);
       if (cleanName && cleanName.length >= 3 && cleanName.toLowerCase() !== 'karte') {
         queryCandidates.push(`card_id.ilike.%${cleanName}%`);
@@ -119,8 +120,8 @@ export class BulkScanner {
         if (targetCid || code) {
           const imgQueries = [];
           if (targetCid) imgQueries.push(`card_id.eq.${targetCid}`);
-          if (code) imgQueries.push(`card_id.ilike.%${code}%`);
-          if (altCode && altCode !== code) imgQueries.push(`card_id.ilike.%${altCode}%`);
+          if (altCode) imgQueries.push(`card_id.ilike.%${altCode}%`);
+          if (safeCode && safeCode !== altCode) imgQueries.push(`card_id.ilike.%${safeCode}%`);
 
           const { data: imgData } = await supabase
             .from('card_images')
