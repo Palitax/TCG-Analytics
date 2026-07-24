@@ -1117,12 +1117,13 @@ function renderLogin(container) {
 
   div.querySelector('#btn-login').addEventListener('click', async () => {
     try {
-      const cleanOrigin = window.location.origin.replace(/\/+$/, '');
-      const redirectUrl = `${cleanOrigin}/`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: redirectUrl
+          redirectTo: window.location.origin,
+          queryParams: {
+            prompt: 'select_account'
+          }
         }
       });
       if (error) throw error;
