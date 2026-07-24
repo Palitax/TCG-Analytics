@@ -25,9 +25,11 @@ export class BulkScanner {
   }
 
   async enrichItemWithMarketData(item) {
-    const code = item.detectedCode || extractCardCode(item.rawCode || item.rawName || item.rawFile);
+    const code = (item.detectedCode || extractCardCode(item.rawCode || item.rawName || item.rawFile) || '').trim();
+    const rawFullName = item.detectedName || item.rawName || '';
+    const cleanName = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
 
-    if (!code) {
+    if (!code && !cleanName) {
       item.status = 'needs_review';
       item.lastPrice = null;
       item.lastCheckDate = null;
@@ -35,49 +37,89 @@ export class BulkScanner {
       return item;
     }
 
-    item.detectedCode = code;
+    if (code) item.detectedCode = code;
 
     try {
-      // 1. Check price_history for latest recorded Cardmarket price
-      const cleanCode = code.trim();
-      const altCode = cleanCode.replace('/', '-');
+      const altCode = code.replace('/', '-');
+      const numberPart = code.includes('/') ? code.split('/')[0] : (code.includes('-') ? code.split('-')[1] : code);
 
-      const { data: historyData, error: historyError } = await supabase
-        .from('price_history')
-        .select('*')
-        .or(`card_id.ilike.%${cleanCode}%,card_id.ilike.%${altCode}%`)
-        .order('scanned_at', { ascending: false })
-        .limit(1);
-
-      if (!historyError && historyData && historyData.length > 0) {
-        const record = historyData[0];
-        item.status = 'matched';
-        item.lastPrice = parseFloat(record.price) || null;
-        item.lastCheckDate = formatTimestamp(record.scanned_at);
-        item.filterInfo = formatFilterInfo(record.comment);
-        item.detectedName = item.detectedName || cleanCardName(record.card_id) || item.rawName;
-        return item;
+      // Build OR query candidates for global price_history table
+      const queryCandidates = [];
+      if (code) queryCandidates.push(`card_id.ilike.%${code}%`);
+      if (altCode && altCode !== code) queryCandidates.push(`card_id.ilike.%${altCode}%`);
+      if (numberPart && numberPart.length >= 2) queryCandidates.push(`card_id.ilike.%${numberPart}%`);
+      if (cleanName && cleanName.length >= 3 && cleanName.toLowerCase() !== 'karte') {
+        queryCandidates.push(`card_id.ilike.%${cleanName}%`);
       }
 
-      // 2. Query cards table as fallback for DB match
-      const { data: cardsData, error: cardsError } = await supabase
-        .from('cards')
-        .select('*')
-        .or(`card_number.ilike.%${cleanCode}%,name.ilike.%${cleanCode}%`)
-        .limit(1);
+      if (queryCandidates.length > 0) {
+        const { data: historyData, error: historyError } = await supabase
+          .from('price_history')
+          .select('*')
+          .or(queryCandidates.join(','))
+          .order('scanned_at', { ascending: false })
+          .limit(30);
 
-      if (!cardsError && cardsData && cardsData.length > 0) {
-        const card = cardsData[0];
-        item.status = 'matched';
-        item.cardDetails = card;
-        item.detectedName = card.name || item.detectedName || item.rawName;
-        item.lastPrice = card.price ? parseFloat(card.price) : null;
-        item.lastCheckDate = card.updated_at ? formatTimestamp(card.updated_at) : null;
-        item.filterInfo = 'Standard Filter';
-        return item;
+        if (!historyError && historyData && historyData.length > 0) {
+          // Filter historyData for best match
+          let bestRecord = null;
+
+          for (const rec of historyData) {
+            const cid = (rec.card_id || '').toLowerCase();
+            const cLower = code.toLowerCase();
+            const altLower = altCode.toLowerCase();
+            const numLower = (numberPart || '').toLowerCase();
+            const nameLower = (cleanName || '').toLowerCase();
+
+            const matchesCode = cLower && cid.includes(cLower);
+            const matchesAlt = altLower && cid.includes(altLower);
+            const matchesNum = numLower && cid.includes(numLower);
+            const matchesName = nameLower && nameLower !== 'karte' && cid.includes(nameLower);
+
+            if ((matchesCode || matchesAlt || (matchesNum && matchesName)) && (matchesName || !cleanName)) {
+              bestRecord = rec;
+              break;
+            }
+          }
+
+          if (!bestRecord && historyData.length > 0) {
+            bestRecord = historyData[0];
+          }
+
+          if (bestRecord) {
+            item.status = 'matched';
+            item.lastPrice = parseFloat(bestRecord.price) || null;
+            item.lastCheckDate = formatTimestamp(bestRecord.scanned_at);
+            item.filterInfo = formatFilterInfo(bestRecord.comment);
+            item.detectedName = item.detectedName || cleanCardName(bestRecord.card_id) || item.rawName;
+            item.cardDetails = { cardmarket_url: bestRecord.card_id };
+            return item;
+          }
+        }
       }
 
-      // 3. Not found in DB -> NO fake prices! Set to null for user to check on CM
+      // 2. Query cards table as secondary DB fallback
+      if (code || cleanName) {
+        const cardQuery = code ? `card_number.ilike.%${code}%,name.ilike.%${code}%` : `name.ilike.%${cleanName}%`;
+        const { data: cardsData, error: cardsError } = await supabase
+          .from('cards')
+          .select('*')
+          .or(cardQuery)
+          .limit(1);
+
+        if (!cardsError && cardsData && cardsData.length > 0) {
+          const card = cardsData[0];
+          item.status = 'matched';
+          item.cardDetails = card;
+          item.detectedName = card.name || item.detectedName || item.rawName;
+          item.lastPrice = card.price ? parseFloat(card.price) : null;
+          item.lastCheckDate = card.updated_at ? formatTimestamp(card.updated_at) : null;
+          item.filterInfo = 'Standard Filter';
+          return item;
+        }
+      }
+
+      // Not in DB -> NO fake prices!
       item.status = 'needs_review';
       item.lastPrice = null;
       item.lastCheckDate = null;
@@ -103,7 +145,7 @@ export class BulkScanner {
       `"${item.rawFile || ''}"`,
       `"${item.rawCondition || 'Near Mint'}"`,
       `"${item.rawLanguage || 'EN'}"`,
-      item.lastPrice !== null ? item.lastPrice.toFixed(2) : '',
+      item.lastPrice !== null && item.lastPrice !== undefined ? item.lastPrice.toFixed(2) : '',
       `"${item.lastCheckDate || 'Kein Check'}"`,
       `"${item.filterInfo || ''}"`,
       `"${item.status}"`
@@ -142,5 +184,7 @@ function formatTimestamp(isoString) {
 
 function cleanCardName(cardId) {
   if (!cardId) return '';
-  return cardId.replace(/[-_]/g, ' ').trim();
+  const parts = cardId.split('/');
+  const lastPart = parts[parts.length - 1] || cardId;
+  return lastPart.replace(/[-_]/g, ' ').trim();
 }
