@@ -1113,7 +1113,8 @@ function renderLogin(container) {
 
   div.querySelector('#btn-login').addEventListener('click', async () => {
     try {
-      const redirectUrl = window.location.origin;
+      const cleanOrigin = window.location.origin.replace(/\/+$/, '');
+      const redirectUrl = `${cleanOrigin}/`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -1123,7 +1124,7 @@ function renderLogin(container) {
       if (error) throw error;
     } catch (err) {
       console.error('Google login error:', err);
-      alert('Google-Anmeldung fehlgeschlagen: ' + (err.message || err));
+      alert('Google-Anmeldung fehlgeschlagen: ' + (err.message || err.error_description || JSON.stringify(err)));
     }
   });
   return div;
@@ -3496,48 +3497,66 @@ async function loadCardDetails(cardId, tcg, pushState = true) {
   try {
     const rawId = (cardId || '').trim();
     const cleanPattern = rawId.split('/').pop().replace(/[\/\\%_]/g, '').trim();
-    const extractedCode = extractCardCode(rawId) || cleanPattern;
+    const extractedCode = extractCardCode(rawId);
 
     // Parallel fetch for sub-50ms performance
     const historyPromise = (async () => {
+      // 1. Try exact card_id match
       try {
-        if (cleanPattern) {
-          const { data, error } = await supabase
-            .from('price_history')
-            .select('price, condition, seller_country, language, comment, scanned_at')
-            .ilike('card_id', `%${cleanPattern}%`)
-            .order('scanned_at', { ascending: true })
-            .limit(100);
-          if (!error && data && data.length > 0) return data;
-        }
+        const { data, error } = await supabase
+          .from('price_history')
+          .select('price, condition, seller_country, language, comment, scanned_at')
+          .eq('card_id', rawId)
+          .order('scanned_at', { ascending: true });
+        if (!error && data && data.length > 0) return data;
+      } catch (e) {}
 
-        if (extractedCode && extractedCode !== cleanPattern) {
+      // 2. Try ilike with extractedCode (e.g. 94/123 or P-033 or MEW173)
+      if (extractedCode) {
+        try {
           const { data, error } = await supabase
             .from('price_history')
             .select('price, condition, seller_country, language, comment, scanned_at')
             .ilike('card_id', `%${extractedCode}%`)
-            .order('scanned_at', { ascending: true })
-            .limit(100);
+            .order('scanned_at', { ascending: true });
           if (!error && data && data.length > 0) return data;
-        }
-      } catch (e) {
-        console.error('Price history fetch error:', e);
+        } catch (e) {}
       }
+
+      // 3. Try ilike with cleanPattern (last path segment)
+      if (cleanPattern && cleanPattern.length >= 3) {
+        try {
+          const { data, error } = await supabase
+            .from('price_history')
+            .select('price, condition, seller_country, language, comment, scanned_at')
+            .ilike('card_id', `%${cleanPattern}%`)
+            .order('scanned_at', { ascending: true });
+          if (!error && data && data.length > 0) return data;
+        } catch (e) {}
+      }
+
       return [];
     })();
 
     const imagePromise = (async () => {
       try {
-        const pattern = cleanPattern || extractedCode;
-        if (pattern) {
-          const { data } = await supabase
+        // 1. Try exact card_id match in card_images
+        const { data: d1 } = await supabase
+          .from('card_images')
+          .select('image_url')
+          .eq('card_id', rawId)
+          .limit(1);
+        if (d1 && d1.length > 0 && d1[0].image_url) return d1[0].image_url;
+
+        // 2. Try ilike with extractedCode / pattern
+        const pattern = extractedCode || cleanPattern;
+        if (pattern && pattern.length >= 3) {
+          const { data: d2 } = await supabase
             .from('card_images')
             .select('image_url')
             .ilike('card_id', `%${pattern}%`)
             .limit(1);
-          if (data && data.length > 0 && data[0].image_url) {
-            return data[0].image_url;
-          }
+          if (d2 && d2.length > 0 && d2[0].image_url) return d2[0].image_url;
         }
       } catch (e) {}
       return null;
@@ -3555,17 +3574,17 @@ async function loadCardDetails(cardId, tcg, pushState = true) {
     const locations = Array.from(new Set(rawLocations)).sort();
     const languages = Array.from(new Set(rawLanguages)).sort();
 
-    // Ensure 'ALL' is present
+    // Ensure 'ALL' option is at the top
     if (!conditions.includes('ALL')) conditions.unshift('ALL');
     if (!locations.includes('ALL')) locations.unshift('ALL');
     if (!languages.includes('ALL')) languages.unshift('ALL');
 
     // Read initial bookmarked & collection states
-    const bookmarkRecord = markedCards.find(m => m.card_id === cardId || m.card_id?.includes(cleanPattern));
+    const bookmarkRecord = markedCards.find(m => m.card_id === cardId || (cleanPattern && m.card_id?.includes(cleanPattern)));
     const isCurrentlyMarked = !!bookmarkRecord;
     const bookmarkImageUrl = bookmarkRecord ? bookmarkRecord.image_url : null;
 
-    const collectionRecord = collectionCards.find(m => m.card_id === cardId || m.card_id?.includes(cleanPattern));
+    const collectionRecord = collectionCards.find(m => m.card_id === cardId || (cleanPattern && m.card_id?.includes(cleanPattern)));
     const isCurrentlyCollected = !!collectionRecord;
     const collectionImageUrl = collectionRecord ? collectionRecord.image_url : null;
 
