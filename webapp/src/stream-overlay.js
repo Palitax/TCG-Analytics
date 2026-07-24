@@ -171,7 +171,7 @@ export class StreamOverlay {
           <div class="so-details-container">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div class="so-card-badge">${cardCode}</div>
-              <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 6px 14px; font-size: 0.85rem; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #818cf8; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
+              <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 6px 14px; font-size: 0.85rem; background: rgba(251, 133, 0, 0.15); border: 1px solid rgba(251, 133, 0, 0.4); color: #fb8500; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
                 Check price now ↗
               </a>
             </div>
@@ -180,7 +180,7 @@ export class StreamOverlay {
             <div class="so-price-cards">
               <div class="so-price-card primary">
                 <span class="price-label">Letzter CM Preis</span>
-                <span class="price-value" style="color: ${hasPrice ? '#10b981' : '#94a3b8'};">${priceDisplay}</span>
+                <span class="price-value" style="color: ${hasPrice ? '#fb8500' : '#a1a1aa'};">${priceDisplay}</span>
               </div>
               <div class="so-price-card trend">
                 <span class="price-label">Letzter Check</span>

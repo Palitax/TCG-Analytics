@@ -3155,15 +3155,15 @@ function renderBulkScanTab(container) {
           </div>
         </td>
         <td><strong>${item.detectedName || item.rawName || 'Karte'}</strong></td>
-        <td style="color: ${hasPrice ? '#10b981' : '#94a3b8'}; font-weight: 700;">${priceText}</td>
-        <td style="color: #94a3b8; font-size: 0.85rem;">${checkDetails}</td>
+        <td style="color: ${hasPrice ? '#fb8500' : '#a1a1aa'}; font-weight: 700;">${priceText}</td>
+        <td style="color: #a1a1aa; font-size: 0.85rem;">${checkDetails}</td>
         <td>
           <span class="status-badge ${isMatched ? 'matched' : 'needs_review'}">
             ${isMatched ? '✅ In DB' : '⚠️ Nicht in DB'}
           </span>
         </td>
         <td style="text-align: right;">
-          <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 0.8rem; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #818cf8; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;">
+          <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 0.8rem; background: rgba(251, 133, 0, 0.15); border: 1px solid rgba(251, 133, 0, 0.4); color: #fb8500; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;">
             Check price now ↗
           </a>
         </td>
