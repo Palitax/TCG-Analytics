@@ -1016,16 +1016,21 @@ async function fetchMarkedCards() {
 
 // Hash-based routing navigation helper
 async function navigate(path, pushState = true) {
-  if (pushState) {
-    window.location.hash = path;
-    return;
-  }
-  
   const hash = path || '/watchlist';
   const queryIdx = hash.indexOf('?');
   const pathname = queryIdx === -1 ? hash : hash.slice(0, queryIdx);
   const search = queryIdx === -1 ? '' : hash.slice(queryIdx);
   const searchParams = new URLSearchParams(search);
+
+  if (pushState) {
+    try {
+      if (window.location.hash !== '#' + hash) {
+        window.history.pushState(null, '', '#' + hash);
+      }
+    } catch(e) {
+      window.location.hash = hash;
+    }
+  }
   
   if (pathname === '/login') {
     await setView('login');
