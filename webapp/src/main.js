@@ -244,6 +244,16 @@ function getCachedCardImage(cardId) {
   }
 }
 
+// Global keyboard listener for Card Detail View navigation
+let detailKeydownListener = null;
+
+function cleanupDetailKeydownListener() {
+  if (detailKeydownListener) {
+    document.removeEventListener('keydown', detailKeydownListener);
+    detailKeydownListener = null;
+  }
+}
+
 function setCachedCardImage(cardId, imageUrl) {
   if (!cardId || !imageUrl) return;
   try {
@@ -841,6 +851,7 @@ async function navigate(path, pushState = true) {
 
 // Main View Router
 async function setView(view) {
+  cleanupDetailKeydownListener();
   currentView = view;
   await render();
 
@@ -2977,6 +2988,7 @@ async function loadLatestPriceForDashboard(card) {
 
 // Load full price list and filters for card details panel
 async function loadCardDetails(cardId, tcg, pushState = true) {
+  cleanupDetailKeydownListener();
   setView('loading');
   if (pushState) {
     window.location.hash = `/detail?card_id=${encodeURIComponent(cardId)}&tcg=${encodeURIComponent(tcg)}`;
@@ -3581,18 +3593,50 @@ function renderDetail(container) {
   selLang.addEventListener('change', onFilterChange);
   selLoc.addEventListener('change', onFilterChange);
 
-  // Watchlist previous/next navigation
-  const currentIndex = markedCards.findIndex(m => m.card_id === details.cardId);
-  if (currentIndex !== -1) {
-    const prevCard = currentIndex > 0 ? markedCards[currentIndex - 1] : null;
-    const nextCard = currentIndex < markedCards.length - 1 ? markedCards[currentIndex + 1] : null;
+  // Navigation logic (Watchlist, Collection, or Search Grid)
+  cleanupDetailKeydownListener();
 
+  let activeList = [];
+  if (collectionCards.some(c => c.card_id === details.cardId)) {
+    activeList = collectionCards;
+  } else if (markedCards.some(m => m.card_id === details.cardId)) {
+    activeList = markedCards;
+  } else if (typeof gridCards !== 'undefined' && gridCards && gridCards.some(g => g.card_id === details.cardId)) {
+    activeList = gridCards;
+  }
+
+  const currentIndex = activeList.findIndex(c => c.card_id === details.cardId);
+  if (currentIndex !== -1) {
+    const prevCard = currentIndex > 0 ? activeList[currentIndex - 1] : null;
+    const nextCard = currentIndex < activeList.length - 1 ? activeList[currentIndex + 1] : null;
+
+    // 1. Keyboard Arrow Key Navigation (Desktop & Mobile Keyboard)
+    detailKeydownListener = (e) => {
+      const activeEl = document.activeElement;
+      const isInputFocused = activeEl && (
+        activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.tagName === 'SELECT' ||
+        activeEl.isContentEditable
+      );
+      if (isInputFocused) return;
+
+      if (e.key === 'ArrowLeft' && prevCard) {
+        e.preventDefault();
+        loadCardDetails(prevCard.card_id, prevCard.tcg);
+      } else if (e.key === 'ArrowRight' && nextCard) {
+        e.preventDefault();
+        loadCardDetails(nextCard.card_id, nextCard.tcg);
+      }
+    };
+    document.addEventListener('keydown', detailKeydownListener);
+
+    // 2. Desktop Arrow UI Buttons
     if (!checkIsMobile()) {
-      // Desktop Pfeile links und rechts
       if (prevCard) {
         const prevBtn = document.createElement('button');
         prevBtn.className = 'detail-nav-btn prev-btn';
-        prevBtn.title = `Vorherige Karte: ${cleanCardName(prevCard.card_id)}`;
+        prevBtn.title = `Vorherige Karte (Pfeil Links): ${cleanCardName(prevCard.card_id)}`;
         prevBtn.innerHTML = `
           <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="24" height="24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
@@ -3606,7 +3650,7 @@ function renderDetail(container) {
       if (nextCard) {
         const nextBtn = document.createElement('button');
         nextBtn.className = 'detail-nav-btn next-btn';
-        nextBtn.title = `Nächste Karte: ${cleanCardName(nextCard.card_id)}`;
+        nextBtn.title = `Nächste Karte (Pfeil Rechts): ${cleanCardName(nextCard.card_id)}`;
         nextBtn.innerHTML = `
           <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="24" height="24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
@@ -3617,33 +3661,33 @@ function renderDetail(container) {
         });
         wrapper.appendChild(nextBtn);
       }
-    } else {
-      // Mobile swipe gestures on the detail page wrapper
-      let touchStartX = 0;
-      let touchStartY = 0;
-      
-      wrapper.addEventListener('touchstart', (e) => {
-        touchStartX = e.touches[0].clientX;
-        touchStartY = e.touches[0].clientY;
-      }, { passive: true });
-
-      wrapper.addEventListener('touchend', (e) => {
-        if (e.changedTouches.length === 0) return;
-        const touchEndX = e.changedTouches[0].clientX;
-        const touchEndY = e.changedTouches[0].clientY;
-        const deltaX = touchEndX - touchStartX;
-        const deltaY = touchEndY - touchStartY;
-
-        // Verify it was a horizontal swipe of significant distance (> 80px)
-        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 80) {
-          if (deltaX > 0 && prevCard) {
-            loadCardDetails(prevCard.card_id, prevCard.tcg);
-          } else if (deltaX < 0 && nextCard) {
-            loadCardDetails(nextCard.card_id, nextCard.tcg);
-          }
-        }
-      }, { passive: true });
     }
+
+    // 3. Mobile Touch Swipe Gestures
+    let touchStartX = 0;
+    let touchStartY = 0;
+    
+    wrapper.addEventListener('touchstart', (e) => {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+
+    wrapper.addEventListener('touchend', (e) => {
+      if (e.changedTouches.length === 0) return;
+      const touchEndX = e.changedTouches[0].clientX;
+      const touchEndY = e.changedTouches[0].clientY;
+      const deltaX = touchEndX - touchStartX;
+      const deltaY = touchEndY - touchStartY;
+
+      // Verify horizontal swipe (> 50px)
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+        if (deltaX > 0 && prevCard) {
+          loadCardDetails(prevCard.card_id, prevCard.tcg);
+        } else if (deltaX < 0 && nextCard) {
+          loadCardDetails(nextCard.card_id, nextCard.tcg);
+        }
+      }
+    }, { passive: true });
   }
 
   // --- Clipped Images Suggestions Logic ---
