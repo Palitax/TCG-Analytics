@@ -145,56 +145,62 @@ async function refreshSession(refreshToken) {
   }
 }
 
-// Trigger Google OAuth authorization flow via launchWebAuthFlow
+// Trigger Google OAuth authorization flow via launchWebAuthFlow, with fallback to Webapp Login tab
 async function loginUser() {
   const redirectUrl = chrome.identity.getRedirectURL();
   const authUrl = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`;
 
-  console.log("Starting Web Auth Flow on URL:", authUrl);
+  console.log("Starting Web Auth Flow on URL:", authUrl, "Redirect URL:", redirectUrl);
   
-  return new Promise((resolve, reject) => {
-    chrome.identity.launchWebAuthFlow({
-      url: authUrl,
-      interactive: true
-    }, async (responseUrl) => {
-      if (chrome.runtime.lastError || !responseUrl) {
-        console.error("OAuth Flow Error:", chrome.runtime.lastError);
-        return reject(new Error(chrome.runtime.lastError?.message || "OAuth Flow cancelled"));
-      }
-
-      try {
-        // Parse returned tokens from URL hash fragment
-        const url = new URL(responseUrl.replace('#', '?'));
-        const accessToken = url.searchParams.get('access_token');
-        const refreshToken = url.searchParams.get('refresh_token');
-
-        if (!accessToken || !refreshToken) {
-          throw new Error("Missing tokens in OAuth callback response");
+  try {
+    return await new Promise((resolve, reject) => {
+      chrome.identity.launchWebAuthFlow({
+        url: authUrl,
+        interactive: true
+      }, async (responseUrl) => {
+        if (chrome.runtime.lastError || !responseUrl) {
+          const errMsg = chrome.runtime.lastError?.message || "OAuth Flow cancelled";
+          console.warn("[SW] launchWebAuthFlow warning:", errMsg);
+          return reject(new Error(errMsg));
         }
 
-        // Decode JWT payload to get user details
-        const payload = decodeJWT(accessToken);
-        if (!payload) {
-          throw new Error("Failed to decode JWT response from OAuth provider");
-        }
+        try {
+          const url = new URL(responseUrl.replace('#', '?'));
+          const accessToken = url.searchParams.get('access_token');
+          const refreshToken = url.searchParams.get('refresh_token');
 
-        const session = {
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          user: {
-            id: payload.sub,
-            email: payload.email
+          if (!accessToken || !refreshToken) {
+            throw new Error("Missing tokens in OAuth callback response");
           }
-        };
 
-        await chrome.storage.local.set({ session });
-        console.log("Login successful for user:", payload.email);
-        resolve(session);
-      } catch (err) {
-        reject(err);
-      }
+          const payload = decodeJWT(accessToken);
+          if (!payload) {
+            throw new Error("Failed to decode JWT response from OAuth provider");
+          }
+
+          const session = {
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            user: {
+              id: payload.sub,
+              email: payload.email
+            }
+          };
+
+          await chrome.storage.local.set({ session });
+          console.log("Login successful for user:", payload.email);
+          resolve(session);
+        } catch (err) {
+          reject(err);
+        }
+      });
     });
-  });
+  } catch (flowError) {
+    console.warn("[SW] launchWebAuthFlow failed, opening webapp login tab fallback...", flowError.message);
+    const webappUrl = "https://tcg-analytics-chi.vercel.app/#/login";
+    await chrome.tabs.create({ url: webappUrl });
+    throw new Error("Bitte schließe die Google-Anmeldung im geöffneten Browser-Tab ab.");
+  }
 }
 
 // Main message listener
