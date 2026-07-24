@@ -3244,9 +3244,30 @@ function renderBulkScanTab(container) {
   });
 }
 
+// Active user resolver helper
+async function getActiveUser() {
+  if (currentUser?.id) return currentUser;
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData?.session?.user) {
+      currentUser = sessionData.session.user;
+      return currentUser;
+    }
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData?.user) {
+      currentUser = userData.user;
+      return currentUser;
+    }
+  } catch (e) {
+    console.warn('Error resolving active user:', e);
+  }
+  return null;
+}
+
 // Cross-device Stream Session sync helpers (uses existing marked_cards table)
 async function syncStreamQueueToSupabase(queue, currentIndex = 0) {
-  if (!currentUser?.id) return;
+  const user = await getActiveUser();
+  if (!user?.id) return;
   try {
     const payload = JSON.stringify({ queue, index: currentIndex, timestamp: Date.now() });
 
@@ -3254,19 +3275,23 @@ async function syncStreamQueueToSupabase(queue, currentIndex = 0) {
     await supabase
       .from('marked_cards')
       .delete()
-      .eq('user_id', currentUser.id)
+      .eq('user_id', user.id)
       .eq('card_id', '__STREAM_QUEUE__');
 
     // 2. Insert fresh queue payload
-    await supabase
+    const { error: insertErr } = await supabase
       .from('marked_cards')
       .insert([{
-        user_id: currentUser.id,
+        user_id: user.id,
         card_id: '__STREAM_QUEUE__',
         tcg: 'StreamQueue',
         comment: payload,
         created_at: new Date().toISOString()
       }]);
+
+    if (insertErr) {
+      console.warn('Insert to marked_cards warn:', insertErr);
+    }
 
     // 3. Fallback: also update user_metadata
     await supabase.auth.updateUser({
@@ -3278,13 +3303,14 @@ async function syncStreamQueueToSupabase(queue, currentIndex = 0) {
 }
 
 async function fetchStreamQueueFromSupabase() {
-  if (!currentUser?.id) return null;
+  const user = await getActiveUser();
+  if (!user?.id) return null;
   try {
     // 1. Query marked_cards table for __STREAM_QUEUE__
     const { data, error } = await supabase
       .from('marked_cards')
       .select('comment')
-      .eq('user_id', currentUser.id)
+      .eq('user_id', user.id)
       .eq('card_id', '__STREAM_QUEUE__')
       .order('created_at', { ascending: false })
       .limit(1);
@@ -3330,12 +3356,14 @@ async function renderStreamOverlayTab(container) {
         streamOverlayInstance.loadQueue(activeStreamQueue);
         streamOverlayInstance.currentIndex = synced.index || 0;
         streamOverlayInstance.render();
+      } else {
+        alert('Keine Stream-Queue in Supabase gefunden. Bitte importiere auf dem Mac eine CSV und klicke auf "An Stream Overlay senden".');
       }
     }
   });
 
-  // If activeStreamQueue is empty in local memory, attempt fetching from Supabase for cross-device sync (e.g. Mac -> Tablet)
-  if (activeStreamQueue.length === 0 && currentUser?.id) {
+  // Always attempt to fetch from Supabase if activeStreamQueue is empty
+  if (activeStreamQueue.length === 0) {
     const synced = await fetchStreamQueueFromSupabase();
     if (synced && synced.queue && synced.queue.length > 0) {
       activeStreamQueue = synced.queue;
