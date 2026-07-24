@@ -118,29 +118,64 @@ export class StreamOverlay {
   }
 
   nextCard() {
-    if (this.currentIndex < this.queue.length - 1) {
-      this.currentIndex++;
+    const grid = this.container.querySelector('.so-content-grid');
+    if (grid) grid.classList.add('so-slide-out');
+
+    setTimeout(() => {
+      if (this.currentIndex < this.queue.length - 1) {
+        this.currentIndex++;
+      } else {
+        this.currentIndex = this.queue.length; // Finished
+      }
       this.render();
-    } else {
-      this.currentIndex = this.queue.length; // Finished
-      this.render();
-    }
+      const newGrid = this.container.querySelector('.so-content-grid');
+      if (newGrid) {
+        newGrid.classList.add('so-slide-in');
+        setTimeout(() => newGrid.classList.remove('so-slide-in'), 250);
+      }
+    }, 200);
   }
 
   prevCard() {
-    if (this.currentIndex > 0) {
-      this.currentIndex--;
+    const grid = this.container.querySelector('.so-content-grid');
+    if (grid) grid.classList.add('so-slide-out');
+
+    setTimeout(() => {
+      if (this.currentIndex > 0) {
+        this.currentIndex--;
+      }
       this.render();
-    }
+      const newGrid = this.container.querySelector('.so-content-grid');
+      if (newGrid) {
+        newGrid.classList.add('so-slide-in');
+        setTimeout(() => newGrid.classList.remove('so-slide-in'), 250);
+      }
+    }, 200);
   }
 
   markAsSold() {
-    const card = this.queue[this.currentIndex];
-    if (card) {
-      const price = card.lastPrice !== null && card.lastPrice !== undefined ? card.lastPrice : 0;
-      this.totalSoldValue += price;
-    }
-    this.nextCard();
+    const grid = this.container.querySelector('.so-content-grid');
+    if (grid) grid.classList.add('so-slide-out');
+
+    setTimeout(() => {
+      const card = this.queue[this.currentIndex];
+      if (card) {
+        const price = card.lastPrice !== null && card.lastPrice !== undefined ? card.lastPrice : 0;
+        this.totalSoldValue += price;
+      }
+      if (this.currentIndex < this.queue.length - 1) {
+        this.currentIndex++;
+      } else {
+        this.currentIndex = this.queue.length;
+      }
+      this.render();
+
+      const newGrid = this.container.querySelector('.so-content-grid');
+      if (newGrid) {
+        newGrid.classList.add('so-slide-in');
+        setTimeout(() => newGrid.classList.remove('so-slide-in'), 250);
+      }
+    }, 200);
   }
 
   toggleFullscreen() {
@@ -217,12 +252,12 @@ export class StreamOverlay {
 
     const currentCard = this.queue[this.currentIndex];
     const cardCode = currentCard.detectedCode || currentCard.rawCode || 'Code k.A.';
-    const cardName = currentCard.detectedName || currentCard.rawName || 'Unbekannte Karte';
+    const cardName = currentCard.detectedName || currentCard.rawName || 'Karte';
     const hasPrice = currentCard.lastPrice !== null && currentCard.lastPrice !== undefined;
     const priceDisplay = hasPrice ? `${currentCard.lastPrice.toFixed(2)} €` : 'Keine DB-Daten';
     const checkDisplay = currentCard.lastCheckRelative || currentCard.lastCheckDate || 'Noch nicht gecheckt';
     const filterDisplay = currentCard.filterInfo || 'Standard Filter';
-    const imageSrc = currentCard.rawFile || currentCard.imageUrl || currentCard.cardDetails?.image_url || 'assets/card-placeholder.png';
+    const imageSrc = currentCard.imageUrl || currentCard.cardDetails?.image_url || null;
     const cmUrl = getCardmarketSearchUrl(currentCard);
 
     const filterBadgesHtml = renderFilterBadges(filterDisplay, currentCard.rawCondition, currentCard.rawLanguage);
@@ -253,7 +288,12 @@ export class StreamOverlay {
 
         <div class="so-content-grid">
           <div class="so-image-container">
-            <img src="${imageSrc}" alt="${cardName}" class="so-card-img" onerror="this.src='https://images.pokemontcg.io/sv3pt5/1_hires.png'" />
+            ${imageSrc ? `<img src="${imageSrc}" alt="${cardName}" class="so-card-img" />` : `
+              <div class="so-no-img-box">
+                <div style="font-size: 3.5rem; margin-bottom: 0.5rem; opacity: 0.6;">🖼️</div>
+                <div style="color: #a1a1aa; font-weight: 600; font-size: 0.95rem;">Kein Bild in DB</div>
+              </div>
+            `}
           </div>
 
           <div class="so-details-container">
@@ -311,7 +351,7 @@ export class StreamOverlay {
     if (soldBtn) {
       soldBtn.addEventListener('click', () => {
         soldBtn.classList.add('sold-animated');
-        setTimeout(() => this.markAsSold(), 150);
+        this.markAsSold();
       });
     }
 
