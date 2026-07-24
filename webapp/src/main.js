@@ -794,7 +794,7 @@ async function fetchMarkedCards() {
 
     if (error) throw error;
     
-    let listData = data || [];
+    let listData = (data || []).filter(item => item.card_id !== '__STREAM_QUEUE__');
     const orderKey = `watchlist_order_${currentUser.id}`;
     let savedOrder = [];
     try {
@@ -3235,24 +3235,34 @@ function renderBulkScanTab(container) {
   });
 }
 
-// Cross-device Stream Session sync helpers
+// Cross-device Stream Session sync helpers (uses existing marked_cards table)
 async function syncStreamQueueToSupabase(queue, currentIndex = 0) {
   if (!currentUser?.id) return;
   try {
-    const { error } = await supabase
-      .from('stream_sessions')
-      .upsert({
-        user_id: currentUser.id,
-        queue: queue,
-        current_index: currentIndex,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'user_id' });
+    const payload = JSON.stringify({ queue, index: currentIndex, timestamp: Date.now() });
 
-    if (error) {
-      await supabase.auth.updateUser({
-        data: { active_stream_queue: queue, stream_index: currentIndex }
-      });
-    }
+    // 1. Delete existing queue marker in marked_cards table
+    await supabase
+      .from('marked_cards')
+      .delete()
+      .eq('user_id', currentUser.id)
+      .eq('card_id', '__STREAM_QUEUE__');
+
+    // 2. Insert fresh queue payload
+    await supabase
+      .from('marked_cards')
+      .insert([{
+        user_id: currentUser.id,
+        card_id: '__STREAM_QUEUE__',
+        tcg: 'StreamQueue',
+        comment: payload,
+        created_at: new Date().toISOString()
+      }]);
+
+    // 3. Fallback: also update user_metadata
+    await supabase.auth.updateUser({
+      data: { active_stream_queue: queue, stream_index: currentIndex }
+    });
   } catch (e) {
     console.warn('Cross-device stream sync warning:', e);
   }
@@ -3261,18 +3271,30 @@ async function syncStreamQueueToSupabase(queue, currentIndex = 0) {
 async function fetchStreamQueueFromSupabase() {
   if (!currentUser?.id) return null;
   try {
+    // 1. Query marked_cards table for __STREAM_QUEUE__
     const { data, error } = await supabase
-      .from('stream_sessions')
-      .select('queue, current_index')
+      .from('marked_cards')
+      .select('comment')
       .eq('user_id', currentUser.id)
-      .maybeSingle();
+      .eq('card_id', '__STREAM_QUEUE__')
+      .order('created_at', { ascending: false })
+      .limit(1);
 
-    if (!error && data && data.queue && data.queue.length > 0) {
-      return { queue: data.queue, index: data.current_index || 0 };
+    if (!error && data && data.length > 0 && data[0].comment) {
+      try {
+        const parsed = JSON.parse(data[0].comment);
+        if (parsed && parsed.queue && parsed.queue.length > 0) {
+          return { queue: parsed.queue, index: parsed.index || 0 };
+        }
+      } catch (err) {}
     }
 
-    const metaQueue = currentUser.user_metadata?.active_stream_queue;
-    const metaIndex = currentUser.user_metadata?.stream_index || 0;
+    // 2. Fallback: fetch fresh user object directly from Supabase Auth
+    const { data: userData } = await supabase.auth.getUser();
+    const freshUser = userData?.user;
+    const metaQueue = freshUser?.user_metadata?.active_stream_queue;
+    const metaIndex = freshUser?.user_metadata?.stream_index || 0;
+
     if (metaQueue && metaQueue.length > 0) {
       return { queue: metaQueue, index: metaIndex };
     }
