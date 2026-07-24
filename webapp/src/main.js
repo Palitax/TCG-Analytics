@@ -3035,7 +3035,7 @@ function renderBulkScanTab(container) {
 
       <div class="dropzone-box" id="csv-dropzone">
         <div class="dropzone-icon" style="display: flex; justify-content: center; margin-bottom: 1rem;">
-          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#fb8500" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><polyline points="9 14 12 11 15 14"/></svg>
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#fb8500" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>
         </div>
         <h3 style="color: #f8fafc; font-size: 1.1rem; margin: 0 0 0.5rem 0;">PaperStream / TCG CSV-Datei hier ablegen</h3>
         <p style="color: #94a3b8; font-size: 0.85rem; margin: 0 0 1rem 0;">oder Klicke zum Durchsuchen deiner Dateien</p>
