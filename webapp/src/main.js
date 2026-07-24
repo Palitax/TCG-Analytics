@@ -5,6 +5,22 @@ import { BulkScanner } from './bulk-scanner.js';
 import { StreamOverlay } from './stream-overlay.js';
 Chart.register(...registerables);
 
+// WebKit / motion animation safety wrapper
+function safeAnimate(element, keyframes, options) {
+  if (!element) return;
+  try {
+    if (typeof animate === 'function') {
+      const anim = animate(element, keyframes, options);
+      if (anim && typeof anim.catch === 'function') {
+        anim.catch(() => {});
+      }
+      return anim;
+    }
+  } catch (e) {
+    console.warn('Animation skipped:', e);
+  }
+}
+
 // Global state variables
 let currentUser = null;
 let currentView = 'loading'; // 'loading', 'login', 'dashboard', 'detail'
