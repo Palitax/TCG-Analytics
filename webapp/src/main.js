@@ -3018,35 +3018,35 @@ function renderBulkScanTab(container) {
   const wrapper = document.createElement('div');
   wrapper.className = 'dashboard-content bulk-scan-view';
   wrapper.innerHTML = `
-    <div class="dashboard-content bulk-scan-view">
+    <div class="glass-panel bulk-scan-container">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
         <div>
-          <h2 style="color: #fff; margin: 0 0 0.35rem 0; font-size: 1.6rem; font-weight: 800;">Bulk Scan & CSV Importer</h2>
-          <p style="color: #94a3b8; margin: 0; font-size: 0.95rem;">Lade PaperStream Scans oder CSV-Dateien hoch, um deine Karten direkt mit Live-Marktdaten abzugleichen.</p>
+          <h2 style="font-size: 1.5rem; font-weight: 700; color: #fff; margin: 0 0 0.25rem 0;">🖨️ Bulk Scan & CSV Importer</h2>
+          <p style="color: #94a3b8; font-size: 0.9rem; margin: 0;">Lade eine PaperStream Index-CSV oder Standard-Karten-CSV hoch, um Kartendaten & Marktpreise abzufragen.</p>
         </div>
-        <button class="so-shadcn-secondary-btn" id="btn-new-csv-upload" style="display: none;">📁 Neue CSV laden</button>
+        <button class="shadcn-btn shadcn-btn-secondary" id="btn-new-csv-upload" style="display: none;">📁 Neue CSV laden</button>
       </div>
 
-      <div class="dropzone-box" id="csv-dropzone">
+      <div class="dropzone-box" id="csv-dropzone" style="cursor: pointer;">
         <div class="dropzone-icon">📁</div>
-        <h3 style="color: #f8fafc; font-size: 1.2rem; margin: 0 0 0.5rem 0; font-weight: 700;">PaperStream / TCG CSV-Datei hier ablegen</h3>
-        <p style="color: #94a3b8; font-size: 0.9rem; margin: 0 0 1.25rem 0;">oder Klicke überall in diese Fläche zum Durchsuchen deiner Dateien</p>
+        <h3 style="color: #f8fafc; font-size: 1.15rem; margin: 0 0 0.5rem 0; font-weight: 700;">PaperStream / TCG CSV-Datei hier ablegen</h3>
+        <p style="color: #94a3b8; font-size: 0.9rem; margin: 0 0 1.25rem 0;">oder Klicke auf die gesamte Fläche zum Durchsuchen deiner Dateien</p>
         <input type="file" id="csv-file-input" accept=".csv,.txt" style="display: none;" />
-        <button class="so-shadcn-secondary-btn" id="btn-select-csv">CSV-Datei auswählen</button>
+        <button class="shadcn-btn shadcn-btn-primary" id="btn-select-csv" type="button">CSV-Datei auswählen</button>
       </div>
 
-      <div id="bulk-processing-indicator" style="display: none; text-align: center; padding: 2.5rem;">
+      <div id="bulk-processing-indicator" style="display: none; text-align: center; padding: 2rem;">
         <div class="spinner" style="margin: 0 auto 1rem auto;"></div>
-        <p style="color: #e2e8f0; font-size: 1rem; font-weight: 600;">Analysiere Scans & frage Cardmarket Live-Preise ab...</p>
+        <p style="color: #e2e8f0; font-size: 0.95rem;">Analysiere Scans & frage Cardmarket Live-Preise ab...</p>
       </div>
 
       <div id="bulk-results-area" style="display: none;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.75rem 0 1.25rem 0; flex-wrap: wrap; gap: 1.25rem;">
-          <h3 style="color: #fff; font-size: 1.2rem; margin: 0; font-weight: 800;" id="scan-summary-title">Gescannt: 0 Karten</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1.25rem 0; flex-wrap: wrap; gap: 1rem;">
+          <h3 style="color: #fff; font-size: 1.15rem; margin: 0; font-weight: 700;" id="scan-summary-title">Gescannt: 0 Karten</h3>
           <div style="display: flex; gap: 0.85rem; flex-wrap: wrap; align-items: center;">
-            <button class="so-shadcn-primary-btn" id="btn-send-to-overlay" style="width: auto; padding: 0.75rem 1.6rem;">📱 An Stream Overlay senden</button>
-            <button class="so-shadcn-secondary-btn" id="btn-save-scans-coll">💾 In Sammlung speichern</button>
-            <button class="so-shadcn-secondary-btn" id="btn-export-enriched-csv">📥 CSV herunterladen</button>
+            <button class="shadcn-btn shadcn-btn-primary" id="btn-send-to-overlay" type="button">📱 An Stream Overlay senden</button>
+            <button class="shadcn-btn shadcn-btn-secondary" id="btn-save-scans-coll" type="button">💾 In Sammlung speichern</button>
+            <button class="shadcn-btn shadcn-btn-secondary" id="btn-export-enriched-csv" type="button">📥 CSV herunterladen</button>
           </div>
         </div>
 
@@ -3083,15 +3083,14 @@ function renderBulkScanTab(container) {
   const btnSaveColl = wrapper.querySelector('#btn-save-scans-coll');
   const btnExportCsv = wrapper.querySelector('#btn-export-enriched-csv');
 
-  btnSelect.addEventListener('click', (e) => {
-    e.stopPropagation();
+  // Entire dropzone area opens file picker on click
+  dropzone.addEventListener('click', (e) => {
     fileInput.click();
   });
 
-  dropzone.addEventListener('click', (e) => {
-    if (e.target !== fileInput) {
-      fileInput.click();
-    }
+  btnSelect.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fileInput.click();
   });
 
   btnNewUpload.addEventListener('click', () => {
@@ -3135,7 +3134,7 @@ function renderBulkScanTab(container) {
 
       processingInd.style.display = 'none';
       resultsArea.style.display = 'block';
-      btnNewUpload.style.display = 'inline-flex';
+      btnNewUpload.style.display = 'inline-block';
       renderResults(items);
     };
     reader.readAsText(file);
@@ -3201,7 +3200,7 @@ function renderBulkScanTab(container) {
   if (bulkScannerInstance.scanItems && bulkScannerInstance.scanItems.length > 0) {
     dropzone.style.display = 'none';
     resultsArea.style.display = 'block';
-    btnNewUpload.style.display = 'inline-flex';
+    btnNewUpload.style.display = 'inline-block';
     renderResults(bulkScannerInstance.scanItems);
   }
 
@@ -3244,109 +3243,68 @@ function renderBulkScanTab(container) {
   });
 }
 
-// Active user resolver helper
-async function getActiveUser() {
-  if (currentUser?.id) return currentUser;
-  try {
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (sessionData?.session?.user) {
-      currentUser = sessionData.session.user;
-      return currentUser;
-    }
-    const { data: userData } = await supabase.auth.getUser();
-    if (userData?.user) {
-      currentUser = userData.user;
-      return currentUser;
-    }
-  } catch (e) {
-    console.warn('Error resolving active user:', e);
-  }
-  return null;
-}
-
-// Cross-device Stream Session sync helpers (uses dual persistence: Auth metadata + marked_cards)
+// Cross-device Stream Session sync helpers (uses existing marked_cards table)
 async function syncStreamQueueToSupabase(queue, currentIndex = 0) {
-  const user = await getActiveUser();
-  if (!user?.id) return;
+  if (!currentUser?.id) return;
   try {
-    // Method 1: Persist in Supabase Auth user_metadata
-    const { error: authErr } = await supabase.auth.updateUser({
-      data: { active_stream_queue: queue, stream_index: currentIndex }
-    });
-    if (authErr) console.warn('Auth updateUser metadata warn:', authErr);
+    const payload = JSON.stringify({ queue, index: currentIndex, timestamp: Date.now() });
 
-    // Method 2: Clear old stream items in marked_cards table
+    // 1. Delete existing queue marker in marked_cards table
     await supabase
       .from('marked_cards')
       .delete()
-      .eq('user_id', user.id)
-      .eq('tcg', 'StreamQueue');
+      .eq('user_id', currentUser.id)
+      .eq('card_id', '__STREAM_QUEUE__');
 
-    // Method 2: Insert individual cards as lightweight rows in marked_cards table
-    if (queue && queue.length > 0) {
-      const rows = queue.map((item, idx) => ({
-        user_id: user.id,
+    // 2. Insert fresh queue payload
+    await supabase
+      .from('marked_cards')
+      .insert([{
+        user_id: currentUser.id,
+        card_id: '__STREAM_QUEUE__',
         tcg: 'StreamQueue',
-        card_id: `STREAM_${idx + 1}_${(item.detectedCode || item.rawCode || 'CARD').replace(/[^a-zA-Z0-9_-]/g, '')}`,
-        comment: JSON.stringify({
-          rawCode: item.rawCode || '',
-          detectedCode: item.detectedCode || '',
-          rawName: item.rawName || '',
-          detectedName: item.detectedName || '',
-          rawFile: item.rawFile || '',
-          imageUrl: item.imageUrl || null,
-          lastPrice: item.lastPrice !== undefined ? item.lastPrice : null,
-          lastCheckRelative: item.lastCheckRelative || null,
-          filterInfo: item.filterInfo || null,
-          rawCondition: item.rawCondition || 'Near Mint',
-          rawLanguage: item.rawLanguage || 'EN'
-        }),
+        comment: payload,
         created_at: new Date().toISOString()
-      }));
+      }]);
 
-      const { error: insertErr } = await supabase.from('marked_cards').insert(rows);
-      if (insertErr) console.warn('marked_cards StreamQueue insert warn:', insertErr);
-    }
+    // 3. Fallback: also update user_metadata
+    await supabase.auth.updateUser({
+      data: { active_stream_queue: queue, stream_index: currentIndex }
+    });
   } catch (e) {
     console.warn('Cross-device stream sync warning:', e);
   }
 }
 
 async function fetchStreamQueueFromSupabase() {
-  const user = await getActiveUser();
-  if (!user?.id) return null;
+  if (!currentUser?.id) return null;
   try {
-    // Method 1: Fetch fresh user object directly from Supabase Auth
+    // 1. Query marked_cards table for __STREAM_QUEUE__
+    const { data, error } = await supabase
+      .from('marked_cards')
+      .select('comment')
+      .eq('user_id', currentUser.id)
+      .eq('card_id', '__STREAM_QUEUE__')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (!error && data && data.length > 0 && data[0].comment) {
+      try {
+        const parsed = JSON.parse(data[0].comment);
+        if (parsed && parsed.queue && parsed.queue.length > 0) {
+          return { queue: parsed.queue, index: parsed.index || 0 };
+        }
+      } catch (err) {}
+    }
+
+    // 2. Fallback: fetch fresh user object directly from Supabase Auth
     const { data: userData } = await supabase.auth.getUser();
     const freshUser = userData?.user;
     const metaQueue = freshUser?.user_metadata?.active_stream_queue;
     const metaIndex = freshUser?.user_metadata?.stream_index || 0;
 
-    if (metaQueue && Array.isArray(metaQueue) && metaQueue.length > 0) {
+    if (metaQueue && metaQueue.length > 0) {
       return { queue: metaQueue, index: metaIndex };
-    }
-
-    // Method 2: Query marked_cards table for rows where tcg = 'StreamQueue'
-    const { data, error } = await supabase
-      .from('marked_cards')
-      .select('comment, created_at')
-      .eq('user_id', user.id)
-      .eq('tcg', 'StreamQueue')
-      .order('created_at', { ascending: true });
-
-    if (!error && data && data.length > 0) {
-      const restoredQueue = [];
-      for (const row of data) {
-        if (row.comment) {
-          try {
-            const parsed = JSON.parse(row.comment);
-            restoredQueue.push(parsed);
-          } catch (e) {}
-        }
-      }
-      if (restoredQueue.length > 0) {
-        return { queue: restoredQueue, index: 0 };
-      }
     }
   } catch (e) {
     console.warn('Error fetching cross-device stream queue:', e);
@@ -3354,7 +3312,7 @@ async function fetchStreamQueueFromSupabase() {
   return null;
 }
 
-// Stream Overlay Tab Renderer with automatic Cross-Device Sync & Refresh
+// Stream Overlay Tab Renderer with automatic Cross-Device Sync
 async function renderStreamOverlayTab(container) {
   container.innerHTML = '';
 
@@ -3363,22 +3321,10 @@ async function renderStreamOverlayTab(container) {
   wrapper.id = 'stream-overlay-view-wrapper';
   container.appendChild(wrapper);
 
-  streamOverlayInstance = new StreamOverlay(wrapper, {
-    onRefresh: async () => {
-      const synced = await fetchStreamQueueFromSupabase();
-      if (synced && synced.queue && synced.queue.length > 0) {
-        activeStreamQueue = synced.queue;
-        streamOverlayInstance.loadQueue(activeStreamQueue);
-        streamOverlayInstance.currentIndex = synced.index || 0;
-        streamOverlayInstance.render();
-      } else {
-        alert('Keine Stream-Queue in Supabase gefunden. Bitte importiere auf dem Mac eine CSV und klicke auf "An Stream Overlay senden".');
-      }
-    }
-  });
+  streamOverlayInstance = new StreamOverlay(wrapper);
 
-  // Always attempt to fetch from Supabase if activeStreamQueue is empty
-  if (activeStreamQueue.length === 0) {
+  // If activeStreamQueue is empty in local memory, attempt fetching from Supabase for cross-device sync (e.g. Mac -> Tablet)
+  if (activeStreamQueue.length === 0 && currentUser?.id) {
     const synced = await fetchStreamQueueFromSupabase();
     if (synced && synced.queue && synced.queue.length > 0) {
       activeStreamQueue = synced.queue;
