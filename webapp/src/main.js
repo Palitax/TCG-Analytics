@@ -597,12 +597,71 @@ function parseHistoryItem(item) {
   };
 }
 
+function decodeJWT(token) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    return null;
+  }
+}
+
 // Initialize PWA App
 async function init() {
   setView('loading');
   
-  // Clean hash fragment immediately if returning from OAuth
-  if (window.location.hash.includes('access_token=') || window.location.hash.includes('error=') || window.location.hash.includes('provider_token')) {
+  // Handle OAuth redirect token fragment from Google
+  if (window.location.hash.includes('access_token=')) {
+    try {
+      const hashString = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
+      const hashParams = new URLSearchParams(hashString);
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+
+      if (accessToken) {
+        const payload = decodeJWT(accessToken);
+        if (payload && payload.sub) {
+          currentUser = {
+            id: payload.sub,
+            email: payload.email || 'user@tcg-tracker.local',
+            user_metadata: payload.user_metadata || {}
+          };
+
+          const sessionObj = {
+            access_token: accessToken,
+            refresh_token: refreshToken || '',
+            user: currentUser
+          };
+
+          try {
+            await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken || ''
+            });
+          } catch (e) {}
+
+          window.history.replaceState(null, '', window.location.pathname + '#/watchlist');
+          
+          document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_SESSION', {
+            detail: { session: sessionObj }
+          }));
+
+          loadCachedUserData(currentUser.id);
+          navigate('/watchlist', false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Manual OAuth token extraction warning:', e);
+    }
+  }
+
+  // Clean hash fragment if returning from OAuth with error or provider token
+  if (window.location.hash.includes('error=') || window.location.hash.includes('provider_token')) {
     try {
       window.history.replaceState(null, '', window.location.pathname + '#/watchlist');
     } catch(e) {}
