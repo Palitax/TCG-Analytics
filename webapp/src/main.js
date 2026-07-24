@@ -3413,30 +3413,30 @@ async function syncStreamQueueToSupabase(queue, currentIndex = 0) {
 async function fetchStreamQueueFromSupabase() {
   if (!currentUser?.id) return null;
   try {
-    // 1. Query marked_cards table for __STREAM_QUEUE__
-    const { data, error } = await supabase
-      .from('marked_cards')
-      .select('comment')
-      .eq('user_id', currentUser.id)
-      .eq('card_id', '__STREAM_QUEUE__')
-      .order('created_at', { ascending: false })
-      .limit(1);
+    const encQueueId = encodeURIComponent('__STREAM_QUEUE__');
+    const url = `${SUPABASE_URL}/rest/v1/marked_cards?select=comment&user_id=eq.${encodeURIComponent(currentUser.id)}&card_id=eq.${encQueueId}&order=created_at.desc&limit=1`;
+    const resp = await fetch(url, {
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      },
+      credentials: 'omit'
+    });
 
-    if (!error && data && data.length > 0 && data[0].comment) {
-      try {
-        const parsed = JSON.parse(data[0].comment);
-        if (parsed && parsed.queue && parsed.queue.length > 0) {
-          return { queue: parsed.queue, index: parsed.index || 0 };
-        }
-      } catch (err) {}
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data && data.length > 0 && data[0].comment) {
+        try {
+          const parsed = JSON.parse(data[0].comment);
+          if (parsed && parsed.queue && parsed.queue.length > 0) {
+            return { queue: parsed.queue, index: parsed.index || 0 };
+          }
+        } catch (err) {}
+      }
     }
 
-    // 2. Fallback: fetch fresh user object directly from Supabase Auth
-    const { data: userData } = await supabase.auth.getUser();
-    const freshUser = userData?.user;
-    const metaQueue = freshUser?.user_metadata?.active_stream_queue;
-    const metaIndex = freshUser?.user_metadata?.stream_index || 0;
-
+    const metaQueue = currentUser?.user_metadata?.active_stream_queue;
+    const metaIndex = currentUser?.user_metadata?.stream_index || 0;
     if (metaQueue && metaQueue.length > 0) {
       return { queue: metaQueue, index: metaIndex };
     }
