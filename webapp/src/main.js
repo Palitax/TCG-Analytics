@@ -686,20 +686,28 @@ async function init() {
 
 async function fetchBulkPriceHistory(cardIds) {
   if (!cardIds || cardIds.length === 0) return [];
-  const chunkSize = 30;
+  const validIds = Array.from(new Set(cardIds.filter(id => id && typeof id === 'string')));
+  if (validIds.length === 0) return [];
+
+  const chunkSize = 20;
   const results = [];
-  for (let i = 0; i < cardIds.length; i += chunkSize) {
-    const chunk = cardIds.slice(i, i + chunkSize);
+  for (let i = 0; i < validIds.length; i += chunkSize) {
+    const chunk = validIds.slice(i, i + chunkSize);
     try {
-      const { data, error } = await supabase
-        .from('price_history')
-        .select('card_id, price, comment, scanned_at')
-        .in('card_id', chunk)
-        .order('scanned_at', { ascending: true });
-      if (error) {
-        console.error('Error fetching price_history chunk:', error);
-      } else if (data) {
-        results.push(...data);
+      const encodedChunk = chunk.map(id => `"${id.replace(/"/g, '""')}"`).join(',');
+      const url = `${SUPABASE_URL}/rest/v1/price_history?select=card_id,price,comment,scanned_at&card_id=in.(${encodeURIComponent(encodedChunk)})&order=scanned_at.asc`;
+      
+      const resp = await fetch(url, {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        },
+        credentials: 'omit'
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data) results.push(...data);
       }
     } catch (e) {
       console.error('Chunked price_history fetch exception:', e);
@@ -710,19 +718,28 @@ async function fetchBulkPriceHistory(cardIds) {
 
 async function fetchBulkCardImages(cardIds) {
   if (!cardIds || cardIds.length === 0) return [];
-  const chunkSize = 30;
+  const validIds = Array.from(new Set(cardIds.filter(id => id && typeof id === 'string')));
+  if (validIds.length === 0) return [];
+
+  const chunkSize = 20;
   const results = [];
-  for (let i = 0; i < cardIds.length; i += chunkSize) {
-    const chunk = cardIds.slice(i, i + chunkSize);
+  for (let i = 0; i < validIds.length; i += chunkSize) {
+    const chunk = validIds.slice(i, i + chunkSize);
     try {
-      const { data, error } = await supabase
-        .from('card_images')
-        .select('card_id, image_url')
-        .in('card_id', chunk);
-      if (error) {
-        console.error('Error fetching card_images chunk:', error);
-      } else if (data) {
-        results.push(...data);
+      const encodedChunk = chunk.map(id => `"${id.replace(/"/g, '""')}"`).join(',');
+      const url = `${SUPABASE_URL}/rest/v1/card_images?select=card_id,image_url&card_id=in.(${encodeURIComponent(encodedChunk)})`;
+
+      const resp = await fetch(url, {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        },
+        credentials: 'omit'
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data) results.push(...data);
       }
     } catch (e) {
       console.error('Chunked card_images fetch exception:', e);
@@ -736,25 +753,19 @@ async function fetchCollectionCards() {
   if (!currentUser) return;
   try {
     let listData = [];
-    const { data, error } = await supabase
-      .from('collection_cards')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .order('created_at', { ascending: false });
-
-    if (!error && data) {
-      listData = data;
-    } else {
-      console.warn('collection_cards query failed, using anon key fallback...', error?.message);
-      try {
-        const resp = await fetch(`${SUPABASE_URL}/rest/v1/collection_cards?select=*&user_id=eq.${currentUser.id}&order=created_at.desc`, {
-          headers: { apikey: SUPABASE_ANON_KEY }
-        });
-        if (resp.ok) {
-          listData = await resp.json();
-        }
-      } catch (fErr) {}
-    }
+    const url = `${SUPABASE_URL}/rest/v1/collection_cards?select=*&user_id=eq.${encodeURIComponent(currentUser.id)}&order=created_at.desc`;
+    try {
+      const resp = await fetch(url, {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        },
+        credentials: 'omit'
+      });
+      if (resp.ok) {
+        listData = await resp.json();
+      }
+    } catch (fErr) {}
 
     const cardIds = (listData || []).map(c => c.card_id);
     if (cardIds.length > 0) {
@@ -860,25 +871,19 @@ async function fetchMarkedCards() {
   if (!currentUser) return;
   try {
     let listData = [];
-    const { data, error } = await supabase
-      .from('marked_cards')
-      .select('id, card_id, tcg, comment, target_price, condition, language, seller_country, created_at')
-      .eq('user_id', currentUser.id)
-      .order('created_at', { ascending: false });
-
-    if (!error && data) {
-      listData = data;
-    } else {
-      console.warn('marked_cards query failed, using anon key fallback...', error?.message);
-      try {
-        const resp = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?select=id,card_id,tcg,comment,target_price,condition,language,seller_country,created_at&user_id=eq.${currentUser.id}&order=created_at.desc`, {
-          headers: { apikey: SUPABASE_ANON_KEY }
-        });
-        if (resp.ok) {
-          listData = await resp.json();
-        }
-      } catch (fErr) {}
-    }
+    const url = `${SUPABASE_URL}/rest/v1/marked_cards?select=id,card_id,tcg,comment,target_price,condition,language,seller_country,created_at&user_id=eq.${encodeURIComponent(currentUser.id)}&order=created_at.desc`;
+    try {
+      const resp = await fetch(url, {
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        },
+        credentials: 'omit'
+      });
+      if (resp.ok) {
+        listData = await resp.json();
+      }
+    } catch (fErr) {}
     
     // Purge legacy stream queue items from database so they never clutter the watchlist
     supabase
