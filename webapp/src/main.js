@@ -297,35 +297,35 @@ function compressImage(base64Str, maxWidth = 350) {
 // Upload image to Supabase Storage bucket 'card-images'
 async function uploadImageToStorage(cardId, base64Str) {
   try {
-    const compressed = await compressImage(base64Str, 350);
+    const sanitizedId = cardId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+    const fileName = `card_${sanitizedId}.webp`;
+
+    // Convert to WebP blob via canvas
+    const compressed = await compressImage(base64Str, 800);
     const blob = base64ToBlob(compressed);
-    const fileName = `${encodeURIComponent(cardId)}_${Date.now()}.jpg`;
 
     const { data, error } = await supabase.storage
       .from('card-images')
       .upload(fileName, blob, {
-        contentType: 'image/jpeg',
+        contentType: 'image/webp',
+        cacheControl: '31536000',
         upsert: true
       });
 
     if (error) {
-      console.warn('Supabase storage upload failed, falling back to compressed base64:', error.message);
-      setCachedCardImage(cardId, compressed);
-      return compressed;
+      console.warn('Supabase storage upload failed:', error.message);
     }
 
     const { data: publicUrlData } = supabase.storage
       .from('card-images')
       .getPublicUrl(fileName);
 
-    const publicUrl = publicUrlData?.publicUrl || compressed;
+    const publicUrl = publicUrlData?.publicUrl || `${SUPABASE_URL}/storage/v1/object/public/card-images/${fileName}`;
     setCachedCardImage(cardId, publicUrl);
     return publicUrl;
   } catch (err) {
-    console.warn('Storage upload exception, using compressed base64:', err.message);
-    const compressed = await compressImage(base64Str, 350);
-    setCachedCardImage(cardId, compressed);
-    return compressed;
+    console.warn('Storage upload exception:', err.message);
+    return `${SUPABASE_URL}/storage/v1/object/public/card-images/card_${cardId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()}.webp`;
   }
 }
 
@@ -529,22 +529,21 @@ async function fetchCollectionCards() {
     let listData = data || [];
     const cardIds = listData.map(c => c.card_id);
     if (cardIds.length > 0) {
-      const missingCardIds = cardIds.filter(id => !getCachedCardImage(id));
-      if (missingCardIds.length > 0) {
-        try {
-          const globalImages = await fetchBulkCardImages(missingCardIds);
-          if (globalImages) {
-            for (const img of globalImages) {
+      try {
+        const globalImages = await fetchBulkCardImages(cardIds);
+        if (globalImages) {
+          for (const img of globalImages) {
+            if (img.image_url) {
               setCachedCardImage(img.card_id, img.image_url);
             }
           }
-        } catch (err) {
-          console.error('Error fetching global card images for collection:', err.message);
         }
+      } catch (err) {
+        console.error('Error fetching global card images for collection:', err.message);
       }
 
       for (const card of listData) {
-        card.image_url = getCachedCardImage(card.card_id) || null;
+        card.image_url = getCachedCardImage(card.card_id) || card.image_url || null;
       }
 
       // Bulk fetch price history for all cards
@@ -652,22 +651,21 @@ async function fetchMarkedCards() {
 
     const cardIds = listData.map(c => c.card_id);
     if (cardIds.length > 0) {
-      const missingCardIds = cardIds.filter(id => !getCachedCardImage(id));
-      if (missingCardIds.length > 0) {
-        try {
-          const globalImages = await fetchBulkCardImages(missingCardIds);
-          if (globalImages) {
-            for (const img of globalImages) {
+      try {
+        const globalImages = await fetchBulkCardImages(cardIds);
+        if (globalImages) {
+          for (const img of globalImages) {
+            if (img.image_url) {
               setCachedCardImage(img.card_id, img.image_url);
             }
           }
-        } catch (err) {
-          console.error('Error fetching global card images:', err.message);
         }
+      } catch (err) {
+        console.error('Error fetching global card images:', err.message);
       }
 
       for (const card of listData) {
-        card.image_url = getCachedCardImage(card.card_id) || null;
+        card.image_url = getCachedCardImage(card.card_id) || card.image_url || null;
       }
 
       // Bulk fetch price history for all cards
