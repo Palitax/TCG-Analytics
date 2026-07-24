@@ -1069,15 +1069,22 @@ function renderLogin(container) {
   container.appendChild(div);
 
   div.querySelector('#btn-login').addEventListener('click', async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-        queryParams: {
-          prompt: 'select_account'
+    try {
+      const redirectUrl = window.location.origin + window.location.pathname;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          queryParams: {
+            prompt: 'select_account'
+          }
         }
-      }
-    });
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.error('Google login error:', err);
+      alert('Google-Anmeldung fehlgeschlagen: ' + (err.message || err));
+    }
   });
   return div;
 }
@@ -3083,8 +3090,9 @@ function renderBulkScanTab(container) {
   const btnSaveColl = wrapper.querySelector('#btn-save-scans-coll');
   const btnExportCsv = wrapper.querySelector('#btn-export-enriched-csv');
 
-  // Entire dropzone area opens file picker on click
+  // Entire dropzone area opens file picker on click (with event recursion check)
   dropzone.addEventListener('click', (e) => {
+    if (e.target === fileInput) return;
     fileInput.click();
   });
 
@@ -3124,20 +3132,40 @@ function renderBulkScanTab(container) {
   });
 
   async function handleFile(file) {
+    if (!file) return;
     dropzone.style.display = 'none';
     processingInd.style.display = 'block';
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const text = event.target.result;
-      const items = await bulkScannerInstance.processCSVText(text);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const text = event.target.result;
+          const items = await bulkScannerInstance.processCSVText(text);
 
+          processingInd.style.display = 'none';
+          resultsArea.style.display = 'block';
+          btnNewUpload.style.display = 'inline-block';
+          renderResults(items);
+        } catch (err) {
+          console.error('Error processing CSV:', err);
+          alert('Fehler beim Verarbeiten der CSV-Datei: ' + err.message);
+          processingInd.style.display = 'none';
+          dropzone.style.display = 'block';
+        }
+      };
+      reader.onerror = (e) => {
+        console.error('FileReader error:', e);
+        alert('Fehler beim Lesen der Datei.');
+        processingInd.style.display = 'none';
+        dropzone.style.display = 'block';
+      };
+      reader.readAsText(file);
+    } catch (e) {
+      console.error('handleFile exception:', e);
       processingInd.style.display = 'none';
-      resultsArea.style.display = 'block';
-      btnNewUpload.style.display = 'inline-block';
-      renderResults(items);
-    };
-    reader.readAsText(file);
+      dropzone.style.display = 'block';
+    }
   }
 
   function renderResults(items) {
