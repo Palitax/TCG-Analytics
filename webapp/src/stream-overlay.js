@@ -189,7 +189,7 @@ export class StreamOverlay {
             <div class="so-price-cards">
               <div class="so-price-card primary">
                 <span class="price-label">Letzter CM Preis</span>
-                <span class="price-value" style="color: ${hasPrice ? '#fb8500' : '#a1a1aa'};">${priceDisplay}</span>
+                <span class="price-value" style="color: ${hasPrice ? '#10b981' : '#a1a1aa'};">${priceDisplay}</span>
               </div>
               <div class="so-price-card trend">
                 <span class="price-label">Letzter Check</span>

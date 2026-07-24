@@ -3176,7 +3176,7 @@ function renderBulkScanTab(container) {
           </div>
         </td>
         <td><strong>${item.detectedName || item.rawName || 'Karte'}</strong></td>
-        <td style="color: ${hasPrice ? '#fb8500' : '#a1a1aa'}; font-weight: 700;">${priceText}</td>
+        <td style="color: ${hasPrice ? '#10b981' : '#a1a1aa'}; font-weight: 700;">${priceText}</td>
         <td style="color: #a1a1aa; font-size: 0.85rem;">${checkDetails}</td>
         <td>${badgeContent}</td>
         <td style="text-align: right;">
