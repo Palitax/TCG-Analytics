@@ -7,19 +7,21 @@ document.documentElement.setAttribute('data-tcg-tracker-extension-active', 'true
 // Helper to safely send messages to background service worker without throwing context invalidation errors
 function safeSendMessage(message, callback) {
   try {
-    if (!chrome.runtime || !chrome.runtime.id) {
-      console.warn('TCG Tracker Extension reloaded. Please refresh the web page to reconnect.');
+    if (typeof chrome === 'undefined' || !chrome?.runtime?.id) {
       return;
     }
-    chrome.runtime.sendMessage(message, (res) => {
-      if (chrome.runtime?.lastError) {
-        console.warn('Extension communication warning:', chrome.runtime.lastError.message);
-        return;
+    const runtime = chrome.runtime;
+    runtime.sendMessage(message, (res) => {
+      try {
+        const lastErr = runtime?.lastError;
+        if (lastErr) return;
+        if (callback && res) callback(res);
+      } catch (cbErr) {
+        // Ignored safely if extension context invalidated
       }
-      if (callback) callback(res);
     });
   } catch (e) {
-    console.warn('Extension context invalidated:', e.message);
+    // Ignored safely if extension context invalidated
   }
 }
 
