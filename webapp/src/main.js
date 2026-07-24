@@ -1596,7 +1596,7 @@ function renderWatchlistTab(container) {
       </div>
       <div class="watchlist-item glass-panel" data-card-id="${card.id}" data-card-uuid="${card.card_id}">
         <div class="watchlist-item-img-container">
-          <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+          <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
           ${desktopCollectBtnHtml}
           ${desktopDeleteBtnHtml}
         </div>
@@ -2364,7 +2364,7 @@ function renderCollectionTab(container) {
       </div>
       <div class="watchlist-item glass-panel" data-card-id="${card.id}" data-card-uuid="${card.card_id}">
         <div class="watchlist-item-img-container">
-          <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+          <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
           ${desktopDeleteBtnHtml}
         </div>
         <div class="watchlist-item-info">
@@ -2797,7 +2797,7 @@ async function renderAnalyticsTab(container) {
         itemEl.className = 'watchlist-item-wrapper';
         itemEl.innerHTML = `
           <div class="watchlist-item glass-panel" data-card-id="${card.card_id}">
-            <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+            <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
             <div class="watchlist-item-info">
               <span class="watchlist-item-tcg">${card.tcg}</span>
               <span class="watchlist-item-name">${cleanCardName(card.card_id)}</span>

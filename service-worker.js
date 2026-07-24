@@ -3,6 +3,38 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5v
 
 
 
+// Convert Image Blob to WebP format with max dimension scaling via OffscreenCanvas
+async function convertImageBlobToWebP(blob, maxDimension = 800, quality = 0.8) {
+  if (!blob) return null;
+  try {
+    const imageBitmap = await createImageBitmap(blob);
+    let width = imageBitmap.width;
+    let height = imageBitmap.height;
+
+    if (width > maxDimension || height > maxDimension) {
+      if (width > height) {
+        height = Math.round((height * maxDimension) / width);
+        width = maxDimension;
+      } else {
+        width = Math.round((width * maxDimension) / height);
+        height = maxDimension;
+      }
+    }
+
+    const offscreen = new OffscreenCanvas(width, height);
+    const ctx = offscreen.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(imageBitmap, 0, 0, width, height);
+
+    const webpBlob = await offscreen.convertToBlob({ type: 'image/webp', quality: quality });
+    return webpBlob;
+  } catch (err) {
+    console.warn("OffscreenCanvas WebP conversion fallback:", err);
+    return blob;
+  }
+}
+
 // Fetch remote image and convert to Base64 in service worker background thread
 async function fetchAndConvertToBase64(url) {
   if (!url) return null;
@@ -29,7 +61,7 @@ async function fetchAndConvertToBase64(url) {
     return `data:${mimeType};base64,${base64}`;
   } catch (err) {
     console.error("Failed to convert image to base64 via proxy:", err);
-    return null; // Returning null here ensures clipping fails explicitly rather than saving a hotlink S3 url
+    return null;
   }
 }
 
@@ -652,31 +684,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                 // Attempt to upload image to Supabase Storage bucket 'card-images'
                 try {
-                  const mimeType = base64.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
-                  const ext = mimeType === 'image/png' ? 'png' : 'jpg';
-                  const base64Clean = base64.includes(',') ? base64.split(',')[1] : base64;
-                  const byteCharacters = atob(base64Clean);
-                  const byteNumbers = new Array(byteCharacters.length);
-                  for (let i = 0; i < byteCharacters.length; i++) {
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
-                  }
-                  const byteArray = new Uint8Array(byteNumbers);
-                  const blob = new Blob([byteArray], { type: mimeType });
-                  const fileName = `${encodeURIComponent(cardId)}_${Date.now()}.${ext}`;
+                  const sanitizedId = cardId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+                  const sanitizedTcg = tcg ? tcg.toLowerCase() : 'tcg';
+                  const fileName = `${sanitizedTcg}_${sanitizedId}.webp`;
+                  const bucketName = 'card-images';
+                  const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucketName}/${fileName}`;
 
-                  const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/card-images/${fileName}`, {
-                    method: "POST",
-                    headers: {
-                      "apikey": SUPABASE_ANON_KEY,
-                      "Authorization": `Bearer ${accessToken}`,
-                      "Content-Type": mimeType,
-                      "x-upsert": "true"
-                    },
-                    body: blob
-                  });
+                  // Deduplication Pre-check: HEAD request to check if file already exists in Storage
+                  let fileExists = false;
+                  try {
+                    const headCheck = await fetch(publicUrl, { method: 'HEAD' });
+                    if (headCheck.ok) {
+                      fileExists = true;
+                      finalImageUrl = publicUrl;
+                    }
+                  } catch (e) {}
 
-                  if (storageRes.ok) {
-                    finalImageUrl = `${SUPABASE_URL}/storage/v1/object/public/card-images/${fileName}`;
+                  if (!fileExists) {
+                    const rawResponse = await fetch(`https://tcg-analytics-chi.vercel.app/api/image-proxy?url=${encodeURIComponent(imageUrl)}`);
+                    let rawBlob = await rawResponse.blob();
+                    let webpBlob = await convertImageBlobToWebP(rawBlob, 800, 0.8);
+
+                    const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucketName}/${fileName}`, {
+                      method: "POST",
+                      headers: {
+                        "apikey": SUPABASE_ANON_KEY,
+                        "Authorization": `Bearer ${accessToken}`,
+                        "Content-Type": "image/webp",
+                        "cache-control": "31536000",
+                        "x-upsert": "true"
+                      },
+                      body: webpBlob
+                    });
+
+                    if (storageRes.ok) {
+                      finalImageUrl = publicUrl;
+                    }
                   }
                 } catch (stErr) {
                   console.warn("Storage upload in background failed, falling back to base64:", stErr);
