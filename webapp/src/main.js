@@ -807,7 +807,20 @@ async function fetchMarkedCards() {
 
     if (error) throw error;
     
-    let listData = (data || []).filter(item => item.card_id !== '__STREAM_QUEUE__');
+    // Purge legacy stream queue items from database so they never clutter the watchlist
+    supabase
+      .from('marked_cards')
+      .delete()
+      .eq('user_id', currentUser.id)
+      .or('tcg.eq.StreamQueue,card_id.ilike.STREAM_%')
+      .then(() => {})
+      .catch(() => {});
+
+    let listData = (data || []).filter(item => 
+      item.card_id !== '__STREAM_QUEUE__' && 
+      item.tcg !== 'StreamQueue' && 
+      (!item.card_id || !item.card_id.startsWith('STREAM_'))
+    );
     const orderKey = `watchlist_order_${currentUser.id}`;
     let savedOrder = [];
     try {
