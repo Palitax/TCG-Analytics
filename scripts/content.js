@@ -1854,50 +1854,6 @@ function hideClipperButton() {
 }
 
 async function convertDomImageToWebPDataUrl(imgEl, maxDimension = 800, quality = 0.8) {
-  const srcUrl = imgEl.src;
-
-  // Step 1: Load image with crossOrigin = 'anonymous' to avoid canvas tainting
-  if (srcUrl) {
-    try {
-      const cleanImg = await new Promise((resolve, reject) => {
-        const i = new Image();
-        i.crossOrigin = 'anonymous';
-        i.onload = () => resolve(i);
-        i.onerror = (e) => reject(e);
-        i.src = srcUrl;
-      });
-
-      const canvas = document.createElement('canvas');
-      let width = cleanImg.naturalWidth || cleanImg.width || 800;
-      let height = cleanImg.naturalHeight || cleanImg.height || 800;
-
-      if (width > maxDimension || height > maxDimension) {
-        if (width > height) {
-          height = Math.round((height * maxDimension) / width);
-          width = maxDimension;
-        } else {
-          width = Math.round((width * maxDimension) / height);
-          height = maxDimension;
-        }
-      }
-
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(cleanImg, 0, 0, width, height);
-
-      const dataUrl = canvas.toDataURL('image/webp', quality);
-      if (dataUrl && dataUrl.startsWith('data:image/webp')) {
-        return dataUrl;
-      }
-    } catch (e) {
-      console.warn('crossOrigin anonymous load failed, falling back to direct canvas draw:', e.message);
-    }
-  }
-
-  // Step 2: Direct DOM element draw fallback
   try {
     const canvas = document.createElement('canvas');
     let width = imgEl.naturalWidth || imgEl.width || 800;
@@ -1925,7 +1881,7 @@ async function convertDomImageToWebPDataUrl(imgEl, maxDimension = 800, quality =
       return dataUrl;
     }
   } catch (e) {
-    console.warn('Direct canvas draw tainted:', e.message);
+    // Silent fallback to background Service Worker fetch via declarativeNetRequest
   }
 
   return null;

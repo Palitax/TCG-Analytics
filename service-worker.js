@@ -3,6 +3,28 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5v
 
 
 
+// Register declarativeNetRequest rules to inject Cardmarket Referer header for Amazon S3 images
+if (typeof chrome !== 'undefined' && chrome.declarativeNetRequest) {
+  chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: [1001],
+    addRules: [{
+      id: 1001,
+      priority: 1,
+      action: {
+        type: 'modifyHeaders',
+        requestHeaders: [
+          { header: 'referer', operation: 'set', value: 'https://www.cardmarket.com/' },
+          { header: 'origin', operation: 'set', value: 'https://www.cardmarket.com' }
+        ]
+      },
+      condition: {
+        urlFilter: '*cardmarket.com*',
+        resourceTypes: ['xmlhttprequest', 'image', 'other']
+      }
+    }]
+  }).catch(err => console.warn('Failed setting declarativeNetRequest rules:', err));
+}
+
 // Convert Image Blob to WebP format with max dimension scaling via OffscreenCanvas
 async function convertImageBlobToWebP(blob, maxDimension = 800, quality = 0.8) {
   if (!blob) return null;
@@ -43,13 +65,7 @@ async function fetchImageBlob(url) {
       const res = await fetch(url);
       return await res.blob();
     }
-    // Fetch with Cardmarket Referer to prevent Amazon CloudFront 403 Forbidden
-    const response = await fetch(url, {
-      referrerPolicy: 'no-referrer',
-      headers: {
-        'Referer': 'https://www.cardmarket.com/'
-      }
-    });
+    const response = await fetch(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return await response.blob();
   } catch (err) {
