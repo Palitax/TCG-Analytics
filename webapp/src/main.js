@@ -1169,11 +1169,40 @@ function renderLogin(container) {
         <span style="display: none;">Sign in with Google</span>
       </div>
     </button>
+    <div style="margin-top: 16px; text-align: center;">
+      <button id="btn-reset-session" style="
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        cursor: pointer;
+        text-decoration: underline;
+        opacity: 0.7;
+      ">Browser-Cache & Login-Session zurücksetzen</button>
+    </div>
   `;
   container.appendChild(div);
 
+  div.querySelector('#btn-reset-session').addEventListener('click', () => {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (e) {}
+    window.location.reload();
+  });
+
   div.querySelector('#btn-login').addEventListener('click', async () => {
     try {
+      // Clear leftover auth tokens before initiating Google login
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && (key.includes('supabase') || key.includes('auth-token'))) {
+            localStorage.removeItem(key);
+          }
+        }
+      } catch (e) {}
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -1185,8 +1214,9 @@ function renderLogin(container) {
       });
       if (error) throw error;
     } catch (err) {
-      console.error('Google login error:', err);
-      alert('Google-Anmeldung fehlgeschlagen: ' + (err.message || err.error_description || JSON.stringify(err)));
+      console.warn('Google login error, performing direct OAuth redirect fallback:', err);
+      const authUrl = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(window.location.origin)}`;
+      window.location.href = authUrl;
     }
   });
   return div;
