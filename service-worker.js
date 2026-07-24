@@ -43,7 +43,13 @@ async function fetchImageBlob(url) {
       const res = await fetch(url);
       return await res.blob();
     }
-    const response = await fetch(url);
+    // Fetch with Cardmarket Referer to prevent Amazon CloudFront 403 Forbidden
+    const response = await fetch(url, {
+      referrerPolicy: 'no-referrer',
+      headers: {
+        'Referer': 'https://www.cardmarket.com/'
+      }
+    });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return await response.blob();
   } catch (err) {

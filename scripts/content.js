@@ -1854,7 +1854,50 @@ function hideClipperButton() {
 }
 
 async function convertDomImageToWebPDataUrl(imgEl, maxDimension = 800, quality = 0.8) {
-  // Method 1: Direct canvas capture from DOM element
+  const srcUrl = imgEl.src;
+
+  // Step 1: Load image with crossOrigin = 'anonymous' to avoid canvas tainting
+  if (srcUrl) {
+    try {
+      const cleanImg = await new Promise((resolve, reject) => {
+        const i = new Image();
+        i.crossOrigin = 'anonymous';
+        i.onload = () => resolve(i);
+        i.onerror = (e) => reject(e);
+        i.src = srcUrl;
+      });
+
+      const canvas = document.createElement('canvas');
+      let width = cleanImg.naturalWidth || cleanImg.width || 800;
+      let height = cleanImg.naturalHeight || cleanImg.height || 800;
+
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(cleanImg, 0, 0, width, height);
+
+      const dataUrl = canvas.toDataURL('image/webp', quality);
+      if (dataUrl && dataUrl.startsWith('data:image/webp')) {
+        return dataUrl;
+      }
+    } catch (e) {
+      console.warn('crossOrigin anonymous load failed, falling back to direct canvas draw:', e.message);
+    }
+  }
+
+  // Step 2: Direct DOM element draw fallback
   try {
     const canvas = document.createElement('canvas');
     let width = imgEl.naturalWidth || imgEl.width || 800;
@@ -1882,51 +1925,10 @@ async function convertDomImageToWebPDataUrl(imgEl, maxDimension = 800, quality =
       return dataUrl;
     }
   } catch (e) {
-    console.warn('Direct canvas draw tainted, falling back to same-origin blob fetch:', e.message);
+    console.warn('Direct canvas draw tainted:', e.message);
   }
 
-  // Method 2: Fetch same-origin blob from Cardmarket tab and render onto clean canvas
-  try {
-    const src = imgEl.src;
-    if (!src) return null;
-    const res = await fetch(src, { mode: 'cors', credentials: 'omit' });
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-
-    return new Promise((resolve) => {
-      const cleanImg = new Image();
-      cleanImg.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = cleanImg.width;
-        let height = cleanImg.height;
-
-        if (width > maxDimension || height > maxDimension) {
-          if (width > height) {
-            height = Math.round((height * maxDimension) / width);
-            width = maxDimension;
-          } else {
-            width = Math.round((width * maxDimension) / height);
-            height = maxDimension;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(cleanImg, 0, 0, width, height);
-        URL.revokeObjectURL(blobUrl);
-        resolve(canvas.toDataURL('image/webp', quality));
-      };
-      cleanImg.onerror = () => {
-        URL.revokeObjectURL(blobUrl);
-        resolve(null);
-      };
-      cleanImg.src = blobUrl;
-    });
-  } catch (err) {
-    console.error('Failed to convert image to WebP via blob fetch:', err);
-    return null;
-  }
+  return null;
 }
 
 async function clipImageAction(img) {
