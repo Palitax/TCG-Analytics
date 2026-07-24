@@ -278,7 +278,14 @@ function getSortedWatchlistCards() {
     });
   }
 
-  if (activeSortOption === 'date-desc') {
+  if (activeSortOption === 'no-image') {
+    sortedCards.sort((a, b) => {
+      const hasImgA = !!(a.image_url || getCachedCardImage(a.card_id));
+      const hasImgB = !!(b.image_url || getCachedCardImage(b.card_id));
+      if (hasImgA === hasImgB) return 0;
+      return hasImgA ? 1 : -1; // Cards without image come FIRST
+    });
+  } else if (activeSortOption === 'date-desc') {
     sortedCards.sort((a, b) => {
       const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
@@ -343,7 +350,14 @@ function getSortedCollectionCards() {
     card.resolved_diff_percent = basePrice > 0 ? ((latestPrice - basePrice) / basePrice) * 100 : 0;
   }
 
-  if (activeSortOption === 'date-desc') {
+  if (activeSortOption === 'no-image') {
+    sortedCards.sort((a, b) => {
+      const hasImgA = !!(a.image_url || getCachedCardImage(a.card_id));
+      const hasImgB = !!(b.image_url || getCachedCardImage(b.card_id));
+      if (hasImgA === hasImgB) return 0;
+      return hasImgA ? 1 : -1; // Cards without image come FIRST
+    });
+  } else if (activeSortOption === 'date-desc') {
     sortedCards.sort((a, b) => {
       const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
@@ -1481,6 +1495,7 @@ function renderWatchlistTab(container) {
         </svg>
         <select id="select-watchlist-sort" class="watchlist-sort-select">
           <option value="custom" ${activeSortOption === 'custom' ? 'selected' : ''}>Eigene Reihenfolge</option>
+          <option value="no-image" ${activeSortOption === 'no-image' ? 'selected' : ''}>Ohne Bild zuerst</option>
           <option value="date-desc" ${activeSortOption === 'date-desc' ? 'selected' : ''}>Zuletzt hinzugefügt</option>
           <option value="price-asc" ${activeSortOption === 'price-asc' ? 'selected' : ''}>Preis: Aufsteigend</option>
           <option value="price-desc" ${activeSortOption === 'price-desc' ? 'selected' : ''}>Preis: Absteigend</option>
@@ -2232,6 +2247,7 @@ function renderCollectionTab(container) {
         </svg>
         <select id="select-collection-sort" class="watchlist-sort-select">
           <option value="custom" ${activeSortOption === 'custom' ? 'selected' : ''}>Eigene Reihenfolge</option>
+          <option value="no-image" ${activeSortOption === 'no-image' ? 'selected' : ''}>Ohne Bild zuerst</option>
           <option value="date-desc" ${activeSortOption === 'date-desc' ? 'selected' : ''}>Zuletzt hinzugefügt</option>
           <option value="price-asc" ${activeSortOption === 'price-asc' ? 'selected' : ''}>Preis: Aufsteigend</option>
           <option value="price-desc" ${activeSortOption === 'price-desc' ? 'selected' : ''}>Preis: Absteigend</option>
