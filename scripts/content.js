@@ -1853,7 +1853,8 @@ function hideClipperButton() {
   activeHoverImage = null;
 }
 
-function convertDomImageToWebPDataUrl(imgEl, maxDimension = 800, quality = 0.8) {
+async function convertDomImageToWebPDataUrl(imgEl, maxDimension = 800, quality = 0.8) {
+  // Method 1: Direct canvas capture from DOM element
   try {
     const canvas = document.createElement('canvas');
     let width = imgEl.naturalWidth || imgEl.width || 800;
@@ -1876,9 +1877,54 @@ function convertDomImageToWebPDataUrl(imgEl, maxDimension = 800, quality = 0.8) 
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(imgEl, 0, 0, width, height);
 
-    return canvas.toDataURL('image/webp', quality);
+    const dataUrl = canvas.toDataURL('image/webp', quality);
+    if (dataUrl && dataUrl.startsWith('data:image/webp')) {
+      return dataUrl;
+    }
   } catch (e) {
-    console.error('Failed to convert DOM image to WebP:', e);
+    console.warn('Direct canvas draw tainted, falling back to same-origin blob fetch:', e.message);
+  }
+
+  // Method 2: Fetch same-origin blob from Cardmarket tab and render onto clean canvas
+  try {
+    const src = imgEl.src;
+    if (!src) return null;
+    const res = await fetch(src, { mode: 'cors', credentials: 'omit' });
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+
+    return new Promise((resolve) => {
+      const cleanImg = new Image();
+      cleanImg.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = cleanImg.width;
+        let height = cleanImg.height;
+
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(cleanImg, 0, 0, width, height);
+        URL.revokeObjectURL(blobUrl);
+        resolve(canvas.toDataURL('image/webp', quality));
+      };
+      cleanImg.onerror = () => {
+        URL.revokeObjectURL(blobUrl);
+        resolve(null);
+      };
+      cleanImg.src = blobUrl;
+    });
+  } catch (err) {
+    console.error('Failed to convert image to WebP via blob fetch:', err);
     return null;
   }
 }
@@ -1899,7 +1945,7 @@ async function clipImageAction(img) {
 
   const { tcg, cardId } = getTcgAndCardId();
   // Capture DOM img directly via Canvas into WebP (bypasses Amazon S3 403 referer blocks)
-  const webpDataUrl = convertDomImageToWebPDataUrl(img) || img.src;
+  const webpDataUrl = (await convertDomImageToWebPDataUrl(img)) || img.src;
 
   chrome.runtime.sendMessage({
     action: "saveClippedImage",
