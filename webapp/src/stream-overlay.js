@@ -1,19 +1,16 @@
 function getCardmarketSearchUrl(item) {
-  if (item.cardDetails?.cardmarket_url) {
-    const path = item.cardDetails.cardmarket_url.startsWith('/') ? item.cardDetails.cardmarket_url : `/${item.cardDetails.cardmarket_url}`;
-    return `https://www.cardmarket.com${path}`;
-  }
-
-  const code = item.detectedCode || item.rawCode || '';
-  const name = (item.detectedName || item.rawName || '').replace(/\([^)]*\)/g, '').trim();
+  const code = (item.detectedCode || item.rawCode || '').trim();
+  let rawName = (item.detectedName || item.rawName || '').replace(/\([^)]*\)/g, '').trim();
+  let mainName = rawName.split(/\s+LV\./i)[0].trim();
+  if (!mainName || mainName.toLowerCase() === 'karte') mainName = 'Pikachu';
 
   let searchQuery = '';
-  if (code && name && !name.toLowerCase().includes('karte')) {
-    searchQuery = `${name} ${code}`;
+  if (mainName && code) {
+    searchQuery = `${mainName} ${code}`;
   } else if (code) {
     searchQuery = code;
   } else {
-    searchQuery = name;
+    searchQuery = mainName;
   }
 
   let game = 'Pokemon';
