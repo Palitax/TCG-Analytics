@@ -232,37 +232,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         let getResponse = await fetch(getUrl, {
           method: "GET",
           cache: "no-store",
+          credentials: "omit",
           headers: {
-            "apikey": SUPABASE_ANON_KEY,
-            "Authorization": `Bearer ${accessToken}`
+            "apikey": SUPABASE_ANON_KEY
           }
         });
-
-        if (getResponse.status === 401) {
-          console.warn("[SW] History GET returned 401. Refreshing session...");
-          const refreshed = await refreshSession(session.refresh_token);
-          if (refreshed && refreshed.access_token) {
-            getResponse = await fetch(getUrl, {
-              method: "GET",
-              cache: "no-store",
-              headers: {
-                "apikey": SUPABASE_ANON_KEY,
-                "Authorization": `Bearer ${refreshed.access_token}`
-              }
-            });
-          }
-        }
-
-        if (getResponse.status === 401) {
-          console.warn("[SW] History GET 401 fallback to anon key...");
-          getResponse = await fetch(getUrl, {
-            method: "GET",
-            cache: "no-store",
-            headers: {
-              "apikey": SUPABASE_ANON_KEY
-            }
-          });
-        }
 
         if (!getResponse.ok) {
           const errBody = await getResponse.json().catch(() => ({}));
