@@ -467,6 +467,53 @@ async function init() {
   });
 }
 
+async function fetchBulkPriceHistory(cardIds) {
+  if (!cardIds || cardIds.length === 0) return [];
+  const chunkSize = 30;
+  const results = [];
+  for (let i = 0; i < cardIds.length; i += chunkSize) {
+    const chunk = cardIds.slice(i, i + chunkSize);
+    try {
+      const { data, error } = await supabase
+        .from('price_history')
+        .select('card_id, price, comment, scanned_at')
+        .in('card_id', chunk)
+        .order('scanned_at', { ascending: true });
+      if (error) {
+        console.error('Error fetching price_history chunk:', error);
+      } else if (data) {
+        results.push(...data);
+      }
+    } catch (e) {
+      console.error('Chunked price_history fetch exception:', e);
+    }
+  }
+  return results;
+}
+
+async function fetchBulkCardImages(cardIds) {
+  if (!cardIds || cardIds.length === 0) return [];
+  const chunkSize = 30;
+  const results = [];
+  for (let i = 0; i < cardIds.length; i += chunkSize) {
+    const chunk = cardIds.slice(i, i + chunkSize);
+    try {
+      const { data, error } = await supabase
+        .from('card_images')
+        .select('card_id, image_url')
+        .in('card_id', chunk);
+      if (error) {
+        console.error('Error fetching card_images chunk:', error);
+      } else if (data) {
+        results.push(...data);
+      }
+    } catch (e) {
+      console.error('Chunked card_images fetch exception:', e);
+    }
+  }
+  return results;
+}
+
 // Fetch collection cards for active user
 async function fetchCollectionCards() {
   if (!currentUser) return;
@@ -485,12 +532,8 @@ async function fetchCollectionCards() {
       const missingCardIds = cardIds.filter(id => !getCachedCardImage(id));
       if (missingCardIds.length > 0) {
         try {
-          const { data: globalImages, error: globalImagesErr } = await supabase
-            .from('card_images')
-            .select('card_id, image_url')
-            .in('card_id', missingCardIds);
-          
-          if (!globalImagesErr && globalImages) {
+          const globalImages = await fetchBulkCardImages(missingCardIds);
+          if (globalImages) {
             for (const img of globalImages) {
               setCachedCardImage(img.card_id, img.image_url);
             }
@@ -506,13 +549,9 @@ async function fetchCollectionCards() {
 
       // Bulk fetch price history for all cards
       try {
-        const { data: priceData, error: priceErr } = await supabase
-          .from('price_history')
-          .select('card_id, price, comment, scanned_at')
-          .in('card_id', cardIds)
-          .order('scanned_at', { ascending: true });
+        const priceData = await fetchBulkPriceHistory(cardIds);
 
-        if (!priceErr && priceData) {
+        if (priceData) {
           const historyMap = {};
           const latestPrices = {};
           const historyPoints = [];
@@ -526,10 +565,12 @@ async function fetchCollectionCards() {
             // Track cumulative collection value at this time point
             latestPrices[row.card_id] = parseFloat(row.price);
             const currentTotal = Object.values(latestPrices).reduce((sum, p) => sum + p, 0);
-            historyPoints.push({
-              scanned_at: row.scanned_at,
-              value: currentTotal
-            });
+            if (row.scanned_at) {
+              historyPoints.push({
+                scanned_at: row.scanned_at,
+                value: currentTotal
+              });
+            }
           }
 
           // Downsample to daily points for smooth rendering
@@ -614,12 +655,8 @@ async function fetchMarkedCards() {
       const missingCardIds = cardIds.filter(id => !getCachedCardImage(id));
       if (missingCardIds.length > 0) {
         try {
-          const { data: globalImages, error: globalImagesErr } = await supabase
-            .from('card_images')
-            .select('card_id, image_url')
-            .in('card_id', missingCardIds);
-          
-          if (!globalImagesErr && globalImages) {
+          const globalImages = await fetchBulkCardImages(missingCardIds);
+          if (globalImages) {
             for (const img of globalImages) {
               setCachedCardImage(img.card_id, img.image_url);
             }
@@ -635,13 +672,9 @@ async function fetchMarkedCards() {
 
       // Bulk fetch price history for all cards
       try {
-        const { data: priceData, error: priceErr } = await supabase
-          .from('price_history')
-          .select('card_id, price, comment, scanned_at')
-          .in('card_id', cardIds)
-          .order('scanned_at', { ascending: true });
+        const priceData = await fetchBulkPriceHistory(cardIds);
 
-        if (!priceErr && priceData) {
+        if (priceData) {
           const historyMap = {};
           for (const row of priceData) {
             if (!historyMap[row.card_id]) {
