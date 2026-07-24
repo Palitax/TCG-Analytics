@@ -682,16 +682,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               const { session } = await chrome.storage.local.get('session');
               const accessToken = session?.access_token || SUPABASE_ANON_KEY;
 
-              // Deduplication Pre-check: HEAD request to check if file already exists in Storage
-              let fileExists = false;
-              try {
-                const headCheck = await fetch(finalImageUrl, { method: 'HEAD' });
-                if (headCheck.ok) {
-                  fileExists = true;
-                }
-              } catch (e) {}
-
-              if (!fileExists && webpBlob) {
+              if (webpBlob) {
                 const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucketName}/${fileName}`, {
                   method: "POST",
                   headers: {
