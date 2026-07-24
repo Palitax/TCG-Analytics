@@ -1853,6 +1853,36 @@ function hideClipperButton() {
   activeHoverImage = null;
 }
 
+function convertDomImageToWebPDataUrl(imgEl, maxDimension = 800, quality = 0.8) {
+  try {
+    const canvas = document.createElement('canvas');
+    let width = imgEl.naturalWidth || imgEl.width || 800;
+    let height = imgEl.naturalHeight || imgEl.height || 800;
+
+    if (width > maxDimension || height > maxDimension) {
+      if (width > height) {
+        height = Math.round((height * maxDimension) / width);
+        width = maxDimension;
+      } else {
+        width = Math.round((width * maxDimension) / height);
+        height = maxDimension;
+      }
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(imgEl, 0, 0, width, height);
+
+    return canvas.toDataURL('image/webp', quality);
+  } catch (e) {
+    console.error('Failed to convert DOM image to WebP:', e);
+    return null;
+  }
+}
+
 async function clipImageAction(img) {
   if (!clipperButton || clipperButton.disabled) return;
 
@@ -1868,13 +1898,14 @@ async function clipImageAction(img) {
   `;
 
   const { tcg, cardId } = getTcgAndCardId();
-  const imageUrl = img.src;
+  // Capture DOM img directly via Canvas into WebP (bypasses Amazon S3 403 referer blocks)
+  const webpDataUrl = convertDomImageToWebPDataUrl(img) || img.src;
 
   chrome.runtime.sendMessage({
     action: "saveClippedImage",
     cardId,
     tcg,
-    imageUrl
+    imageUrl: webpDataUrl
   }, (res) => {
     if (res && res.success) {
       clipperButton.style.background = '#34d399'; // green success
