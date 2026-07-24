@@ -2978,8 +2978,13 @@ async function renderAnalyticsTab(container) {
   });
 }
 
-// Cardmarket Search URL builder helper (Combines Card Name + Set Name + Card Number e.g. "Pikachu Mysterious Treasures 94/123")
+// Cardmarket Search URL builder helper (Uses Google site:cardmarket.com search with btnI=1 redirect)
 function buildCardmarketSearchUrl(item) {
+  if (item.cardDetails?.cardmarket_url) {
+    const path = item.cardDetails.cardmarket_url.startsWith('/') ? item.cardDetails.cardmarket_url : `/${item.cardDetails.cardmarket_url}`;
+    return `https://www.cardmarket.com${path}`;
+  }
+
   const code = (item.detectedCode || item.rawCode || '').trim();
   const rawFullName = item.detectedName || item.rawName || '';
 
@@ -2996,23 +3001,14 @@ function buildCardmarketSearchUrl(item) {
   let cleanName = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
   if (!cleanName || cleanName.toLowerCase() === 'karte') cleanName = '';
 
-  // Clean set name
   let cleanSet = extractedSet.trim();
 
-  // Combine: [Card Name] [Set Name] [Code]
-  const queryParts = [cleanName, cleanSet, code].filter(p => p && p.length > 0);
+  // Build query: site:cardmarket.com/de Pikachu Mysterious Treasures 94/123
+  const queryParts = ['site:cardmarket.com/de', cleanName, cleanSet, code].filter(p => p && p.length > 0);
   const searchQuery = queryParts.join(' ').trim();
 
-  // Auto-detect TCG path for Cardmarket
-  let game = 'Pokemon';
-  if (code.match(/^(OP|ST|EB|PRB|P-)/i) || (item.rawSet && item.rawSet.toLowerCase().includes('onepiece'))) {
-    game = 'OnePiece';
-  } else if (code.match(/^[A-Z0-9]{3,4}-[A-Z0-9]{3,4}/i)) {
-    game = 'YuGiOh';
-  }
-
-  const encodedQuery = encodeURIComponent(searchQuery).replace(/%20/g, '+');
-  return `https://www.cardmarket.com/de/${game}/Products/Search?searchString=${encodedQuery}`;
+  const encodedQuery = encodeURIComponent(searchQuery);
+  return `https://www.google.com/search?q=${encodedQuery}&btnI=1`;
 }
 
 // Bulk Scan Tab Renderer
