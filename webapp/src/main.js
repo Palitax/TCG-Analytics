@@ -1,4 +1,4 @@
-import { supabase } from './supabase.js';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase.js';
 import { animate } from 'motion';
 import { Chart, registerables } from 'chart.js';
 import { BulkScanner } from './bulk-scanner.js';
@@ -735,29 +735,28 @@ async function fetchBulkCardImages(cardIds) {
 async function fetchCollectionCards() {
   if (!currentUser) return;
   try {
-    let res = await supabase
+    let listData = [];
+    const { data, error } = await supabase
       .from('collection_cards')
       .select('*')
       .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false });
 
-    if (res.error) {
-      console.warn('collection_cards query failed, attempting session refresh...', res.error.message);
-      const { data: refreshData } = await supabase.auth.refreshSession();
-      if (refreshData?.session) {
-        currentUser = refreshData.session.user;
-        res = await supabase
-          .from('collection_cards')
-          .select('*')
-          .eq('user_id', currentUser.id)
-          .order('created_at', { ascending: false });
-      }
+    if (!error && data) {
+      listData = data;
+    } else {
+      console.warn('collection_cards query failed, using anon key fallback...', error?.message);
+      try {
+        const resp = await fetch(`${SUPABASE_URL}/rest/v1/collection_cards?select=*&user_id=eq.${currentUser.id}&order=created_at.desc`, {
+          headers: { apikey: SUPABASE_ANON_KEY }
+        });
+        if (resp.ok) {
+          listData = await resp.json();
+        }
+      } catch (fErr) {}
     }
 
-    if (res.error) throw res.error;
-    
-    let listData = res.data || [];
-    const cardIds = listData.map(c => c.card_id);
+    const cardIds = (listData || []).map(c => c.card_id);
     if (cardIds.length > 0) {
       try {
         const globalImages = await fetchBulkCardImages(cardIds);
@@ -860,27 +859,26 @@ async function fetchCollectionCards() {
 async function fetchMarkedCards() {
   if (!currentUser) return;
   try {
-    let res = await supabase
+    let listData = [];
+    const { data, error } = await supabase
       .from('marked_cards')
       .select('id, card_id, tcg, comment, target_price, condition, language, seller_country, created_at')
       .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false });
 
-    if (res.error) {
-      console.warn('marked_cards query failed, attempting session refresh...', res.error.message);
-      const { data: refreshData } = await supabase.auth.refreshSession();
-      if (refreshData?.session) {
-        currentUser = refreshData.session.user;
-        res = await supabase
-          .from('marked_cards')
-          .select('id, card_id, tcg, comment, target_price, condition, language, seller_country, created_at')
-          .eq('user_id', currentUser.id)
-          .order('created_at', { ascending: false });
-      }
+    if (!error && data) {
+      listData = data;
+    } else {
+      console.warn('marked_cards query failed, using anon key fallback...', error?.message);
+      try {
+        const resp = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?select=id,card_id,tcg,comment,target_price,condition,language,seller_country,created_at&user_id=eq.${currentUser.id}&order=created_at.desc`, {
+          headers: { apikey: SUPABASE_ANON_KEY }
+        });
+        if (resp.ok) {
+          listData = await resp.json();
+        }
+      } catch (fErr) {}
     }
-
-    if (res.error) throw res.error;
-    const data = res.data;
     
     // Purge legacy stream queue items from database so they never clutter the watchlist
     supabase
@@ -891,7 +889,7 @@ async function fetchMarkedCards() {
       .then(() => {})
       .catch(() => {});
 
-    let listData = (data || []).filter(item => 
+    listData = (listData || []).filter(item => 
       item.card_id !== '__STREAM_QUEUE__' && 
       item.tcg !== 'StreamQueue' && 
       (!item.card_id || !item.card_id.startsWith('STREAM_'))
