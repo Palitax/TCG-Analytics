@@ -3494,73 +3494,78 @@ async function loadCardDetails(cardId, tcg, pushState = true) {
     return;
   }
   try {
-    const cleanId = (cardId || '').trim();
-    const altId = cleanId.replace(/\//g, '-');
-    const safeId = cleanId.replace(/[\/\\%_]/g, '');
-    const lastPart = cleanId.includes('/') ? cleanId.split('/').pop() : cleanId;
+    const rawId = (cardId || '').trim();
+    const cleanPattern = rawId.split('/').pop().replace(/[\/\\%_]/g, '').trim();
+    const extractedCode = extractCardCode(rawId) || cleanPattern;
 
-    // Parallel execution for maximum performance (sub-100ms load time)
+    // Parallel fetch for sub-50ms performance
     const historyPromise = (async () => {
       try {
-        const { data, error } = await supabase
-          .from('price_history')
-          .select('price, condition, seller_country, language, comment, scanned_at')
-          .eq('card_id', cleanId)
-          .order('scanned_at', { ascending: true });
-        if (!error && data && data.length > 0) return data;
-      } catch (e) {}
-
-      const queryCandidates = [];
-      if (altId && altId !== cleanId) queryCandidates.push(`card_id.ilike.%${altId}%`);
-      if (safeId && safeId !== altId) queryCandidates.push(`card_id.ilike.%${safeId}%`);
-      if (lastPart && lastPart.length >= 3) queryCandidates.push(`card_id.ilike.%${lastPart}%`);
-
-      if (queryCandidates.length > 0) {
-        try {
-          const { data } = await supabase
+        if (cleanPattern) {
+          const { data, error } = await supabase
             .from('price_history')
             .select('price, condition, seller_country, language, comment, scanned_at')
-            .or(queryCandidates.join(','))
+            .ilike('card_id', `%${cleanPattern}%`)
             .order('scanned_at', { ascending: true })
-            .limit(50);
-          return data || [];
-        } catch (e) {}
+            .limit(100);
+          if (!error && data && data.length > 0) return data;
+        }
+
+        if (extractedCode && extractedCode !== cleanPattern) {
+          const { data, error } = await supabase
+            .from('price_history')
+            .select('price, condition, seller_country, language, comment, scanned_at')
+            .ilike('card_id', `%${extractedCode}%`)
+            .order('scanned_at', { ascending: true })
+            .limit(100);
+          if (!error && data && data.length > 0) return data;
+        }
+      } catch (e) {
+        console.error('Price history fetch error:', e);
       }
       return [];
     })();
 
     const imagePromise = (async () => {
       try {
-        const imgQueries = [`card_id.eq.${cleanId}`];
-        if (altId && altId !== cleanId) imgQueries.push(`card_id.ilike.%${altId}%`);
-        if (safeId && safeId !== altId) imgQueries.push(`card_id.ilike.%${safeId}%`);
-
-        const { data } = await supabase
-          .from('card_images')
-          .select('image_url')
-          .or(imgQueries.join(','))
-          .limit(1);
-        return data && data.length > 0 ? data[0].image_url : null;
-      } catch (e) {
-        return null;
-      }
+        const pattern = cleanPattern || extractedCode;
+        if (pattern) {
+          const { data } = await supabase
+            .from('card_images')
+            .select('image_url')
+            .ilike('card_id', `%${pattern}%`)
+            .limit(1);
+          if (data && data.length > 0 && data[0].image_url) {
+            return data[0].image_url;
+          }
+        }
+      } catch (e) {}
+      return null;
     })();
 
     const [rawHistoryData, globalImageUrl] = await Promise.all([historyPromise, imagePromise]);
     const parsedHistory = (rawHistoryData || []).map(parseHistoryItem);
 
-    // Extract unique filter combinations available in scanned data
-    const conditions = Array.from(new Set(parsedHistory.map(h => h.condition).filter(Boolean)));
-    const locations = Array.from(new Set(parsedHistory.map(h => h.seller_country).filter(Boolean)));
-    const languages = Array.from(new Set(parsedHistory.map(h => h.language).filter(Boolean)));
+    // Extract unique filter combinations
+    const rawConditions = parsedHistory.map(h => h.condition).filter(Boolean);
+    const rawLocations = parsedHistory.map(h => h.seller_country).filter(Boolean);
+    const rawLanguages = parsedHistory.map(h => h.language).filter(Boolean);
 
-    // Read initial bookmarked state for details toggle state
-    const bookmarkRecord = markedCards.find(m => m.card_id === cardId);
+    const conditions = Array.from(new Set(rawConditions)).sort();
+    const locations = Array.from(new Set(rawLocations)).sort();
+    const languages = Array.from(new Set(rawLanguages)).sort();
+
+    // Ensure 'ALL' is present
+    if (!conditions.includes('ALL')) conditions.unshift('ALL');
+    if (!locations.includes('ALL')) locations.unshift('ALL');
+    if (!languages.includes('ALL')) languages.unshift('ALL');
+
+    // Read initial bookmarked & collection states
+    const bookmarkRecord = markedCards.find(m => m.card_id === cardId || m.card_id?.includes(cleanPattern));
     const isCurrentlyMarked = !!bookmarkRecord;
     const bookmarkImageUrl = bookmarkRecord ? bookmarkRecord.image_url : null;
 
-    // Read initial collection state
-    const collectionRecord = collectionCards.find(m => m.card_id === cardId);
+    const collectionRecord = collectionCards.find(m => m.card_id === cardId || m.card_id?.includes(cleanPattern));
     const isCurrentlyCollected = !!collectionRecord;
     const collectionImageUrl = collectionRecord ? collectionRecord.image_url : null;
 
@@ -3568,17 +3573,17 @@ async function loadCardDetails(cardId, tcg, pushState = true) {
       cardId,
       tcg,
       rawHistory: parsedHistory,
-      conditions: conditions.sort(),
-      locations: locations.sort(),
-      languages: languages.sort(),
+      conditions: conditions.length > 0 ? conditions : ['ALL', 'NM'],
+      locations: locations.length > 0 ? locations : ['ALL', 'DE'],
+      languages: languages.length > 0 ? languages : ['ALL', 'EN'],
       isMarked: isCurrentlyMarked,
       isCollected: isCurrentlyCollected,
       imageUrl: globalImageUrl || bookmarkImageUrl || collectionImageUrl || (parsedHistory.length > 0 ? parsedHistory[0].imageUrl : getCachedCardImage(cardId)),
       
-      // Default initial local filters
-      selectedCondition: conditions[0] || 'NM',
-      selectedLocation: locations[0] || 'DE',
-      selectedLanguage: languages[0] || 'ALL'
+      // Default initial filters to ALL so history data is NEVER hidden
+      selectedCondition: 'ALL',
+      selectedLocation: 'ALL',
+      selectedLanguage: 'ALL'
     };
 
     setView('detail');
@@ -3589,15 +3594,15 @@ async function loadCardDetails(cardId, tcg, pushState = true) {
       cardId,
       tcg,
       rawHistory: [],
-      conditions: ['NM'],
-      locations: ['DE'],
-      languages: ['EN'],
+      conditions: ['ALL', 'NM'],
+      locations: ['ALL', 'DE'],
+      languages: ['ALL', 'EN'],
       isMarked: markedCards.some(m => m.card_id === cardId),
       isCollected: collectionCards.some(m => m.card_id === cardId),
       imageUrl: getCachedCardImage(cardId) || null,
-      selectedCondition: 'NM',
-      selectedLocation: 'DE',
-      selectedLanguage: 'EN'
+      selectedCondition: 'ALL',
+      selectedLocation: 'ALL',
+      selectedLanguage: 'ALL'
     };
     setView('detail');
   }
