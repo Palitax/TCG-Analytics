@@ -732,22 +732,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 console.error("Failed to upload clipped image to card_images:", imgRes.status, await imgRes.text());
               }
 
-              // 2. Update private marked_cards if bookmarked for logged-in user
+              // 2. Update private marked_cards and collection_cards if bookmarked for logged-in user
               const userId = session?.user?.id;
               if (userId) {
-                const updateRes = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&card_id=eq.${encodeURIComponent(cardId)}`, {
-                  method: "PATCH",
-                  headers: {
-                    "apikey": SUPABASE_ANON_KEY,
-                    "Authorization": `Bearer ${accessToken}`,
-                    "Content-Type": "application/json"
-                  },
-                  body: JSON.stringify({ image_url: finalImageUrl })
-                });
+                try {
+                  await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&card_id=eq.${encodeURIComponent(cardId)}`, {
+                    method: "PATCH",
+                    headers: {
+                      "apikey": SUPABASE_ANON_KEY,
+                      "Authorization": `Bearer ${accessToken}`,
+                      "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ image_url: finalImageUrl })
+                  });
+                } catch (e) {}
 
-                if (!updateRes.ok) {
-                  console.error("Failed to update marked_cards with clipped image:", updateRes.status, await updateRes.text());
-                }
+                try {
+                  await fetch(`${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&card_id=eq.${encodeURIComponent(cardId)}`, {
+                    method: "PATCH",
+                    headers: {
+                      "apikey": SUPABASE_ANON_KEY,
+                      "Authorization": `Bearer ${accessToken}`,
+                      "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ image_url: finalImageUrl })
+                  });
+                } catch (e) {}
               }
             } catch (syncErr) {
               console.error("Failed syncing clipped image to Supabase:", syncErr);
