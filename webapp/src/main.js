@@ -2978,6 +2978,37 @@ async function renderAnalyticsTab(container) {
   });
 }
 
+// Cardmarket Search URL builder helper
+function buildCardmarketSearchUrl(item) {
+  if (item.cardDetails?.cardmarket_url) {
+    const path = item.cardDetails.cardmarket_url.startsWith('/') ? item.cardDetails.cardmarket_url : `/${item.cardDetails.cardmarket_url}`;
+    return `https://www.cardmarket.com${path}`;
+  }
+
+  const code = item.detectedCode || item.rawCode || '';
+  const name = (item.detectedName || item.rawName || '').replace(/\([^)]*\)/g, '').trim();
+
+  let searchQuery = '';
+  if (code && name && !name.toLowerCase().includes('karte')) {
+    searchQuery = `${name} ${code}`;
+  } else if (code) {
+    searchQuery = code;
+  } else {
+    searchQuery = name;
+  }
+
+  // Auto-detect TCG path for Cardmarket
+  let game = 'Pokemon';
+  if (code.match(/^(OP|ST|EB|PRB|P-)/i) || (item.rawSet && item.rawSet.toLowerCase().includes('onepiece'))) {
+    game = 'OnePiece';
+  } else if (code.match(/^[A-Z0-9]{3,4}-[A-Z0-9]{3,4}/i)) {
+    game = 'YuGiOh';
+  }
+
+  const cleanQuery = encodeURIComponent(searchQuery.trim());
+  return `https://www.cardmarket.com/de/${game}/Products/Search?searchString=${cleanQuery}`;
+}
+
 // Bulk Scan Tab Renderer
 function renderBulkScanTab(container) {
   container.innerHTML = '';
@@ -2991,6 +3022,7 @@ function renderBulkScanTab(container) {
           <h2 style="font-size: 1.5rem; font-weight: 700; color: #fff; margin: 0 0 0.25rem 0;">🖨️ Bulk Scan & CSV Importer</h2>
           <p style="color: #94a3b8; font-size: 0.9rem; margin: 0;">Lade eine PaperStream Index-CSV oder Standard-Karten-CSV hoch, um Kartendaten & Marktpreise abzufragen.</p>
         </div>
+        <button class="btn btn-secondary" id="btn-new-csv-upload" style="display: none;">📁 Neue CSV laden</button>
       </div>
 
       <div class="dropzone-box" id="csv-dropzone">
@@ -3026,6 +3058,7 @@ function renderBulkScanTab(container) {
                 <th>Low (€)</th>
                 <th>Trend (€)</th>
                 <th>Status</th>
+                <th style="text-align: right;">Cardmarket</th>
               </tr>
             </thead>
             <tbody id="scan-review-tbody"></tbody>
@@ -3039,6 +3072,7 @@ function renderBulkScanTab(container) {
   const dropzone = wrapper.querySelector('#csv-dropzone');
   const fileInput = wrapper.querySelector('#csv-file-input');
   const btnSelect = wrapper.querySelector('#btn-select-csv');
+  const btnNewUpload = wrapper.querySelector('#btn-new-csv-upload');
   const processingInd = wrapper.querySelector('#bulk-processing-indicator');
   const resultsArea = wrapper.querySelector('#bulk-results-area');
   const tbody = wrapper.querySelector('#scan-review-tbody');
@@ -3048,6 +3082,13 @@ function renderBulkScanTab(container) {
   const btnExportCsv = wrapper.querySelector('#btn-export-enriched-csv');
 
   btnSelect.addEventListener('click', () => fileInput.click());
+
+  btnNewUpload.addEventListener('click', () => {
+    dropzone.style.display = 'block';
+    resultsArea.style.display = 'none';
+    btnNewUpload.style.display = 'none';
+    fileInput.value = '';
+  });
 
   dropzone.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -3083,6 +3124,7 @@ function renderBulkScanTab(container) {
 
       processingInd.style.display = 'none';
       resultsArea.style.display = 'block';
+      btnNewUpload.style.display = 'inline-block';
       renderResults(items);
     };
     reader.readAsText(file);
@@ -3097,6 +3139,7 @@ function renderBulkScanTab(container) {
       const lowPrice = item.marketPrices?.lowPrice ? `${item.marketPrices.lowPrice.toFixed(2)} €` : 'N/A';
       const trendPrice = item.marketPrices?.trendPrice ? `${item.marketPrices.trendPrice.toFixed(2)} €` : 'N/A';
       const isMatched = item.status === 'matched';
+      const cmUrl = buildCardmarketSearchUrl(item);
 
       tr.innerHTML = `
         <td>${index + 1}</td>
@@ -3111,6 +3154,11 @@ function renderBulkScanTab(container) {
             ${isMatched ? '✅ Erkannt' : '⚠️ Prüfen'}
           </span>
         </td>
+        <td style="text-align: right;">
+          <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 0.8rem; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #818cf8; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;">
+            Check price now ↗
+          </a>
+        </td>
       `;
 
       const codeInput = tr.querySelector('.code-input');
@@ -3122,6 +3170,14 @@ function renderBulkScanTab(container) {
 
       tbody.appendChild(tr);
     });
+  }
+
+  // Restore state if scanned items already exist in memory
+  if (bulkScannerInstance.scanItems && bulkScannerInstance.scanItems.length > 0) {
+    dropzone.style.display = 'none';
+    resultsArea.style.display = 'block';
+    btnNewUpload.style.display = 'inline-block';
+    renderResults(bulkScannerInstance.scanItems);
   }
 
   btnSendOverlay.addEventListener('click', () => {

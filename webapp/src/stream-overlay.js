@@ -1,7 +1,31 @@
-/**
- * Stream Overlay Module for TCG Card Tracker
- * Optimized for Tablets & Live Stream selling workflows
- */
+function getCardmarketSearchUrl(item) {
+  if (item.cardDetails?.cardmarket_url) {
+    const path = item.cardDetails.cardmarket_url.startsWith('/') ? item.cardDetails.cardmarket_url : `/${item.cardDetails.cardmarket_url}`;
+    return `https://www.cardmarket.com${path}`;
+  }
+
+  const code = item.detectedCode || item.rawCode || '';
+  const name = (item.detectedName || item.rawName || '').replace(/\([^)]*\)/g, '').trim();
+
+  let searchQuery = '';
+  if (code && name && !name.toLowerCase().includes('karte')) {
+    searchQuery = `${name} ${code}`;
+  } else if (code) {
+    searchQuery = code;
+  } else {
+    searchQuery = name;
+  }
+
+  let game = 'Pokemon';
+  if (code.match(/^(OP|ST|EB|PRB|P-)/i) || (item.rawSet && item.rawSet.toLowerCase().includes('onepiece'))) {
+    game = 'OnePiece';
+  } else if (code.match(/^[A-Z0-9]{3,4}-[A-Z0-9]{3,4}/i)) {
+    game = 'YuGiOh';
+  }
+
+  const cleanQuery = encodeURIComponent(searchQuery.trim());
+  return `https://www.cardmarket.com/de/${game}/Products/Search?searchString=${cleanQuery}`;
+}
 
 export class StreamOverlay {
   constructor(containerId) {
@@ -120,6 +144,7 @@ export class StreamOverlay {
     const lowPrice = currentCard.marketPrices?.lowPrice ? `${currentCard.marketPrices.lowPrice.toFixed(2)} €` : 'N/A';
     const trendPrice = currentCard.marketPrices?.trendPrice ? `${currentCard.marketPrices.trendPrice.toFixed(2)} €` : 'N/A';
     const imageSrc = currentCard.rawFile || currentCard.cardDetails?.image_url || 'assets/card-placeholder.png';
+    const cmUrl = getCardmarketSearchUrl(currentCard);
 
     this.container.innerHTML = `
       <div class="stream-overlay-active glass-panel">
@@ -139,7 +164,12 @@ export class StreamOverlay {
           </div>
 
           <div class="so-details-container">
-            <div class="so-card-badge">${cardCode}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div class="so-card-badge">${cardCode}</div>
+              <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 6px 12px; font-size: 0.85rem; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #818cf8; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
+                Check price now ↗
+              </a>
+            </div>
             <h1 class="so-card-title">${cardName}</h1>
 
             <div class="so-price-cards">
