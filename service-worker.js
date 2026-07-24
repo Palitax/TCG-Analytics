@@ -683,20 +683,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               const accessToken = session?.access_token || SUPABASE_ANON_KEY;
 
               if (webpBlob) {
-                const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucketName}/${fileName}`, {
-                  method: "POST",
-                  headers: {
-                    "apikey": SUPABASE_ANON_KEY,
-                    "Authorization": `Bearer ${accessToken}`,
-                    "Content-Type": "image/webp",
-                    "cache-control": "31536000",
-                    "x-upsert": "true"
-                  },
-                  body: webpBlob
-                });
+                try {
+                  const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucketName}/${fileName}`, {
+                    method: "POST",
+                    headers: {
+                      "apikey": SUPABASE_ANON_KEY,
+                      "Authorization": `Bearer ${accessToken}`,
+                      "Content-Type": "image/webp",
+                      "cache-control": "31536000",
+                      "x-upsert": "true"
+                    },
+                    body: webpBlob
+                  });
 
-                if (!storageRes.ok) {
-                  console.warn("Storage upload in background failed:", storageRes.status, await storageRes.text());
+                  if (!storageRes.ok) {
+                    const errText = await storageRes.text();
+                    console.warn("Storage upload returned status:", storageRes.status, errText);
+                    // Fail-safe fallback: use original card URL if storage upload fails
+                    if (imageUrl && !imageUrl.startsWith('data:')) {
+                      finalImageUrl = imageUrl;
+                    }
+                  }
+                } catch (stgErr) {
+                  console.error("Storage upload exception:", stgErr);
+                  if (imageUrl && !imageUrl.startsWith('data:')) {
+                    finalImageUrl = imageUrl;
+                  }
                 }
               }
               
