@@ -126,12 +126,11 @@ function showToast(message) {
     toastContainer.style.cssText = 'position: fixed; top: 24px; left: 50%; transform: translateX(-50%); z-index: 10000; display: flex; flex-direction: column; gap: 8px; pointer-events: none;';
     document.body.appendChild(toastContainer);
   }
-  
+
   const toast = document.createElement('div');
-  toast.className = 'glass-panel';
-  toast.style.cssText = 'padding: 12px 20px; border-radius: 8px; border-left: 4px solid #10b981; color: white; font-size: 0.85rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.5); pointer-events: auto; display: flex; align-items: center; gap: 8px; background: rgba(5,8,14,0.85);';
+  toast.className = `toast-message toast-${type}`;
   toast.innerHTML = `
-    <svg style="width: 16px; height: 16px; color: #10b981;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="18" height="18">
       <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
     <span>${message}</span>
@@ -139,13 +138,14 @@ function showToast(message) {
   toastContainer.appendChild(toast);
   
   // Animate in from top
-  animate(toast, { opacity: [0, 1], y: [-20, 0] }, { duration: 0.25, ease: "easeOut" });
+  safeAnimate(toast, { opacity: [0, 1], y: [-20, 0] }, { duration: 0.25, ease: "easeOut" });
   
   // Remove after 3 seconds
   setTimeout(() => {
-    animate(toast, { opacity: 0, y: -20 }, { duration: 0.25, ease: "easeIn" }).then(() => {
-      toast.remove();
-    });
+    try {
+      safeAnimate(toast, { opacity: 0, y: -20 }, { duration: 0.25, ease: "easeIn" });
+    } catch (e) {}
+    setTimeout(() => toast.remove(), 250);
   }, 3000);
 }
 
@@ -1050,7 +1050,7 @@ async function render() {
   }
 
   if (viewEl) {
-    animate(viewEl, { opacity: [0, 1], y: [15, 0] }, { duration: 0.28, ease: "easeOut" });
+    safeAnimate(viewEl, { opacity: [0, 1], y: [15, 0] }, { duration: 0.28, ease: "easeOut" });
   }
 }
 
@@ -1087,10 +1087,7 @@ function renderLogin(container) {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: redirectUrl,
-          queryParams: {
-            prompt: 'select_account'
-          }
+          redirectTo: redirectUrl
         }
       });
       if (error) throw error;
@@ -1154,12 +1151,15 @@ function showLogoutModal() {
 
   // Close animation helper
   const closeModal = () => {
-    animate(modal, { opacity: [1, 0] }, { duration: 0.2 }).finished.then(() => modal.remove());
+    try {
+      safeAnimate(modal, { opacity: [1, 0] }, { duration: 0.2 });
+    } catch (e) {}
+    setTimeout(() => modal.remove(), 200);
   };
 
   // Animate in
-  animate(modal, { opacity: [0, 1] }, { duration: 0.2 });
-  animate(modal.querySelector('.custom-modal'), { transform: ['scale(0.95)', 'scale(1)'] }, { duration: 0.2, ease: "easeOut" });
+  safeAnimate(modal, { opacity: [0, 1] }, { duration: 0.2 });
+  safeAnimate(modal.querySelector('.custom-modal'), { transform: ['scale(0.95)', 'scale(1)'] }, { duration: 0.2, ease: "easeOut" });
 
   modal.querySelector('#modal-btn-cancel').addEventListener('click', closeModal);
 
