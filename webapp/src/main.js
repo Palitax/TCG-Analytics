@@ -1359,6 +1359,20 @@ function showLogoutModal() {
 
 // RENDER: Dashboard Panel
 async function renderDashboard(container) {
+  // Always derive activeDashboardTab from URL hash
+  const currentHash = window.location.hash.slice(1) || '/watchlist';
+  if (currentHash.includes('collection')) {
+    activeDashboardTab = 'collection';
+  } else if (currentHash.includes('analytics')) {
+    activeDashboardTab = 'analytics';
+  } else if (currentHash.includes('bulk-scan')) {
+    activeDashboardTab = 'bulk-scan';
+  } else if (currentHash.includes('stream-overlay')) {
+    activeDashboardTab = 'stream-overlay';
+  } else {
+    activeDashboardTab = 'watchlist';
+  }
+
   const wrapper = document.createElement('div');
   wrapper.className = 'dashboard-wrapper';
   container.appendChild(wrapper);
@@ -1473,68 +1487,77 @@ async function renderDashboard(container) {
         }
 
         // Enrich uniqueCards with global custom images
-        const cardIds = uniqueCards.map(c => c.card_id);
-        if (cardIds.length > 0) {
-          try {
-            const { data: globalImages, error: globalImagesErr } = await supabase
+        try {
+          const cids = uniqueCards.map(c => c.card_id);
+          if (cids.length > 0) {
+            const encodedCardIds = cids.map(id => encodeURIComponent(id)).join(',');
+            const { data: imgData } = await supabase
               .from('card_images')
               .select('card_id, image_url')
-              .in('card_id', cardIds);
-            
-            if (!globalImagesErr && globalImages) {
-              const imageMap = {};
-              for (const img of globalImages) {
-                imageMap[img.card_id] = img.image_url;
+              .or(`card_id.in.(${encodedCardIds})`);
+
+            if (imgData && imgData.length > 0) {
+              const imgMap = {};
+              for (const item of imgData) {
+                imgMap[item.card_id] = item.image_url;
               }
-              for (const c of uniqueCards) {
-                if (imageMap[c.card_id]) {
-                  c.imageUrl = imageMap[c.card_id];
+              for (const card of uniqueCards) {
+                if (imgMap[card.card_id]) {
+                  card.imageUrl = imgMap[card.card_id];
                 }
               }
             }
-          } catch (err) {
-            console.error('Error fetching global search images:', err.message);
           }
-        }
+        } catch (e) {}
 
         if (uniqueCards.length === 0) {
           divResults.innerHTML = `
-            <div class="empty-state">
-              <p>Keine gescannten Karten gefunden.</p>
+            <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 0.88rem;">
+              Keine Karten gefunden für "${query}"
             </div>
           `;
           return;
         }
 
-        divResults.innerHTML = uniqueCards.map(c => `
-          <div class="search-result-item glass-panel" data-card="${c.card_id}" data-tcg="${c.tcg}">
-            <img class="search-result-img" src="${getProxiedImageUrl(c.imageUrl)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
-            <div class="search-result-info">
-              <span class="search-result-name">${cleanCardName(c.card_id)}</span>
-              <span class="search-result-tcg">${c.tcg}</span>
-            </div>
+        divResults.innerHTML = `
+          <div class="search-results-list">
+            ${uniqueCards.map(c => `
+              <div class="search-result-item" data-card-id="${c.card_id}" data-tcg="${c.tcg}">
+                <div class="search-result-img">
+                  ${c.imageUrl ? `<img src="${c.imageUrl}" alt="${c.card_id}" loading="lazy">` : `<div class="search-result-img-placeholder">TCG</div>`}
+                </div>
+                <div class="search-result-info">
+                  <div class="search-result-title">${c.card_id}</div>
+                  <div class="search-result-sub">${c.tcg ? c.tcg.toUpperCase() : ''}</div>
+                </div>
+              </div>
+            `).join('')}
           </div>
-        `).join('');
+        `;
 
-        divResults.querySelectorAll('.search-result-item').forEach(item => {
-          item.addEventListener('click', async () => {
-            const cardId = item.dataset.card;
-            const tcg = item.dataset.tcg;
-            addToHistory(cardId, tcg);
+        divResults.querySelectorAll('.search-result-item').forEach(el => {
+          el.addEventListener('click', () => {
+            const cardId = el.dataset.cardId;
+            const tcg = el.dataset.tcg;
             divResults.style.display = 'none';
             inpSearch.value = '';
             activeSearchQuery = '';
-            await loadCardDetails(cardId, tcg);
+            navigate(`/detail?card_id=${encodeURIComponent(cardId)}&tcg=${encodeURIComponent(tcg)}`);
           });
         });
 
       } catch (err) {
-        divResults.innerHTML = `<p style="color: #f87171; padding: 16px;">Fehler: ${err.message}</p>`;
+        console.error('Quick search error:', err);
+        divResults.innerHTML = `
+          <div style="padding: 16px; text-align: center; color: var(--text-danger); font-size: 0.88rem;">
+            Suchfehler: ${err.message}
+          </div>
+        `;
       }
-    }, 400);
+    }, 300);
   });
 
-  // Hide search overlay if clicked outside
+  // Hide search overlay on click outside
   document.addEventListener('click', (e) => {
     if (!searchSection.contains(e.target)) {
       divResults.style.display = 'none';
@@ -1608,27 +1631,22 @@ async function renderDashboard(container) {
   };
 
   btnWatchlist.addEventListener('click', () => {
-    if (activeDashboardTab === 'watchlist') return;
     navigate('/watchlist');
   });
 
   btnCollection.addEventListener('click', () => {
-    if (activeDashboardTab === 'collection') return;
     navigate('/collection');
   });
 
   btnAnalytics.addEventListener('click', () => {
-    if (activeDashboardTab === 'analytics') return;
     navigate('/analytics');
   });
 
   btnBulkScan.addEventListener('click', () => {
-    if (activeDashboardTab === 'bulk-scan') return;
     navigate('/bulk-scan');
   });
 
   btnStreamOverlay.addEventListener('click', () => {
-    if (activeDashboardTab === 'stream-overlay') return;
     navigate('/stream-overlay');
   });
 
