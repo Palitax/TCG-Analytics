@@ -1068,24 +1068,34 @@ async function navigate(path, pushState = true) {
   }
   
   if (!currentUser) {
-    // Try to get session
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        currentUser = session.user;
-      } else {
+      const rawStored = localStorage.getItem('sb-api-supabase-auth-token');
+      if (rawStored) {
+        const parsedStored = JSON.parse(rawStored);
+        if (parsedStored && parsedStored.user && parsedStored.user.id) {
+          currentUser = parsedStored.user;
+        }
+      }
+    } catch (e) {}
+
+    if (!currentUser) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          currentUser = session.user;
+        } else {
+          await setView('login');
+          return;
+        }
+      } catch (e) {
         await setView('login');
         return;
       }
-    } catch (e) {
-      await setView('login');
-      return;
     }
   }
 
-  // Navigate to dashboard instantly and fetch data in the background
+  // Navigate to dashboard tabs instantly
   if (pathname === '/' || pathname === '/watchlist' || pathname === '/analytics' || pathname === '/collection' || pathname === '/bulk-scan' || pathname === '/stream-overlay') {
-    // Determine target tab and track origin screen
     if (pathname === '/analytics' || pathname === '/search') {
       activeDashboardTab = 'analytics';
       lastOriginScreen = 'analytics';
@@ -1103,20 +1113,27 @@ async function navigate(path, pushState = true) {
       lastOriginScreen = 'watchlist';
     }
     
-    // Render view instantly using currently loaded data
-    await setView('dashboard');
+    const existingTabWrapper = document.getElementById('dashboard-tab-content');
+    if (currentView === 'dashboard' && existingTabWrapper) {
+      // Highlight active tab button
+      document.querySelectorAll('.cm-landing-btn').forEach(btn => btn.classList.remove('active'));
+      const activeBtn = document.getElementById(`btn-tab-${activeDashboardTab}`);
+      if (activeBtn) activeBtn.classList.add('active');
 
-    const initialTabWrapper = document.getElementById('dashboard-tab-content');
-    if (initialTabWrapper && currentView === 'dashboard') {
+      existingTabWrapper.innerHTML = '';
       if (activeDashboardTab === 'watchlist') {
-        renderWatchlistTab(initialTabWrapper);
+        renderWatchlistTab(existingTabWrapper);
       } else if (activeDashboardTab === 'collection') {
-        renderCollectionTab(initialTabWrapper);
+        renderCollectionTab(existingTabWrapper);
       } else if (activeDashboardTab === 'bulk-scan') {
-        renderBulkScanTab(initialTabWrapper);
+        renderBulkScanTab(existingTabWrapper);
       } else if (activeDashboardTab === 'stream-overlay') {
-        renderStreamOverlayTab(initialTabWrapper);
+        renderStreamOverlayTab(existingTabWrapper);
+      } else {
+        await renderAnalyticsTab(existingTabWrapper);
       }
+    } else {
+      await setView('dashboard');
     }
 
     // Only trigger background DB fetch if cache is older than 30 seconds
@@ -1141,6 +1158,10 @@ async function navigate(path, pushState = true) {
             renderWatchlistTab(tabContentWrapper);
           } else if (activeDashboardTab === 'collection') {
             renderCollectionTab(tabContentWrapper);
+          } else if (activeDashboardTab === 'bulk-scan') {
+            renderBulkScanTab(tabContentWrapper);
+          } else if (activeDashboardTab === 'stream-overlay') {
+            renderStreamOverlayTab(tabContentWrapper);
           }
         }
       }).catch(err => {
