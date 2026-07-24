@@ -607,6 +607,10 @@ async function init() {
         if (isNewUser) {
           loadCachedUserData(currentUser.id);
         }
+        // Sync session with extension
+        document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_SESSION', {
+          detail: { session }
+        }));
         let currentPath = window.location.hash.slice(1) || '/watchlist';
         if (currentPath.startsWith('access_token=') || currentPath.startsWith('error=') || currentPath.includes('provider_token') || currentPath === '/login' || currentPath === '/') {
           currentPath = '/watchlist';

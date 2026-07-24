@@ -55,3 +55,10 @@ document.addEventListener('TCG_TRACKER_DELETE_CLIPPED_IMAGE', (event) => {
     }
   });
 });
+
+// Listen for session sync events from the Webapp
+document.addEventListener('TCG_TRACKER_SYNC_SESSION', (event) => {
+  if (event.detail && event.detail.session) {
+    safeSendMessage({ action: "setSession", session: event.detail.session });
+  }
+});

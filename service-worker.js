@@ -215,6 +215,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const session = await getSession();
         sendResponse({ authenticated: !!session, user: session?.user || null });
       }
+
+      else if (message.action === "setSession") {
+        if (message.session && message.session.access_token) {
+          await chrome.storage.local.set({ session: message.session });
+          console.log("[SW] Session synced from webapp:", message.session.user?.email);
+          sendResponse({ success: true });
+        } else {
+          sendResponse({ success: false });
+        }
+      }
       
       else if (message.action === "scanCard") {
         const session = await getSession();
