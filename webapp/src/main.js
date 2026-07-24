@@ -3018,35 +3018,35 @@ function renderBulkScanTab(container) {
   const wrapper = document.createElement('div');
   wrapper.className = 'dashboard-content bulk-scan-view';
   wrapper.innerHTML = `
-    <div class="glass-panel bulk-scan-container">
+    <div class="dashboard-content bulk-scan-view">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
         <div>
-          <h2 style="font-size: 1.5rem; font-weight: 700; color: #fff; margin: 0 0 0.25rem 0;">🖨️ Bulk Scan & CSV Importer</h2>
-          <p style="color: #94a3b8; font-size: 0.9rem; margin: 0;">Lade eine PaperStream Index-CSV oder Standard-Karten-CSV hoch, um Kartendaten & Marktpreise abzufragen.</p>
+          <h2 style="color: #fff; margin: 0 0 0.35rem 0; font-size: 1.6rem; font-weight: 800;">Bulk Scan & CSV Importer</h2>
+          <p style="color: #94a3b8; margin: 0; font-size: 0.95rem;">Lade PaperStream Scans oder CSV-Dateien hoch, um deine Karten direkt mit Live-Marktdaten abzugleichen.</p>
         </div>
-        <button class="btn btn-secondary" id="btn-new-csv-upload" style="display: none;">📁 Neue CSV laden</button>
+        <button class="so-shadcn-secondary-btn" id="btn-new-csv-upload" style="display: none;">📁 Neue CSV laden</button>
       </div>
 
       <div class="dropzone-box" id="csv-dropzone">
         <div class="dropzone-icon">📁</div>
-        <h3 style="color: #f8fafc; font-size: 1.1rem; margin: 0 0 0.5rem 0;">PaperStream / TCG CSV-Datei hier ablegen</h3>
-        <p style="color: #94a3b8; font-size: 0.85rem; margin: 0 0 1rem 0;">oder Klicke zum Durchsuchen deiner Dateien</p>
+        <h3 style="color: #f8fafc; font-size: 1.2rem; margin: 0 0 0.5rem 0; font-weight: 700;">PaperStream / TCG CSV-Datei hier ablegen</h3>
+        <p style="color: #94a3b8; font-size: 0.9rem; margin: 0 0 1.25rem 0;">oder Klicke überall in diese Fläche zum Durchsuchen deiner Dateien</p>
         <input type="file" id="csv-file-input" accept=".csv,.txt" style="display: none;" />
-        <button class="btn btn-primary" id="btn-select-csv">CSV-Datei auswählen</button>
+        <button class="so-shadcn-secondary-btn" id="btn-select-csv">CSV-Datei auswählen</button>
       </div>
 
-      <div id="bulk-processing-indicator" style="display: none; text-align: center; padding: 2rem;">
+      <div id="bulk-processing-indicator" style="display: none; text-align: center; padding: 2.5rem;">
         <div class="spinner" style="margin: 0 auto 1rem auto;"></div>
-        <p style="color: #e2e8f0; font-size: 0.95rem;">Analysiere Scans & frage Cardmarket Live-Preise ab...</p>
+        <p style="color: #e2e8f0; font-size: 1rem; font-weight: 600;">Analysiere Scans & frage Cardmarket Live-Preise ab...</p>
       </div>
 
       <div id="bulk-results-area" style="display: none;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1rem 0; flex-wrap: wrap; gap: 1rem;">
-          <h3 style="color: #fff; font-size: 1.1rem; margin: 0;" id="scan-summary-title">Gescannt: 0 Karten</h3>
-          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-            <button class="btn btn-primary" id="btn-send-to-overlay">📱 An Stream Overlay senden</button>
-            <button class="btn btn-secondary" id="btn-save-scans-coll">💾 In Sammlung speichern</button>
-            <button class="btn btn-secondary" id="btn-export-enriched-csv">📥 CSV herunterladen</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.75rem 0 1.25rem 0; flex-wrap: wrap; gap: 1.25rem;">
+          <h3 style="color: #fff; font-size: 1.2rem; margin: 0; font-weight: 800;" id="scan-summary-title">Gescannt: 0 Karten</h3>
+          <div style="display: flex; gap: 0.85rem; flex-wrap: wrap; align-items: center;">
+            <button class="so-shadcn-primary-btn" id="btn-send-to-overlay" style="width: auto; padding: 0.75rem 1.6rem;">📱 An Stream Overlay senden</button>
+            <button class="so-shadcn-secondary-btn" id="btn-save-scans-coll">💾 In Sammlung speichern</button>
+            <button class="so-shadcn-secondary-btn" id="btn-export-enriched-csv">📥 CSV herunterladen</button>
           </div>
         </div>
 
@@ -3083,7 +3083,16 @@ function renderBulkScanTab(container) {
   const btnSaveColl = wrapper.querySelector('#btn-save-scans-coll');
   const btnExportCsv = wrapper.querySelector('#btn-export-enriched-csv');
 
-  btnSelect.addEventListener('click', () => fileInput.click());
+  btnSelect.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fileInput.click();
+  });
+
+  dropzone.addEventListener('click', (e) => {
+    if (e.target !== fileInput) {
+      fileInput.click();
+    }
+  });
 
   btnNewUpload.addEventListener('click', () => {
     dropzone.style.display = 'block';
@@ -3126,7 +3135,7 @@ function renderBulkScanTab(container) {
 
       processingInd.style.display = 'none';
       resultsArea.style.display = 'block';
-      btnNewUpload.style.display = 'inline-block';
+      btnNewUpload.style.display = 'inline-flex';
       renderResults(items);
     };
     reader.readAsText(file);
@@ -3192,7 +3201,7 @@ function renderBulkScanTab(container) {
   if (bulkScannerInstance.scanItems && bulkScannerInstance.scanItems.length > 0) {
     dropzone.style.display = 'none';
     resultsArea.style.display = 'block';
-    btnNewUpload.style.display = 'inline-block';
+    btnNewUpload.style.display = 'inline-flex';
     renderResults(bulkScannerInstance.scanItems);
   }
 
@@ -3304,7 +3313,7 @@ async function fetchStreamQueueFromSupabase() {
   return null;
 }
 
-// Stream Overlay Tab Renderer with automatic Cross-Device Sync
+// Stream Overlay Tab Renderer with automatic Cross-Device Sync & Refresh
 async function renderStreamOverlayTab(container) {
   container.innerHTML = '';
 
@@ -3313,7 +3322,17 @@ async function renderStreamOverlayTab(container) {
   wrapper.id = 'stream-overlay-view-wrapper';
   container.appendChild(wrapper);
 
-  streamOverlayInstance = new StreamOverlay(wrapper);
+  streamOverlayInstance = new StreamOverlay(wrapper, {
+    onRefresh: async () => {
+      const synced = await fetchStreamQueueFromSupabase();
+      if (synced && synced.queue && synced.queue.length > 0) {
+        activeStreamQueue = synced.queue;
+        streamOverlayInstance.loadQueue(activeStreamQueue);
+        streamOverlayInstance.currentIndex = synced.index || 0;
+        streamOverlayInstance.render();
+      }
+    }
+  });
 
   // If activeStreamQueue is empty in local memory, attempt fetching from Supabase for cross-device sync (e.g. Mac -> Tablet)
   if (activeStreamQueue.length === 0 && currentUser?.id) {

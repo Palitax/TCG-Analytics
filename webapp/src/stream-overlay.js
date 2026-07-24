@@ -107,7 +107,7 @@ export class StreamOverlay {
     this.currentIndex = 0;
     this.totalSoldValue = 0;
     this.isFullscreen = false;
-    this.onProgress = options.onProgress || null;
+    this.onRefresh = options.onRefresh || null;
   }
 
   loadQueue(items) {
@@ -211,8 +211,20 @@ export class StreamOverlay {
           <p style="color: #94a3b8; max-width: 460px; margin-top: 0.5rem;">
             Importiere eine CSV-Datei im Bulk Scan Tab und klicke auf <strong>"An Stream Overlay senden"</strong>, um deine Verkaufssession auf dem iPad zu starten!
           </p>
+          <button class="so-shadcn-secondary-btn" id="so-empty-refresh-btn" style="margin-top: 1.25rem;">
+            🔄 Sync & Refresh
+          </button>
         </div>
       `;
+
+      const emptyRefreshBtn = this.container.querySelector('#so-empty-refresh-btn');
+      if (emptyRefreshBtn) {
+        emptyRefreshBtn.addEventListener('click', async () => {
+          emptyRefreshBtn.innerHTML = '🔄 Lädt...';
+          if (this.onRefresh) await this.onRefresh();
+          else window.location.reload();
+        });
+      }
       return;
     }
 
@@ -276,10 +288,13 @@ export class StreamOverlay {
             <span>Karte <strong>${this.currentIndex + 1}</strong> von <strong>${totalCards}</strong></span>
           </div>
 
-          <div style="display: flex; align-items: center; gap: 1rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
             <div class="so-session-summary">
               <span>Umsatz: <strong>${this.totalSoldValue.toFixed(2)} €</strong></span>
             </div>
+            <button class="so-btn-fs-trigger" id="so-refresh-btn" title="Screen & Queue neu laden">
+              🔄 Sync & Refresh
+            </button>
             <button class="so-btn-fs-trigger" id="so-fs-trigger-btn" title="Vollbild Modus für iPad">
               ${this.isFullscreen ? '↙ Beenden' : '⛶ Vollbild'}
             </button>
@@ -337,6 +352,18 @@ export class StreamOverlay {
     `;
 
     // Event Listeners
+    const refreshBtn = this.container.querySelector('#so-refresh-btn');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', async () => {
+        refreshBtn.innerHTML = '🔄 Lädt...';
+        if (this.onRefresh) {
+          await this.onRefresh();
+        } else {
+          window.location.reload();
+        }
+      });
+    }
+
     const fsBtn = this.container.querySelector('#so-fs-trigger-btn');
     if (fsBtn) {
       fsBtn.addEventListener('click', () => this.toggleFullscreen());
