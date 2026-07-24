@@ -329,9 +329,12 @@ async function uploadImageToStorage(cardId, base64Str) {
   }
 }
 
-// Return stored image URL directly (Base64 or standard asset link)
+// Return stored image URL directly (Base64, Supabase Storage, or proxied Cardmarket link)
 function getProxiedImageUrl(url) {
   if (!url) return '/logo.png';
+  if (typeof url === 'string' && url.includes('static.cardmarket.com')) {
+    return `https://wsrv.nl/?url=${encodeURIComponent(url)}`;
+  }
   return url;
 }
 
