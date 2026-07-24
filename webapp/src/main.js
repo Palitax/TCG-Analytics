@@ -735,15 +735,28 @@ async function fetchBulkCardImages(cardIds) {
 async function fetchCollectionCards() {
   if (!currentUser) return;
   try {
-    const { data, error } = await supabase
+    let res = await supabase
       .from('collection_cards')
       .select('*')
       .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (res.error) {
+      console.warn('collection_cards query failed, attempting session refresh...', res.error.message);
+      const { data: refreshData } = await supabase.auth.refreshSession();
+      if (refreshData?.session) {
+        currentUser = refreshData.session.user;
+        res = await supabase
+          .from('collection_cards')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .order('created_at', { ascending: false });
+      }
+    }
+
+    if (res.error) throw res.error;
     
-    let listData = data || [];
+    let listData = res.data || [];
     const cardIds = listData.map(c => c.card_id);
     if (cardIds.length > 0) {
       try {
@@ -847,13 +860,27 @@ async function fetchCollectionCards() {
 async function fetchMarkedCards() {
   if (!currentUser) return;
   try {
-    const { data, error } = await supabase
+    let res = await supabase
       .from('marked_cards')
       .select('id, card_id, tcg, comment, target_price, condition, language, seller_country, created_at')
       .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (res.error) {
+      console.warn('marked_cards query failed, attempting session refresh...', res.error.message);
+      const { data: refreshData } = await supabase.auth.refreshSession();
+      if (refreshData?.session) {
+        currentUser = refreshData.session.user;
+        res = await supabase
+          .from('marked_cards')
+          .select('id, card_id, tcg, comment, target_price, condition, language, seller_country, created_at')
+          .eq('user_id', currentUser.id)
+          .order('created_at', { ascending: false });
+      }
+    }
+
+    if (res.error) throw res.error;
+    const data = res.data;
     
     // Purge legacy stream queue items from database so they never clutter the watchlist
     supabase
