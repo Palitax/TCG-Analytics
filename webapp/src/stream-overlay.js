@@ -146,7 +146,7 @@ export class StreamOverlay {
     const cardName = currentCard.detectedName || currentCard.rawName || 'Unbekannte Karte';
     const hasPrice = currentCard.lastPrice !== null && currentCard.lastPrice !== undefined;
     const priceDisplay = hasPrice ? `${currentCard.lastPrice.toFixed(2)} €` : 'Keine DB-Daten';
-    const checkDisplay = currentCard.lastCheckDate ? `${currentCard.lastCheckDate}` : 'Noch nicht gecheckt';
+    const checkDisplay = currentCard.lastCheckRelative || currentCard.lastCheckDate || 'Noch nicht gecheckt';
     const filterDisplay = currentCard.filterInfo || 'Standard Filter';
     const imageSrc = currentCard.rawFile || currentCard.cardDetails?.image_url || 'assets/card-placeholder.png';
     const cmUrl = getCardmarketSearchUrl(currentCard);
