@@ -6,7 +6,8 @@ Chart.register(...registerables);
 // Global state variables
 let currentUser = null;
 let currentView = 'loading'; // 'loading', 'login', 'dashboard', 'detail'
-let activeDashboardTab = 'watchlist'; // 'watchlist' or 'analytics'
+let activeDashboardTab = 'watchlist'; // 'watchlist', 'collection', or 'analytics'
+let lastOriginScreen = 'watchlist';
 let markedCards = [];
 let activeSortOption = 'custom';
 try {
@@ -781,13 +782,16 @@ async function navigate(path, pushState = true) {
 
   // Navigate to dashboard instantly and fetch data in the background
   if (pathname === '/' || pathname === '/watchlist' || pathname === '/analytics' || pathname === '/collection') {
-    // Determine target tab
-    if (pathname === '/analytics') {
+    // Determine target tab and track origin screen
+    if (pathname === '/analytics' || pathname === '/search') {
       activeDashboardTab = 'analytics';
+      lastOriginScreen = 'analytics';
     } else if (pathname === '/collection') {
       activeDashboardTab = 'collection';
+      lastOriginScreen = 'collection';
     } else {
       activeDashboardTab = 'watchlist';
+      lastOriginScreen = 'watchlist';
     }
     
     // Render view instantly using currently loaded data
@@ -3067,6 +3071,32 @@ function renderDetail(container) {
   const details = activeCardDetails;
   if (!details) return null;
 
+  // Determine dynamic back button label & destination path based on origin screen
+  let backLabel = 'Watchlist';
+  let backPath = '/watchlist';
+
+  if (lastOriginScreen === 'collection') {
+    backLabel = 'Collection';
+    backPath = '/collection';
+  } else if (lastOriginScreen === 'analytics' || lastOriginScreen === 'search') {
+    backLabel = 'Analytics';
+    backPath = '/analytics';
+  } else if (lastOriginScreen === 'watchlist' || lastOriginScreen === 'marked') {
+    backLabel = 'Watchlist';
+    backPath = '/watchlist';
+  } else {
+    if (collectionCards.some(c => c.card_id === details.cardId)) {
+      backLabel = 'Collection';
+      backPath = '/collection';
+    } else if (markedCards.some(m => m.card_id === details.cardId)) {
+      backLabel = 'Watchlist';
+      backPath = '/watchlist';
+    } else {
+      backLabel = 'Analytics';
+      backPath = '/analytics';
+    }
+  }
+
   const wrapper = document.createElement('div');
   wrapper.className = 'detail-wrapper';
   container.appendChild(wrapper);
@@ -3078,7 +3108,7 @@ function renderDetail(container) {
       <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
       </svg>
-      Zurück
+      ${backLabel}
     </button>
     <div style="display: flex; align-items: center; gap: 12px;">
       <button id="btn-detail-collection" class="btn-detail-collection" title="Sammlung umschalten">
@@ -3131,11 +3161,7 @@ function renderDetail(container) {
   updateCollectIconStyle();
 
   header.querySelector('#btn-back').addEventListener('click', () => {
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      navigate('/watchlist');
-    }
+    navigate(backPath);
   });
 
   // Toggle bookmark in DB
