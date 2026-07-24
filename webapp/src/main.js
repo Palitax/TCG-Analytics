@@ -255,6 +255,129 @@ function cleanupDetailKeydownListener() {
   }
 }
 
+// Helper to get filtered & sorted Watchlist cards according to user active filters and sort choice
+function getSortedWatchlistCards() {
+  let sortedCards = [...markedCards];
+  if (activeSearchQuery && activeSearchQuery.trim()) {
+    const q = activeSearchQuery.toLowerCase();
+    sortedCards = sortedCards.filter(c => {
+      const cardIdStr = (c.card_id || '').toLowerCase();
+      const cleanNameStr = cleanCardName(c.card_id).toLowerCase();
+      const tcgStr = (c.tcg || '').toLowerCase();
+      return cardIdStr.includes(q) || cleanNameStr.includes(q) || tcgStr.includes(q);
+    });
+  }
+
+  if (activeTcgFilter !== 'all') {
+    const filterTcg = activeTcgFilter.toLowerCase();
+    sortedCards = sortedCards.filter(c => {
+      const tcgStr = (c.tcg || '').toLowerCase();
+      if (filterTcg === 'onepiece') return tcgStr === 'onepiece' || tcgStr === 'one piece';
+      if (filterTcg === 'dragonball') return tcgStr === 'dragonball' || tcgStr === 'dragon ball' || tcgStr === 'dragonballsuper' || tcgStr === 'dragon ball super';
+      return tcgStr === filterTcg;
+    });
+  }
+
+  if (activeSortOption === 'date-desc') {
+    sortedCards.sort((a, b) => {
+      const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tB - tA;
+    });
+  } else if (activeSortOption === 'price-asc') {
+    sortedCards.sort((a, b) => {
+      const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : Infinity;
+      const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : Infinity;
+      return pA - pB;
+    });
+  } else if (activeSortOption === 'price-desc') {
+    sortedCards.sort((a, b) => {
+      const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : -Infinity;
+      const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : -Infinity;
+      return pB - pA;
+    });
+  } else if (activeSortOption === 'diff-desc') {
+    sortedCards.sort((a, b) => {
+      const dA = a.diff_percent !== undefined ? a.diff_percent : 0;
+      const dB = b.diff_percent !== undefined ? b.diff_percent : 0;
+      return dB - dA;
+    });
+  } else if (activeSortOption === 'diff-asc') {
+    sortedCards.sort((a, b) => {
+      const dA = a.diff_percent !== undefined ? a.diff_percent : 0;
+      const dB = b.diff_percent !== undefined ? b.diff_percent : 0;
+      return dA - dB;
+    });
+  }
+
+  return sortedCards;
+}
+
+// Helper to get filtered & sorted Collection cards according to user active filters and sort choice
+function getSortedCollectionCards() {
+  let sortedCards = [...collectionCards];
+  if (activeSearchQuery && activeSearchQuery.trim()) {
+    const q = activeSearchQuery.toLowerCase();
+    sortedCards = sortedCards.filter(c => {
+      const cardIdStr = (c.card_id || '').toLowerCase();
+      const cleanNameStr = cleanCardName(c.card_id).toLowerCase();
+      const tcgStr = (c.tcg || '').toLowerCase();
+      return cardIdStr.includes(q) || cleanNameStr.includes(q) || tcgStr.includes(q);
+    });
+  }
+
+  if (activeTcgFilter !== 'all') {
+    const filterTcg = activeTcgFilter.toLowerCase();
+    sortedCards = sortedCards.filter(c => {
+      const tcgStr = (c.tcg || '').toLowerCase();
+      if (filterTcg === 'onepiece') return tcgStr === 'onepiece' || tcgStr === 'one piece';
+      if (filterTcg === 'dragonball') return tcgStr === 'dragonball' || tcgStr === 'dragon ball' || tcgStr === 'dragonballsuper' || tcgStr === 'dragon ball super';
+      return tcgStr === filterTcg;
+    });
+  }
+
+  for (const card of sortedCards) {
+    const buyPrice = card.purchase_price !== null && card.purchase_price !== undefined ? parseFloat(card.purchase_price) : null;
+    const basePrice = buyPrice !== null ? buyPrice : (card.baseline_price || 0);
+    const latestPrice = card.latest_price || 0;
+    card.resolved_diff_percent = basePrice > 0 ? ((latestPrice - basePrice) / basePrice) * 100 : 0;
+  }
+
+  if (activeSortOption === 'date-desc') {
+    sortedCards.sort((a, b) => {
+      const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tB - tA;
+    });
+  } else if (activeSortOption === 'price-asc') {
+    sortedCards.sort((a, b) => {
+      const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : Infinity;
+      const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : Infinity;
+      return pA - pB;
+    });
+  } else if (activeSortOption === 'price-desc') {
+    sortedCards.sort((a, b) => {
+      const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : -Infinity;
+      const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : -Infinity;
+      return pB - pA;
+    });
+  } else if (activeSortOption === 'diff-desc') {
+    sortedCards.sort((a, b) => {
+      const dA = a.resolved_diff_percent !== undefined ? a.resolved_diff_percent : 0;
+      const dB = b.resolved_diff_percent !== undefined ? b.resolved_diff_percent : 0;
+      return dB - dA;
+    });
+  } else if (activeSortOption === 'diff-asc') {
+    sortedCards.sort((a, b) => {
+      const dA = a.resolved_diff_percent !== undefined ? a.resolved_diff_percent : 0;
+      const dB = b.resolved_diff_percent !== undefined ? b.resolved_diff_percent : 0;
+      return dA - dB;
+    });
+  }
+
+  return sortedCards;
+}
+
 function setCachedCardImage(cardId, imageUrl) {
   if (!cardId || !imageUrl) return;
   try {
@@ -1314,65 +1437,8 @@ function renderWatchlistTab(container) {
     return;
   }
 
-  // Filter cards by search query if present
-  let sortedCards = [...markedCards];
-  if (activeSearchQuery) {
-    const q = activeSearchQuery.toLowerCase();
-    sortedCards = sortedCards.filter(c => {
-      const cardIdStr = (c.card_id || '').toLowerCase();
-      const cleanNameStr = cleanCardName(c.card_id).toLowerCase();
-      const tcgStr = (c.tcg || '').toLowerCase();
-      return cardIdStr.includes(q) || cleanNameStr.includes(q) || tcgStr.includes(q);
-    });
-  }
-
-  // Filter cards by TCG if present
-  if (activeTcgFilter !== 'all') {
-    const filterTcg = activeTcgFilter.toLowerCase();
-    sortedCards = sortedCards.filter(c => {
-      const tcgStr = (c.tcg || '').toLowerCase();
-      if (filterTcg === 'onepiece') {
-        return tcgStr === 'onepiece' || tcgStr === 'one piece';
-      }
-      if (filterTcg === 'dragonball') {
-        return tcgStr === 'dragonball' || tcgStr === 'dragon ball' || tcgStr === 'dragonballsuper' || tcgStr === 'dragon ball super';
-      }
-      return tcgStr === filterTcg;
-    });
-  }
-
-  // Sort the cards based on selected sort option
-  if (activeSortOption === 'date-desc') {
-    sortedCards.sort((a, b) => {
-      const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return tB - tA;
-    });
-  } else if (activeSortOption === 'price-asc') {
-    sortedCards.sort((a, b) => {
-      const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : Infinity;
-      const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : Infinity;
-      return pA - pB;
-    });
-  } else if (activeSortOption === 'price-desc') {
-    sortedCards.sort((a, b) => {
-      const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : -Infinity;
-      const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : -Infinity;
-      return pB - pA;
-    });
-  } else if (activeSortOption === 'diff-desc') {
-    sortedCards.sort((a, b) => {
-      const dA = a.diff_percent !== undefined ? a.diff_percent : 0;
-      const dB = b.diff_percent !== undefined ? b.diff_percent : 0;
-      return dB - dA;
-    });
-  } else if (activeSortOption === 'diff-asc') {
-    sortedCards.sort((a, b) => {
-      const dA = a.diff_percent !== undefined ? a.diff_percent : 0;
-      const dB = b.diff_percent !== undefined ? b.diff_percent : 0;
-      return dA - dB;
-    });
-  }
+  // Filter & sort cards using active filters and sort choice
+  const sortedCards = getSortedWatchlistCards();
 
   // Watchlist Header & Sync All Actions & Sorting Controls
   const headerSection = document.createElement('div');
@@ -2109,39 +2175,8 @@ function renderCollectionTab(container) {
     return;
   }
 
-  // Filter cards by search query & TCG
-  let sortedCards = [...collectionCards];
-  if (activeSearchQuery) {
-    const q = activeSearchQuery.toLowerCase();
-    sortedCards = sortedCards.filter(c => {
-      const cardIdStr = (c.card_id || '').toLowerCase();
-      const cleanNameStr = cleanCardName(c.card_id).toLowerCase();
-      const tcgStr = (c.tcg || '').toLowerCase();
-      return cardIdStr.includes(q) || cleanNameStr.includes(q) || tcgStr.includes(q);
-    });
-  }
-
-  if (activeTcgFilter !== 'all') {
-    const filterTcg = activeTcgFilter.toLowerCase();
-    sortedCards = sortedCards.filter(c => {
-      const tcgStr = (c.tcg || '').toLowerCase();
-      if (filterTcg === 'onepiece') {
-        return tcgStr === 'onepiece' || tcgStr === 'one piece';
-      }
-      if (filterTcg === 'dragonball') {
-        return tcgStr === 'dragonball' || tcgStr === 'dragon ball' || tcgStr === 'dragonballsuper' || tcgStr === 'dragon ball super';
-      }
-      return tcgStr === filterTcg;
-    });
-  }
-
-  // Sort collectionCards / sortedCards by resolving latest price and purchase price diffs:
-  for (const card of sortedCards) {
-    const buyPrice = card.purchase_price !== null && card.purchase_price !== undefined ? parseFloat(card.purchase_price) : null;
-    const basePrice = buyPrice !== null ? buyPrice : (card.baseline_price || 0);
-    const latestPrice = card.latest_price || 0;
-    card.resolved_diff_percent = basePrice > 0 ? ((latestPrice - basePrice) / basePrice) * 100 : 0;
-  }
+  // Filter & sort collection cards using active filters and sort choice
+  const sortedCards = getSortedCollectionCards();
 
   // Calculate total collection value
   const totalValue = sortedCards.reduce((sum, card) => sum + (card.latest_price || 0), 0);
@@ -2151,39 +2186,6 @@ function renderCollectionTab(container) {
   }, 0);
   const totalProfit = totalValue - totalCost;
   const totalProfitPercent = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
-
-  // Sorting
-  if (activeSortOption === 'date-desc') {
-    sortedCards.sort((a, b) => {
-      const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return tB - tA;
-    });
-  } else if (activeSortOption === 'price-asc') {
-    sortedCards.sort((a, b) => {
-      const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : Infinity;
-      const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : Infinity;
-      return pA - pB;
-    });
-  } else if (activeSortOption === 'price-desc') {
-    sortedCards.sort((a, b) => {
-      const pA = a.latest_price !== null && a.latest_price !== undefined ? a.latest_price : -Infinity;
-      const pB = b.latest_price !== null && b.latest_price !== undefined ? b.latest_price : -Infinity;
-      return pB - pA;
-    });
-  } else if (activeSortOption === 'diff-desc') {
-    sortedCards.sort((a, b) => {
-      const dA = a.resolved_diff_percent !== undefined ? a.resolved_diff_percent : 0;
-      const dB = b.resolved_diff_percent !== undefined ? b.resolved_diff_percent : 0;
-      return dB - dA;
-    });
-  } else if (activeSortOption === 'diff-asc') {
-    sortedCards.sort((a, b) => {
-      const dA = a.resolved_diff_percent !== undefined ? a.resolved_diff_percent : 0;
-      const dB = b.resolved_diff_percent !== undefined ? b.resolved_diff_percent : 0;
-      return dA - dB;
-    });
-  }
 
   // Display Summary Container (Current Value & Profit/Loss)
   const summaryContainer = document.createElement('div');
@@ -3619,16 +3621,30 @@ function renderDetail(container) {
   selLang.addEventListener('change', onFilterChange);
   selLoc.addEventListener('change', onFilterChange);
 
-  // Navigation logic (Watchlist, Collection, or Search Grid)
+  // Navigation logic (Watchlist, Collection, or Search Grid) following ACTIVE sort & filter order
   cleanupDetailKeydownListener();
 
   let activeList = [];
-  if (collectionCards.some(c => c.card_id === details.cardId)) {
-    activeList = collectionCards;
-  } else if (markedCards.some(m => m.card_id === details.cardId)) {
-    activeList = markedCards;
-  } else if (typeof gridCards !== 'undefined' && gridCards && gridCards.some(g => g.card_id === details.cardId)) {
-    activeList = gridCards;
+  if (lastOriginScreen === 'collection') {
+    activeList = getSortedCollectionCards();
+  } else if (lastOriginScreen === 'watchlist') {
+    activeList = getSortedWatchlistCards();
+  } else if (lastOriginScreen === 'analytics' || lastOriginScreen === 'search') {
+    if (typeof gridCards !== 'undefined' && gridCards && gridCards.length > 0) {
+      activeList = gridCards;
+    } else {
+      activeList = getSortedWatchlistCards();
+    }
+  } else {
+    const sortedColl = getSortedCollectionCards();
+    const sortedWatch = getSortedWatchlistCards();
+    if (sortedColl.some(c => c.card_id === details.cardId)) {
+      activeList = sortedColl;
+    } else if (sortedWatch.some(m => m.card_id === details.cardId)) {
+      activeList = sortedWatch;
+    } else if (typeof gridCards !== 'undefined' && gridCards && gridCards.length > 0) {
+      activeList = gridCards;
+    }
   }
 
   const currentIndex = activeList.findIndex(c => c.card_id === details.cardId);
