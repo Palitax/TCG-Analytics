@@ -4,16 +4,36 @@
 // Mark the page root so the Webapp knows the extension is installed and active
 document.documentElement.setAttribute('data-tcg-tracker-extension-active', 'true');
 
+// Helper to safely send messages to background service worker without throwing context invalidation errors
+function safeSendMessage(message, callback) {
+  try {
+    if (!chrome.runtime || !chrome.runtime.id) {
+      console.warn('TCG Tracker Extension reloaded. Please refresh the web page to reconnect.');
+      return;
+    }
+    chrome.runtime.sendMessage(message, (res) => {
+      if (chrome.runtime?.lastError) {
+        console.warn('Extension communication warning:', chrome.runtime.lastError.message);
+        return;
+      }
+      if (callback) callback(res);
+    });
+  } catch (e) {
+    console.warn('Extension context invalidated:', e.message);
+  }
+}
+
 // Listen for the custom DOM event from the Webapp
 document.addEventListener('TCG_TRACKER_SYNC_ALL', (event) => {
   if (event.detail && event.detail.urls) {
-    chrome.runtime.sendMessage({ action: "openTabs", urls: event.detail.urls });
+    safeSendMessage({ action: "openTabs", urls: event.detail.urls });
   }
 });
+
 // Listen for requests for clipped images from the Webapp
 document.addEventListener('TCG_TRACKER_GET_CLIPPED_IMAGES', (event) => {
   const { cardId } = event.detail || {};
-  chrome.runtime.sendMessage({ action: "getClippedImages", cardId }, (res) => {
+  safeSendMessage({ action: "getClippedImages", cardId }, (res) => {
     if (res && res.success) {
       document.dispatchEvent(new CustomEvent('TCG_TRACKER_CLIPPED_IMAGES_REPLY', {
         detail: { images: res.images || [] }
@@ -25,7 +45,7 @@ document.addEventListener('TCG_TRACKER_GET_CLIPPED_IMAGES', (event) => {
 // Listen for delete requests for clipped images from the Webapp
 document.addEventListener('TCG_TRACKER_DELETE_CLIPPED_IMAGE', (event) => {
   const { cardId, image, timestamp } = event.detail || {};
-  chrome.runtime.sendMessage({ action: "deleteClippedImage", cardId, image, timestamp }, (res) => {
+  safeSendMessage({ action: "deleteClippedImage", cardId, image, timestamp }, (res) => {
     if (res && res.success) {
       document.dispatchEvent(new CustomEvent('TCG_TRACKER_CLIPPED_IMAGES_REPLY', {
         detail: { images: res.images || [] }
