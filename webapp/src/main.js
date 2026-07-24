@@ -33,6 +33,7 @@ let collectionCards = []; // Cards in collection
 let activeTcgFilter = 'all'; // TCG filter for tabs ('all', 'OnePiece', 'Pokemon', 'Riftbound', 'DragonBall')
 let collectionValueHistory = []; // Historical values of collection market value
 let isBackgroundFetching = false; // Flag to indicate active database load operation
+let lastDataFetchTime = 0; // Timestamp of last successful background fetch
 
 function loadCachedUserData(userId) {
   if (!userId) return;
@@ -734,11 +735,9 @@ async function navigate(path, pushState = true) {
     // Render view instantly using currently loaded data
     await setView('dashboard');
 
-    // Trigger background fetch and re-render the active tab wrapper once loaded
-    showLoadingProgress(true);
-    isBackgroundFetching = true;
+    // Render view instantly using currently loaded memory/localStorage cache
+    await setView('dashboard');
 
-    // Immediately trigger a rendering of the tab so if the memory is empty, the skeletons appear
     const initialTabWrapper = document.getElementById('dashboard-tab-content');
     if (initialTabWrapper && currentView === 'dashboard') {
       if (activeDashboardTab === 'watchlist') {
@@ -748,25 +747,36 @@ async function navigate(path, pushState = true) {
       }
     }
 
-    Promise.all([
-      fetchMarkedCards(),
-      fetchCollectionCards()
-    ]).then(() => {
-      showLoadingProgress(false);
-      isBackgroundFetching = false;
-      const tabContentWrapper = document.getElementById('dashboard-tab-content');
-      if (tabContentWrapper && currentView === 'dashboard') {
-        if (activeDashboardTab === 'watchlist') {
-          renderWatchlistTab(tabContentWrapper);
-        } else if (activeDashboardTab === 'collection') {
-          renderCollectionTab(tabContentWrapper);
+    // Only trigger background DB fetch if cache is older than 30 seconds
+    const now = Date.now();
+    const isCacheStale = now - lastDataFetchTime > 30000;
+    const isMemoryEmpty = markedCards.length === 0 && collectionCards.length === 0;
+
+    if (isMemoryEmpty || isCacheStale) {
+      if (isMemoryEmpty) showLoadingProgress(true);
+      isBackgroundFetching = true;
+
+      Promise.all([
+        fetchMarkedCards(),
+        fetchCollectionCards()
+      ]).then(() => {
+        lastDataFetchTime = Date.now();
+        showLoadingProgress(false);
+        isBackgroundFetching = false;
+        const tabContentWrapper = document.getElementById('dashboard-tab-content');
+        if (tabContentWrapper && currentView === 'dashboard') {
+          if (activeDashboardTab === 'watchlist') {
+            renderWatchlistTab(tabContentWrapper);
+          } else if (activeDashboardTab === 'collection') {
+            renderCollectionTab(tabContentWrapper);
+          }
         }
-      }
-    }).catch(err => {
-      showLoadingProgress(false);
-      isBackgroundFetching = false;
-      console.error('Background data update failed:', err);
-    });
+      }).catch(err => {
+        showLoadingProgress(false);
+        isBackgroundFetching = false;
+        console.error('Background data update failed:', err);
+      });
+    }
   } else if (pathname === '/detail') {
     const cardId = searchParams.get('card_id');
     const tcg = searchParams.get('tcg');
