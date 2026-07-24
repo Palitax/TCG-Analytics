@@ -138,8 +138,10 @@ export class StreamOverlay {
 
     const cardCode = currentCard.detectedCode || currentCard.rawCode || 'Code k.A.';
     const cardName = currentCard.detectedName || currentCard.rawName || 'Unbekannte Karte';
-    const lowPrice = currentCard.marketPrices?.lowPrice ? `${currentCard.marketPrices.lowPrice.toFixed(2)} €` : 'N/A';
-    const trendPrice = currentCard.marketPrices?.trendPrice ? `${currentCard.marketPrices.trendPrice.toFixed(2)} €` : 'N/A';
+    const hasPrice = currentCard.lastPrice !== null && currentCard.lastPrice !== undefined;
+    const priceDisplay = hasPrice ? `${currentCard.lastPrice.toFixed(2)} €` : 'Keine DB-Daten';
+    const checkDisplay = currentCard.lastCheckDate ? `${currentCard.lastCheckDate}` : 'Noch nicht gecheckt';
+    const filterDisplay = currentCard.filterInfo || 'Standard Filter';
     const imageSrc = currentCard.rawFile || currentCard.cardDetails?.image_url || 'assets/card-placeholder.png';
     const cmUrl = getCardmarketSearchUrl(currentCard);
 
@@ -163,7 +165,7 @@ export class StreamOverlay {
           <div class="so-details-container">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div class="so-card-badge">${cardCode}</div>
-              <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 6px 12px; font-size: 0.85rem; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #818cf8; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
+              <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 6px 14px; font-size: 0.85rem; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #818cf8; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
                 Check price now ↗
               </a>
             </div>
@@ -171,12 +173,13 @@ export class StreamOverlay {
 
             <div class="so-price-cards">
               <div class="so-price-card primary">
-                <span class="price-label">Cardmarket Low</span>
-                <span class="price-value">${lowPrice}</span>
+                <span class="price-label">Letzter CM Preis</span>
+                <span class="price-value" style="color: ${hasPrice ? '#10b981' : '#94a3b8'};">${priceDisplay}</span>
               </div>
               <div class="so-price-card trend">
-                <span class="price-label">Trendpreis</span>
-                <span class="price-value">${trendPrice}</span>
+                <span class="price-label">Letzter Check</span>
+                <span class="price-value" style="font-size: 1.1rem; color: #cbd5e1;">${checkDisplay}</span>
+                <span style="font-size: 0.78rem; color: #94a3b8; margin-top: 4px;">Filter: ${filterDisplay}</span>
               </div>
             </div>
 

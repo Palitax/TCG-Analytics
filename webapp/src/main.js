@@ -2978,12 +2978,12 @@ async function renderAnalyticsTab(container) {
   });
 }
 
-// Cardmarket Search URL builder helper (Always uses Card Name + Code e.g. "Pikachu DP16")
+// Cardmarket Search URL builder helper (Always uses Card Name + Code e.g. "Pikachu DP16" with '+' searchString)
 function buildCardmarketSearchUrl(item) {
   const code = (item.detectedCode || item.rawCode || '').trim();
   let rawName = (item.detectedName || item.rawName || '').replace(/\([^)]*\)/g, '').trim();
   let mainName = rawName.split(/\s+LV\./i)[0].trim();
-  if (!mainName || mainName.toLowerCase() === 'karte') mainName = 'Pikachu';
+  if (!mainName || mainName.toLowerCase() === 'karte') mainName = '';
 
   let searchQuery = '';
   if (mainName && code) {
@@ -3002,8 +3002,8 @@ function buildCardmarketSearchUrl(item) {
     game = 'YuGiOh';
   }
 
-  const cleanQuery = encodeURIComponent(searchQuery.trim());
-  return `https://www.cardmarket.com/de/${game}/Products/Search?searchString=${cleanQuery}`;
+  const encodedQuery = encodeURIComponent(searchQuery.trim()).replace(/%20/g, '+');
+  return `https://www.cardmarket.com/de/${game}/Products/Search?searchString=${encodedQuery}`;
 }
 
 // Bulk Scan Tab Renderer
@@ -3052,8 +3052,8 @@ function renderBulkScanTab(container) {
                 <th>#</th>
                 <th>Karte / Code</th>
                 <th>Titel</th>
-                <th>Low (€)</th>
-                <th>Trend (€)</th>
+                <th>Letzter CM Preis</th>
+                <th>Letzter Check & Filter</th>
                 <th>Status</th>
                 <th style="text-align: right;">Cardmarket</th>
               </tr>
@@ -3133,8 +3133,9 @@ function renderBulkScanTab(container) {
 
     items.forEach((item, index) => {
       const tr = document.createElement('tr');
-      const lowPrice = item.marketPrices?.lowPrice ? `${item.marketPrices.lowPrice.toFixed(2)} €` : 'N/A';
-      const trendPrice = item.marketPrices?.trendPrice ? `${item.marketPrices.trendPrice.toFixed(2)} €` : 'N/A';
+      const hasPrice = item.lastPrice !== null && item.lastPrice !== undefined;
+      const priceText = hasPrice ? `${item.lastPrice.toFixed(2)} €` : '-';
+      const checkDetails = item.lastCheckDate ? `${item.lastCheckDate} • ${item.filterInfo || 'Standard'}` : 'Keine DB-Daten';
       const isMatched = item.status === 'matched';
       const cmUrl = buildCardmarketSearchUrl(item);
 
@@ -3144,11 +3145,11 @@ function renderBulkScanTab(container) {
           <input type="text" class="form-input code-input" value="${item.detectedCode || ''}" style="width: 110px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 8px;" />
         </td>
         <td><strong>${item.detectedName || item.rawName || 'Karte'}</strong></td>
-        <td style="color: #10b981; font-weight: 700;">${lowPrice}</td>
-        <td style="color: #818cf8; font-weight: 600;">${trendPrice}</td>
+        <td style="color: ${hasPrice ? '#10b981' : '#94a3b8'}; font-weight: 700;">${priceText}</td>
+        <td style="color: #94a3b8; font-size: 0.85rem;">${checkDetails}</td>
         <td>
           <span class="status-badge ${isMatched ? 'matched' : 'needs_review'}">
-            ${isMatched ? '✅ Erkannt' : '⚠️ Prüfen'}
+            ${isMatched ? '✅ In DB' : '⚠️ Nicht in DB'}
           </span>
         </td>
         <td style="text-align: right;">

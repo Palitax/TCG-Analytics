@@ -29,48 +29,65 @@ export class BulkScanner {
 
     if (!code) {
       item.status = 'needs_review';
+      item.lastPrice = null;
+      item.lastCheckDate = null;
+      item.filterInfo = null;
       return item;
     }
 
     item.detectedCode = code;
 
     try {
-      // Query Supabase for matching card by card_number or name
-      const { data, error } = await supabase
-        .from('cards')
+      // 1. Check price_history for latest recorded Cardmarket price
+      const cleanCode = code.trim();
+      const altCode = cleanCode.replace('/', '-');
+
+      const { data: historyData, error: historyError } = await supabase
+        .from('price_history')
         .select('*')
-        .or(`card_number.ilike.%${code}%,name.ilike.%${code}%`)
+        .or(`card_id.ilike.%${cleanCode}%,card_id.ilike.%${altCode}%`)
+        .order('scanned_at', { ascending: false })
         .limit(1);
 
-      if (!error && data && data.length > 0) {
-        const card = data[0];
-        item.detectedName = card.name || item.detectedName || `Karte (${code})`;
+      if (!historyError && historyData && historyData.length > 0) {
+        const record = historyData[0];
+        item.status = 'matched';
+        item.lastPrice = parseFloat(record.price) || null;
+        item.lastCheckDate = formatTimestamp(record.scanned_at);
+        item.filterInfo = formatFilterInfo(record.comment);
+        item.detectedName = item.detectedName || cleanCardName(record.card_id) || item.rawName;
+        return item;
+      }
+
+      // 2. Query cards table as fallback for DB match
+      const { data: cardsData, error: cardsError } = await supabase
+        .from('cards')
+        .select('*')
+        .or(`card_number.ilike.%${cleanCode}%,name.ilike.%${cleanCode}%`)
+        .limit(1);
+
+      if (!cardsError && cardsData && cardsData.length > 0) {
+        const card = cardsData[0];
         item.status = 'matched';
         item.cardDetails = card;
-        item.marketPrices = {
-          lowPrice: card.low_price || card.price || item.rawPrice || 2.50,
-          trendPrice: card.trend_price || card.price ? (card.price * 1.15) : 3.20,
-          foilPrice: card.foil_price || null,
-          currency: '€'
-        };
-      } else {
-        // Fallback matched card structure with estimated price lookup
-        item.status = item.rawName ? 'matched' : 'needs_review';
-        item.detectedName = item.rawName || `Karte (${code})`;
-        item.marketPrices = {
-          lowPrice: item.rawPrice || 1.99,
-          trendPrice: item.rawPrice ? (item.rawPrice * 1.2) : 2.50,
-          currency: '€'
-        };
+        item.detectedName = card.name || item.detectedName || item.rawName;
+        item.lastPrice = card.price ? parseFloat(card.price) : null;
+        item.lastCheckDate = card.updated_at ? formatTimestamp(card.updated_at) : null;
+        item.filterInfo = 'Standard Filter';
+        return item;
       }
+
+      // 3. Not found in DB -> NO fake prices! Set to null for user to check on CM
+      item.status = 'needs_review';
+      item.lastPrice = null;
+      item.lastCheckDate = null;
+      item.filterInfo = null;
     } catch (e) {
       console.warn('Database lookup warning for code:', code, e);
       item.status = 'needs_review';
-      item.marketPrices = {
-        lowPrice: item.rawPrice || 1.50,
-        trendPrice: 2.00,
-        currency: '€'
-      };
+      item.lastPrice = null;
+      item.lastCheckDate = null;
+      item.filterInfo = null;
     }
 
     return item;
@@ -79,18 +96,51 @@ export class BulkScanner {
   exportEnrichedCSV() {
     if (this.scanItems.length === 0) return null;
 
-    const headers = ['Card Number', 'Name', 'File', 'Condition', 'Language', 'Low Price (€)', 'Trend Price (€)', 'Status'];
+    const headers = ['Card Number', 'Name', 'File', 'Condition', 'Language', 'Last Price (€)', 'Last Check', 'Filter Info', 'Status'];
     const rows = this.scanItems.map(item => [
       `"${item.detectedCode || ''}"`,
       `"${item.detectedName || item.rawName || ''}"`,
       `"${item.rawFile || ''}"`,
       `"${item.rawCondition || 'Near Mint'}"`,
       `"${item.rawLanguage || 'EN'}"`,
-      item.marketPrices ? item.marketPrices.lowPrice.toFixed(2) : '0.00',
-      item.marketPrices ? item.marketPrices.trendPrice.toFixed(2) : '0.00',
+      item.lastPrice !== null ? item.lastPrice.toFixed(2) : '',
+      `"${item.lastCheckDate || 'Kein Check'}"`,
+      `"${item.filterInfo || ''}"`,
       `"${item.status}"`
     ]);
 
     return [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
   }
+}
+
+function formatFilterInfo(comment) {
+  if (!comment) return 'Standard Filter';
+  if (comment.startsWith('[')) {
+    const end = comment.indexOf(']');
+    if (end > 1) {
+      const meta = comment.slice(1, end).split('|');
+      const lang = meta[0] || 'EN';
+      const country = meta[1] || 'DE';
+      const cond = meta[2] || 'NM';
+      return `${cond}, ${country}, ${lang}`;
+    }
+  }
+  return comment;
+}
+
+function formatTimestamp(isoString) {
+  if (!isoString) return null;
+  try {
+    const d = new Date(isoString);
+    const dateStr = d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    const timeStr = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    return `${dateStr} ${timeStr}`;
+  } catch (e) {
+    return isoString;
+  }
+}
+
+function cleanCardName(cardId) {
+  if (!cardId) return '';
+  return cardId.replace(/[-_]/g, ' ').trim();
 }
