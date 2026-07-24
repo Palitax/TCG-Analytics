@@ -671,7 +671,7 @@ async function fetchCollectionCards() {
   try {
     const { data, error } = await supabase
       .from('collection_cards')
-      .select('id, card_id, tcg, buy_price, buy_date, comment, created_at')
+      .select('*')
       .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false });
 
@@ -2378,7 +2378,9 @@ function renderCollectionTab(container) {
     `;
 
     const priceText = card.latest_price !== null && card.latest_price !== undefined ? `${card.latest_price.toFixed(2)} €` : '-- €';
-    const buyPrice = card.purchase_price !== null && card.purchase_price !== undefined ? parseFloat(card.purchase_price) : null;
+    const buyPrice = (card.purchase_price !== null && card.purchase_price !== undefined) 
+      ? parseFloat(card.purchase_price) 
+      : ((card.buy_price !== null && card.buy_price !== undefined) ? parseFloat(card.buy_price) : null);
     const basePrice = buyPrice !== null ? buyPrice : (card.baseline_price || 0);
     const latestPrice = card.latest_price || 0;
     
