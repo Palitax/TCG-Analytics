@@ -229,7 +229,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // 1. Fetch full historical price list from Supabase sorted ascending (oldest first)
         const getUrl = `${SUPABASE_URL}/rest/v1/price_history?tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}&condition=eq.${encodeURIComponent(condition)}&language=eq.${encodeURIComponent(language)}&seller_country=eq.${encodeURIComponent(sellerCountry)}&order=scanned_at.asc`;
         
-        const getResponse = await fetch(getUrl, {
+        let getResponse = await fetch(getUrl, {
           method: "GET",
           cache: "no-store",
           headers: {
@@ -238,8 +238,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         });
 
+        if (getResponse.status === 401) {
+          console.warn("[SW] History GET returned 401. Refreshing session...");
+          const refreshed = await refreshSession(session.refresh_token);
+          if (refreshed && refreshed.access_token) {
+            getResponse = await fetch(getUrl, {
+              method: "GET",
+              cache: "no-store",
+              headers: {
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": `Bearer ${refreshed.access_token}`
+              }
+            });
+          }
+        }
+
+        if (getResponse.status === 401) {
+          console.warn("[SW] History GET 401 fallback to anon key...");
+          getResponse = await fetch(getUrl, {
+            method: "GET",
+            cache: "no-store",
+            headers: {
+              "apikey": SUPABASE_ANON_KEY
+            }
+          });
+        }
+
         if (!getResponse.ok) {
-          throw new Error(`Failed to fetch history: ${getResponse.statusText}`);
+          const errBody = await getResponse.json().catch(() => ({}));
+          const errMsg = errBody.message || errBody.hint || getResponse.statusText || `HTTP ${getResponse.status}`;
+          throw new Error(`Failed to fetch history (${getResponse.status}): ${errMsg}`);
         }
 
         const history = await getResponse.json();
