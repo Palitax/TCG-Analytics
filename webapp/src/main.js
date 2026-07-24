@@ -531,19 +531,26 @@ async function fetchCollectionCards() {
     if (cardIds.length > 0) {
       try {
         const globalImages = await fetchBulkCardImages(cardIds);
+        const imageMap = new Map();
         if (globalImages) {
           for (const img of globalImages) {
-            if (img.image_url) {
-              setCachedCardImage(img.card_id, img.image_url);
+            if (img.card_id && img.image_url) {
+              imageMap.set(img.card_id, img.image_url);
             }
+          }
+        }
+
+        for (const card of listData) {
+          const freshUrl = imageMap.get(card.card_id);
+          if (freshUrl) {
+            card.image_url = freshUrl;
+            setCachedCardImage(card.card_id, freshUrl);
+          } else {
+            card.image_url = getCachedCardImage(card.card_id) || card.image_url || null;
           }
         }
       } catch (err) {
         console.error('Error fetching global card images for collection:', err.message);
-      }
-
-      for (const card of listData) {
-        card.image_url = getCachedCardImage(card.card_id) || card.image_url || null;
       }
 
       // Bulk fetch price history for all cards
@@ -653,19 +660,26 @@ async function fetchMarkedCards() {
     if (cardIds.length > 0) {
       try {
         const globalImages = await fetchBulkCardImages(cardIds);
+        const imageMap = new Map();
         if (globalImages) {
           for (const img of globalImages) {
-            if (img.image_url) {
-              setCachedCardImage(img.card_id, img.image_url);
+            if (img.card_id && img.image_url) {
+              imageMap.set(img.card_id, img.image_url);
             }
+          }
+        }
+
+        for (const card of listData) {
+          const freshUrl = imageMap.get(card.card_id);
+          if (freshUrl) {
+            card.image_url = freshUrl;
+            setCachedCardImage(card.card_id, freshUrl);
+          } else {
+            card.image_url = getCachedCardImage(card.card_id) || card.image_url || null;
           }
         }
       } catch (err) {
         console.error('Error fetching global card images:', err.message);
-      }
-
-      for (const card of listData) {
-        card.image_url = getCachedCardImage(card.card_id) || card.image_url || null;
       }
 
       // Bulk fetch price history for all cards
