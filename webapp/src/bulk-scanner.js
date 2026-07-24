@@ -44,116 +44,89 @@ export class BulkScanner {
     try {
       const safeCode = code.replace(/[\/\\%_]/g, '');
       const altCode = code.replace('/', '-');
-      const numberPart = code.includes('/') ? code.split('/')[0] : (code.includes('-') ? code.split('-')[1] : code);
-
-      // Build OR query candidates for global price_history table (no unescaped slashes in PostgREST .or())
-      const queryCandidates = [];
-      if (altCode) queryCandidates.push(`card_id.ilike.%${altCode}%`);
-      if (safeCode && safeCode !== altCode) queryCandidates.push(`card_id.ilike.%${safeCode}%`);
-      if (numberPart && numberPart.length >= 2) queryCandidates.push(`card_id.ilike.%${numberPart}%`);
-      if (cleanName && cleanName.length >= 3 && cleanName.toLowerCase() !== 'karte') {
-        queryCandidates.push(`card_id.ilike.%${cleanName}%`);
-      }
 
       let bestRecord = null;
-      let matchedCard = null;
 
-      if (queryCandidates.length > 0) {
-        const { data: historyData, error: historyError } = await supabase
-          .from('price_history')
-          .select('*')
-          .or(queryCandidates.join(','))
-          .order('scanned_at', { ascending: false })
-          .limit(30);
+      // 1. Query price_history cleanly using sanitized patterns
+      const searchTerms = [];
+      if (altCode) searchTerms.push(altCode);
+      if (safeCode && safeCode !== altCode) searchTerms.push(safeCode);
+      if (code && !code.includes('/')) searchTerms.push(code);
 
-        if (!historyError && historyData && historyData.length > 0) {
-          for (const rec of historyData) {
-            const cid = (rec.card_id || '').toLowerCase();
-            const cLower = code.toLowerCase();
-            const altLower = altCode.toLowerCase();
-            const numLower = (numberPart || '').toLowerCase();
-            const nameLower = (cleanName || '').toLowerCase();
+      for (const term of searchTerms) {
+        if (!term || term.length < 2) continue;
+        try {
+          const { data, error } = await supabase
+            .from('price_history')
+            .select('price, scanned_at, comment, card_id')
+            .ilike('card_id', `%${term}%`)
+            .order('scanned_at', { ascending: false })
+            .limit(10);
 
-            const matchesCode = cLower && cid.includes(cLower);
-            const matchesAlt = altLower && cid.includes(altLower);
-            const matchesNum = numLower && cid.includes(numLower);
-            const matchesName = nameLower && nameLower !== 'karte' && cid.includes(nameLower);
-
-            if ((matchesCode || matchesAlt || (matchesNum && matchesName)) && (matchesName || !cleanName)) {
-              bestRecord = rec;
-              break;
-            }
+          if (!error && data && data.length > 0) {
+            bestRecord = data[0];
+            break;
           }
-
-          if (!bestRecord && historyData.length > 0) {
-            bestRecord = historyData[0];
-          }
-        }
+        } catch (e) {}
       }
 
-      // Check cards table as secondary match source
-      if (code || cleanName) {
-        const cardQuery = code ? `card_number.ilike.%${code}%,name.ilike.%${code}%` : `name.ilike.%${cleanName}%`;
-        const { data: cardsData } = await supabase
-          .from('cards')
-          .select('*')
-          .or(cardQuery)
-          .limit(1);
+      // Fallback search by cleanName if no match by code
+      if (!bestRecord && cleanName && cleanName.length >= 3 && cleanName.toLowerCase() !== 'karte') {
+        try {
+          const { data, error } = await supabase
+            .from('price_history')
+            .select('price, scanned_at, comment, card_id')
+            .ilike('card_id', `%${cleanName}%`)
+            .order('scanned_at', { ascending: false })
+            .limit(10);
 
-        if (cardsData && cardsData.length > 0) {
-          matchedCard = cardsData[0];
-        }
+          if (!error && data && data.length > 0) {
+            bestRecord = data[0];
+          }
+        } catch (e) {}
       }
 
-      if (bestRecord || matchedCard) {
+      if (bestRecord) {
         item.status = 'matched';
-        item.lastPrice = bestRecord ? (parseFloat(bestRecord.price) || null) : (matchedCard ? parseFloat(matchedCard.price) || null : null);
-        item.lastCheckDate = bestRecord ? formatTimestamp(bestRecord.scanned_at) : (matchedCard ? formatTimestamp(matchedCard.updated_at) : null);
-        item.lastCheckRelative = bestRecord ? formatRelativeDate(bestRecord.scanned_at) : (matchedCard ? formatRelativeDate(matchedCard.updated_at) : null);
-        item.filterInfo = bestRecord ? formatFilterInfo(bestRecord.comment) : 'Standard Filter';
-        item.detectedName = item.detectedName || (matchedCard ? matchedCard.name : null) || (bestRecord ? cleanCardName(bestRecord.card_id) : null) || item.rawName;
-        item.cardDetails = { cardmarket_url: bestRecord ? bestRecord.card_id : (matchedCard ? matchedCard.id : null) };
+        item.lastPrice = parseFloat(bestRecord.price) || null;
+        item.lastCheckDate = formatTimestamp(bestRecord.scanned_at);
+        item.lastCheckRelative = formatRelativeDate(bestRecord.scanned_at);
+        item.filterInfo = formatFilterInfo(bestRecord.comment);
+        item.detectedName = item.detectedName || cleanCardName(bestRecord.card_id) || item.rawName;
+        item.cardDetails = { cardmarket_url: bestRecord.card_id };
 
         // IMAGE LOOKUP PIPELINE
-        // 1. Try card_images table with exact card_id or code
-        const targetCid = bestRecord ? bestRecord.card_id : (matchedCard ? matchedCard.id : '');
-        if (targetCid || code) {
-          const imgQueries = [];
-          if (targetCid) imgQueries.push(`card_id.eq.${targetCid}`);
-          if (altCode) imgQueries.push(`card_id.ilike.%${altCode}%`);
-          if (safeCode && safeCode !== altCode) imgQueries.push(`card_id.ilike.%${safeCode}%`);
+        const term = safeCode || altCode || cleanName;
+        if (term) {
+          try {
+            const { data: imgData } = await supabase
+              .from('card_images')
+              .select('image_url')
+              .ilike('card_id', `%${term}%`)
+              .limit(1);
 
-          const { data: imgData } = await supabase
-            .from('card_images')
-            .select('image_url')
-            .or(imgQueries.join(','))
-            .limit(1);
-
-          if (imgData && imgData.length > 0 && imgData[0].image_url) {
-            item.imageUrl = imgData[0].image_url;
-          }
+            if (imgData && imgData.length > 0 && imgData[0].image_url) {
+              item.imageUrl = imgData[0].image_url;
+            }
+          } catch (e) {}
         }
 
-        // 2. Try cards table image_url
-        if (!item.imageUrl && matchedCard) {
-          item.imageUrl = matchedCard.image_url || matchedCard.imageUrl || null;
-        }
-
-        // 3. Try parsing comment from price_history
-        if (!item.imageUrl && bestRecord) {
+        // Fallback image url from comment
+        if (!item.imageUrl) {
           item.imageUrl = parseImageUrlFromComment(bestRecord.comment);
         }
 
         return item;
       }
 
-      // Not in DB -> NO fake prices or fake images!
+      // Not in DB -> NO fake prices or fake images
       item.status = 'needs_review';
       item.lastPrice = null;
       item.lastCheckDate = null;
       item.lastCheckRelative = null;
       item.filterInfo = null;
       item.imageUrl = null;
+      return item;
     } catch (e) {
       console.warn('Database lookup warning for code:', code, e);
       item.status = 'needs_review';
@@ -162,9 +135,8 @@ export class BulkScanner {
       item.lastCheckRelative = null;
       item.filterInfo = null;
       item.imageUrl = null;
+      return item;
     }
-
-    return item;
   }
 
   exportEnrichedCSV() {
