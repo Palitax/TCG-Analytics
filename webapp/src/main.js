@@ -3196,9 +3196,11 @@ function renderBulkScanTab(container) {
     renderResults(bulkScannerInstance.scanItems);
   }
 
-  btnSendOverlay.addEventListener('click', () => {
+  btnSendOverlay.addEventListener('click', async () => {
     if (bulkScannerInstance.scanItems.length === 0) return;
     activeStreamQueue = [...bulkScannerInstance.scanItems];
+    saveCachedUserData(currentUser?.id);
+    await syncStreamQueueToSupabase(activeStreamQueue, 0);
     navigate('/stream-overlay');
   });
 
@@ -3233,8 +3235,55 @@ function renderBulkScanTab(container) {
   });
 }
 
-// Stream Overlay Tab Renderer
-function renderStreamOverlayTab(container) {
+// Cross-device Stream Session sync helpers
+async function syncStreamQueueToSupabase(queue, currentIndex = 0) {
+  if (!currentUser?.id) return;
+  try {
+    const { error } = await supabase
+      .from('stream_sessions')
+      .upsert({
+        user_id: currentUser.id,
+        queue: queue,
+        current_index: currentIndex,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+
+    if (error) {
+      await supabase.auth.updateUser({
+        data: { active_stream_queue: queue, stream_index: currentIndex }
+      });
+    }
+  } catch (e) {
+    console.warn('Cross-device stream sync warning:', e);
+  }
+}
+
+async function fetchStreamQueueFromSupabase() {
+  if (!currentUser?.id) return null;
+  try {
+    const { data, error } = await supabase
+      .from('stream_sessions')
+      .select('queue, current_index')
+      .eq('user_id', currentUser.id)
+      .maybeSingle();
+
+    if (!error && data && data.queue && data.queue.length > 0) {
+      return { queue: data.queue, index: data.current_index || 0 };
+    }
+
+    const metaQueue = currentUser.user_metadata?.active_stream_queue;
+    const metaIndex = currentUser.user_metadata?.stream_index || 0;
+    if (metaQueue && metaQueue.length > 0) {
+      return { queue: metaQueue, index: metaIndex };
+    }
+  } catch (e) {
+    console.warn('Error fetching cross-device stream queue:', e);
+  }
+  return null;
+}
+
+// Stream Overlay Tab Renderer with automatic Cross-Device Sync
+async function renderStreamOverlayTab(container) {
   container.innerHTML = '';
 
   const wrapper = document.createElement('div');
@@ -3243,6 +3292,18 @@ function renderStreamOverlayTab(container) {
   container.appendChild(wrapper);
 
   streamOverlayInstance = new StreamOverlay(wrapper);
+
+  // If activeStreamQueue is empty in local memory, attempt fetching from Supabase for cross-device sync (e.g. Mac -> Tablet)
+  if (activeStreamQueue.length === 0 && currentUser?.id) {
+    const synced = await fetchStreamQueueFromSupabase();
+    if (synced && synced.queue && synced.queue.length > 0) {
+      activeStreamQueue = synced.queue;
+      streamOverlayInstance.loadQueue(activeStreamQueue);
+      streamOverlayInstance.currentIndex = synced.index || 0;
+      streamOverlayInstance.render();
+      return;
+    }
+  }
 
   if (activeStreamQueue.length > 0) {
     streamOverlayInstance.loadQueue(activeStreamQueue);
