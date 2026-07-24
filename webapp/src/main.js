@@ -568,8 +568,21 @@ function parseHistoryItem(item) {
 async function init() {
   setView('loading');
   
+  // 4-second safety fallback so app never gets stuck on "Verbindung wird hergestellt..."
+  const loadingSafetyTimeout = setTimeout(() => {
+    if (currentView === 'loading') {
+      console.warn('Auth initialization timeout, resolving screen...');
+      if (currentUser) {
+        navigate('/watchlist', false);
+      } else {
+        navigate('/login', false);
+      }
+    }
+  }, 4000);
+
   // Listen for auth state changes
   supabase.auth.onAuthStateChange((event, session) => {
+    clearTimeout(loadingSafetyTimeout);
     try {
       if (session) {
         const isNewUser = !currentUser || currentUser.id !== session.user.id;
@@ -597,6 +610,7 @@ async function init() {
 
   try {
     const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+    clearTimeout(loadingSafetyTimeout);
     if (sessionErr) throw sessionErr;
     
     if (session) {
@@ -611,6 +625,7 @@ async function init() {
       navigate('/login', false);
     }
   } catch (err) {
+    clearTimeout(loadingSafetyTimeout);
     console.error('Initialization failed, falling back to login screen:', err);
     navigate('/login', false);
   }
