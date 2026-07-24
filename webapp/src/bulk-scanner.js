@@ -1,5 +1,5 @@
 import { parseCSV, normalizeScanData, extractCardCode } from './csv-parser.js';
-import { supabase } from './supabase.js';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase.js';
 
 export class BulkScanner {
   constructor(options = {}) {
@@ -47,41 +47,50 @@ export class BulkScanner {
 
       let bestRecord = null;
 
-      // 1. Query price_history cleanly using sanitized patterns
       const searchTerms = [];
       if (altCode) searchTerms.push(altCode);
       if (safeCode && safeCode !== altCode) searchTerms.push(safeCode);
-      if (code && !code.includes('/')) searchTerms.push(code);
 
       for (const term of searchTerms) {
         if (!term || term.length < 2) continue;
         try {
-          const { data, error } = await supabase
-            .from('price_history')
-            .select('price, scanned_at, comment, card_id')
-            .ilike('card_id', `%${term}%`)
-            .order('scanned_at', { ascending: false })
-            .limit(10);
+          const encTerm = encodeURIComponent(`%${term}%`);
+          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&card_id=ilike.${encTerm}&order=scanned_at.desc&limit=5`;
+          const resp = await fetch(url, {
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            },
+            credentials: 'omit'
+          });
 
-          if (!error && data && data.length > 0) {
-            bestRecord = data[0];
-            break;
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data && data.length > 0) {
+              bestRecord = data[0];
+              break;
+            }
           }
         } catch (e) {}
       }
 
-      // Fallback search by cleanName if no match by code
       if (!bestRecord && cleanName && cleanName.length >= 3 && cleanName.toLowerCase() !== 'karte') {
         try {
-          const { data, error } = await supabase
-            .from('price_history')
-            .select('price, scanned_at, comment, card_id')
-            .ilike('card_id', `%${cleanName}%`)
-            .order('scanned_at', { ascending: false })
-            .limit(10);
+          const encName = encodeURIComponent(`%${cleanName.replace(/[\/\\%_]/g, '')}%`);
+          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&card_id=ilike.${encName}&order=scanned_at.desc&limit=5`;
+          const resp = await fetch(url, {
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            },
+            credentials: 'omit'
+          });
 
-          if (!error && data && data.length > 0) {
-            bestRecord = data[0];
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data && data.length > 0) {
+              bestRecord = data[0];
+            }
           }
         } catch (e) {}
       }
@@ -95,23 +104,28 @@ export class BulkScanner {
         item.detectedName = item.detectedName || cleanCardName(bestRecord.card_id) || item.rawName;
         item.cardDetails = { cardmarket_url: bestRecord.card_id };
 
-        // IMAGE LOOKUP PIPELINE
         const term = safeCode || altCode || cleanName;
         if (term) {
           try {
-            const { data: imgData } = await supabase
-              .from('card_images')
-              .select('image_url')
-              .ilike('card_id', `%${term}%`)
-              .limit(1);
+            const encImgTerm = encodeURIComponent(`%${term.replace(/[\/\\%_]/g, '')}%`);
+            const url = `${SUPABASE_URL}/rest/v1/card_images?select=image_url&card_id=ilike.${encImgTerm}&limit=1`;
+            const resp = await fetch(url, {
+              headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+              },
+              credentials: 'omit'
+            });
 
-            if (imgData && imgData.length > 0 && imgData[0].image_url) {
-              item.imageUrl = imgData[0].image_url;
+            if (resp.ok) {
+              const imgData = await resp.json();
+              if (imgData && imgData.length > 0 && imgData[0].image_url) {
+                item.imageUrl = imgData[0].image_url;
+              }
             }
           } catch (e) {}
         }
 
-        // Fallback image url from comment
         if (!item.imageUrl) {
           item.imageUrl = parseImageUrlFromComment(bestRecord.comment);
         }
@@ -119,7 +133,6 @@ export class BulkScanner {
         return item;
       }
 
-      // Not in DB -> NO fake prices or fake images
       item.status = 'needs_review';
       item.lastPrice = null;
       item.lastCheckDate = null;
