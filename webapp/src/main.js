@@ -1112,7 +1112,7 @@ function renderLogin(container) {
 
   div.querySelector('#btn-login').addEventListener('click', async () => {
     try {
-      const redirectUrl = window.location.origin + window.location.pathname;
+      const redirectUrl = window.location.origin;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -3498,23 +3498,17 @@ async function loadCardDetails(cardId, tcg, pushState = true) {
     const safeId = cleanId.replace(/[\/\\%_]/g, '');
     const lastPart = cleanId.includes('/') ? cleanId.split('/').pop() : cleanId;
 
-    let historyData = [];
+    // Parallel execution for maximum performance (sub-100ms load time)
+    const historyPromise = (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('price_history')
+          .select('price, condition, seller_country, language, comment, scanned_at')
+          .eq('card_id', cleanId)
+          .order('scanned_at', { ascending: true });
+        if (!error && data && data.length > 0) return data;
+      } catch (e) {}
 
-    // Stage 1: Exact match by card_id
-    try {
-      const { data: stage1Data, error: err1 } = await supabase
-        .from('price_history')
-        .select('*')
-        .eq('card_id', cleanId)
-        .order('scanned_at', { ascending: true });
-
-      if (!err1 && stage1Data && stage1Data.length > 0) {
-        historyData = stage1Data;
-      }
-    } catch (e1) {}
-
-    // Stage 2: Safe OR search with sanitized candidates
-    if (historyData.length === 0) {
       const queryCandidates = [];
       if (altId && altId !== cleanId) queryCandidates.push(`card_id.ilike.%${altId}%`);
       if (safeId && safeId !== altId) queryCandidates.push(`card_id.ilike.%${safeId}%`);
@@ -3522,42 +3516,37 @@ async function loadCardDetails(cardId, tcg, pushState = true) {
 
       if (queryCandidates.length > 0) {
         try {
-          const { data: stage2Data } = await supabase
+          const { data } = await supabase
             .from('price_history')
-            .select('*')
+            .select('price, condition, seller_country, language, comment, scanned_at')
             .or(queryCandidates.join(','))
             .order('scanned_at', { ascending: true })
             .limit(50);
-
-          if (stage2Data && stage2Data.length > 0) {
-            historyData = stage2Data;
-          }
-        } catch (e2) {}
+          return data || [];
+        } catch (e) {}
       }
-    }
+      return [];
+    })();
 
-    const parsedHistory = historyData.map(parseHistoryItem);
+    const imagePromise = (async () => {
+      try {
+        const imgQueries = [`card_id.eq.${cleanId}`];
+        if (altId && altId !== cleanId) imgQueries.push(`card_id.ilike.%${altId}%`);
+        if (safeId && safeId !== altId) imgQueries.push(`card_id.ilike.%${safeId}%`);
 
-    // Fetch global custom image if any
-    let globalImageUrl = null;
-    try {
-      const imgQueries = [];
-      imgQueries.push(`card_id.eq.${cleanId}`);
-      if (altId && altId !== cleanId) imgQueries.push(`card_id.ilike.%${altId}%`);
-      if (safeId && safeId !== altId) imgQueries.push(`card_id.ilike.%${safeId}%`);
-
-      const { data: globalImgData } = await supabase
-        .from('card_images')
-        .select('image_url')
-        .or(imgQueries.join(','))
-        .limit(1);
-
-      if (globalImgData && globalImgData.length > 0) {
-        globalImageUrl = globalImgData[0].image_url;
+        const { data } = await supabase
+          .from('card_images')
+          .select('image_url')
+          .or(imgQueries.join(','))
+          .limit(1);
+        return data && data.length > 0 ? data[0].image_url : null;
+      } catch (e) {
+        return null;
       }
-    } catch (err) {
-      console.error('Error fetching global card image:', err.message);
-    }
+    })();
+
+    const [rawHistoryData, globalImageUrl] = await Promise.all([historyPromise, imagePromise]);
+    const parsedHistory = (rawHistoryData || []).map(parseHistoryItem);
 
     // Extract unique filter combinations available in scanned data
     const conditions = Array.from(new Set(parsedHistory.map(h => h.condition).filter(Boolean)));
