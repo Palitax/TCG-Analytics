@@ -466,7 +466,8 @@ function compressImage(base64Str, maxWidth = 350) {
 // Upload image to Supabase Storage bucket 'card-images'
 async function uploadImageToStorage(cardId, base64Str) {
   try {
-    const sanitizedId = cardId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+    const cleanId = (cardId || '').replace(/^\/+/, '');
+    const sanitizedId = cleanId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
     const fileName = `card_${sanitizedId}.webp`;
 
     // Convert to WebP blob via canvas
