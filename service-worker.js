@@ -680,75 +680,73 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             // Sync with Supabase: save to card_images and update marked_cards
             try {
               const { session } = await chrome.storage.local.get('session');
-              if (session && session.access_token) {
-                const accessToken = session.access_token;
+              const accessToken = session?.access_token || SUPABASE_ANON_KEY;
 
-                // Deduplication Pre-check: HEAD request to check if file already exists in Storage
-                let fileExists = false;
-                try {
-                  const headCheck = await fetch(finalImageUrl, { method: 'HEAD' });
-                  if (headCheck.ok) {
-                    fileExists = true;
-                  }
-                } catch (e) {}
-
-                if (!fileExists && webpBlob) {
-                  const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucketName}/${fileName}`, {
-                    method: "POST",
-                    headers: {
-                      "apikey": SUPABASE_ANON_KEY,
-                      "Authorization": `Bearer ${accessToken}`,
-                      "Content-Type": "image/webp",
-                      "cache-control": "31536000",
-                      "x-upsert": "true"
-                    },
-                    body: webpBlob
-                  });
-
-                  if (!storageRes.ok) {
-                    console.warn("Storage upload in background failed:", storageRes.status, await storageRes.text());
-                  }
+              // Deduplication Pre-check: HEAD request to check if file already exists in Storage
+              let fileExists = false;
+              try {
+                const headCheck = await fetch(finalImageUrl, { method: 'HEAD' });
+                if (headCheck.ok) {
+                  fileExists = true;
                 }
-                
-                // 1. Upsert into card_images
-                const imgData = {
-                  card_id: cardId,
-                  tcg: tcg,
-                  image_url: finalImageUrl,
-                  updated_at: new Date().toISOString()
-                };
+              } catch (e) {}
 
-                const imgRes = await fetch(`${SUPABASE_URL}/rest/v1/card_images`, {
+              if (!fileExists && webpBlob) {
+                const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucketName}/${fileName}`, {
                   method: "POST",
                   headers: {
                     "apikey": SUPABASE_ANON_KEY,
                     "Authorization": `Bearer ${accessToken}`,
-                    "Content-Type": "application/json",
-                    "Prefer": "resolution=merge-duplicates"
+                    "Content-Type": "image/webp",
+                    "cache-control": "31536000",
+                    "x-upsert": "true"
                   },
-                  body: JSON.stringify(imgData)
+                  body: webpBlob
                 });
 
-                if (!imgRes.ok) {
-                  console.error("Failed to upload clipped image to card_images:", imgRes.status, imgRes.statusText);
+                if (!storageRes.ok) {
+                  console.warn("Storage upload in background failed:", storageRes.status, await storageRes.text());
                 }
+              }
+              
+              // 1. Upsert into global card_images table
+              const imgData = {
+                card_id: cardId,
+                tcg: tcg,
+                image_url: finalImageUrl,
+                updated_at: new Date().toISOString()
+              };
 
-                // 2. Update private marked_cards if bookmarked
-                const userId = session.user?.id;
-                if (userId) {
-                  const updateRes = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&card_id=eq.${encodeURIComponent(cardId)}`, {
-                    method: "PATCH",
-                    headers: {
-                      "apikey": SUPABASE_ANON_KEY,
-                      "Authorization": `Bearer ${accessToken}`,
-                      "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ image_url: finalImageUrl })
-                  });
+              const imgRes = await fetch(`${SUPABASE_URL}/rest/v1/card_images`, {
+                method: "POST",
+                headers: {
+                  "apikey": SUPABASE_ANON_KEY,
+                  "Authorization": `Bearer ${accessToken}`,
+                  "Content-Type": "application/json",
+                  "Prefer": "resolution=merge-duplicates"
+                },
+                body: JSON.stringify(imgData)
+              });
 
-                  if (!updateRes.ok) {
-                    console.error("Failed to update marked_cards with clipped image:", updateRes.status, updateRes.statusText);
-                  }
+              if (!imgRes.ok) {
+                console.error("Failed to upload clipped image to card_images:", imgRes.status, await imgRes.text());
+              }
+
+              // 2. Update private marked_cards if bookmarked for logged-in user
+              const userId = session?.user?.id;
+              if (userId) {
+                const updateRes = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&card_id=eq.${encodeURIComponent(cardId)}`, {
+                  method: "PATCH",
+                  headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${accessToken}`,
+                    "Content-Type": "application/json"
+                  },
+                  body: JSON.stringify({ image_url: finalImageUrl })
+                });
+
+                if (!updateRes.ok) {
+                  console.error("Failed to update marked_cards with clipped image:", updateRes.status, await updateRes.text());
                 }
               }
             } catch (syncErr) {
