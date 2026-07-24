@@ -45,7 +45,14 @@ function loadCachedUserData(userId) {
   if (!userId) return;
   try {
     const cachedMarked = localStorage.getItem(`cache_marked_${userId}`);
-    if (cachedMarked) markedCards = JSON.parse(cachedMarked);
+    if (cachedMarked) {
+      const parsed = JSON.parse(cachedMarked);
+      markedCards = (parsed || []).filter(item => 
+        item.card_id !== '__STREAM_QUEUE__' && 
+        item.tcg !== 'StreamQueue' && 
+        (!item.card_id || !item.card_id.startsWith('STREAM_'))
+      );
+    }
 
     const cachedColl = localStorage.getItem(`cache_coll_${userId}`);
     if (cachedColl) collectionCards = JSON.parse(cachedColl);
@@ -60,7 +67,12 @@ function loadCachedUserData(userId) {
 function saveCachedUserData(userId) {
   if (!userId) return;
   try {
-    localStorage.setItem(`cache_marked_${userId}`, JSON.stringify(markedCards));
+    const cleanMarked = (markedCards || []).filter(item => 
+      item.card_id !== '__STREAM_QUEUE__' && 
+      item.tcg !== 'StreamQueue' && 
+      (!item.card_id || !item.card_id.startsWith('STREAM_'))
+    );
+    localStorage.setItem(`cache_marked_${userId}`, JSON.stringify(cleanMarked));
     localStorage.setItem(`cache_coll_${userId}`, JSON.stringify(collectionCards));
     localStorage.setItem(`cache_hist_${userId}`, JSON.stringify(collectionValueHistory));
   } catch (e) {
@@ -262,7 +274,11 @@ function cleanupDetailKeydownListener() {
 
 // Helper to get filtered & sorted Watchlist cards according to user active filters and sort choice
 function getSortedWatchlistCards() {
-  let sortedCards = [...markedCards];
+  let sortedCards = (markedCards || []).filter(item => 
+    item.card_id !== '__STREAM_QUEUE__' && 
+    item.tcg !== 'StreamQueue' && 
+    (!item.card_id || !item.card_id.startsWith('STREAM_'))
+  );
   if (activeSearchQuery && activeSearchQuery.trim()) {
     const q = activeSearchQuery.toLowerCase();
     sortedCards = sortedCards.filter(c => {
