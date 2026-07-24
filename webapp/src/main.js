@@ -585,7 +585,14 @@ function parseHistoryItem(item) {
 async function init() {
   setView('loading');
   
-  // 4-second safety fallback so app never gets stuck on "Verbindung wird hergestellt..."
+  // Clean hash fragment immediately if returning from OAuth
+  if (window.location.hash.includes('access_token=') || window.location.hash.includes('error=') || window.location.hash.includes('provider_token')) {
+    try {
+      window.history.replaceState(null, '', window.location.pathname + '#/watchlist');
+    } catch(e) {}
+  }
+
+  // Safety fallback so app never gets stuck on loading screen
   const loadingSafetyTimeout = setTimeout(() => {
     if (currentView === 'loading') {
       console.warn('Auth initialization timeout, resolving screen...');
@@ -595,65 +602,69 @@ async function init() {
         navigate('/login', false);
       }
     }
-  }, 4000);
+  }, 3000);
+
+  let isInitialized = false;
+
+  const handleSession = (session) => {
+    clearTimeout(loadingSafetyTimeout);
+    if (isInitialized && currentUser?.id === session?.user?.id && currentView !== 'loading') return;
+    isInitialized = true;
+
+    if (session) {
+      currentUser = session.user;
+      loadCachedUserData(currentUser.id);
+      
+      // Sync session with extension
+      document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_SESSION', {
+        detail: { session }
+      }));
+
+      let currentPath = window.location.hash.slice(1) || '/watchlist';
+      if (currentPath.includes('access_token=') || currentPath.includes('error=') || currentPath.includes('provider_token') || currentPath === '/login' || currentPath === '/') {
+        currentPath = '/watchlist';
+      }
+      navigate(currentPath, false);
+    } else {
+      currentUser = null;
+      markedCards = [];
+      collectionCards = [];
+      collectionValueHistory = [];
+      navigate('/login', false);
+    }
+  };
 
   // Listen for auth state changes
   supabase.auth.onAuthStateChange((event, session) => {
-    clearTimeout(loadingSafetyTimeout);
-    try {
-      if (session) {
-        const isNewUser = !currentUser || currentUser.id !== session.user.id;
-        currentUser = session.user;
-        if (isNewUser) {
-          loadCachedUserData(currentUser.id);
-        }
-        // Sync session with extension
-        document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_SESSION', {
-          detail: { session }
-        }));
-        let currentPath = window.location.hash.slice(1) || '/watchlist';
-        if (currentPath.startsWith('access_token=') || currentPath.startsWith('error=') || currentPath.includes('provider_token') || currentPath === '/login' || currentPath === '/') {
-          currentPath = '/watchlist';
-        }
-        navigate(currentPath, false);
-      } else {
-        currentUser = null;
-        markedCards = [];
-        collectionCards = [];
-        collectionValueHistory = [];
-        navigate('/login', false);
-      }
-    } catch (err) {
-      console.error('Auth state change handler failed:', err);
-      navigate('/login', false);
+    if (session || event === 'SIGNED_OUT') {
+      handleSession(session);
     }
   });
 
   try {
     const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
-    clearTimeout(loadingSafetyTimeout);
-    if (sessionErr) throw sessionErr;
-    
-    if (session) {
-      currentUser = session.user;
-      loadCachedUserData(currentUser.id);
-      let currentPath = window.location.hash.slice(1) || '/watchlist';
-      if (currentPath.startsWith('access_token=') || currentPath.startsWith('error=') || currentPath.includes('provider_token') || currentPath === '/' || currentPath === '/login') {
-        currentPath = '/watchlist';
+    if (!sessionErr && session) {
+      handleSession(session);
+    } else if (!session) {
+      clearTimeout(loadingSafetyTimeout);
+      if (currentView === 'loading') {
+        navigate('/login', false);
       }
-      navigate(currentPath, false);
-    } else {
-      navigate('/login', false);
     }
   } catch (err) {
     clearTimeout(loadingSafetyTimeout);
     console.error('Initialization failed, falling back to login screen:', err);
-    navigate('/login', false);
+    if (currentView === 'loading') {
+      navigate('/login', false);
+    }
   }
 
   // Handle hashchange for back/forward buttons
   window.addEventListener('hashchange', () => {
-    navigate(window.location.hash.slice(1) || '/watchlist', false);
+    const hash = window.location.hash.slice(1) || '/watchlist';
+    if (!hash.includes('access_token=')) {
+      navigate(hash, false);
+    }
   });
 }
 
