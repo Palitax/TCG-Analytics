@@ -637,11 +637,9 @@ async function init() {
             user: currentUser
           };
 
+          // Save session directly to storage without blocking network calls
           try {
-            await supabase.auth.setSession({
-              access_token: accessToken,
-              refresh_token: refreshToken || ''
-            });
+            localStorage.setItem('sb-api-supabase-auth-token', JSON.stringify(sessionObj));
           } catch (e) {}
 
           window.history.replaceState(null, '', window.location.pathname + '#/watchlist');
@@ -671,13 +669,13 @@ async function init() {
   const loadingSafetyTimeout = setTimeout(() => {
     if (currentView === 'loading') {
       console.warn('Auth initialization timeout, resolving screen...');
-      if (currentUser) {
+      if (currentUser || localStorage.getItem('sb-api-supabase-auth-token')) {
         navigate('/watchlist', false);
       } else {
         navigate('/login', false);
       }
     }
-  }, 3000);
+  }, 1500);
 
   let isInitialized = false;
 
