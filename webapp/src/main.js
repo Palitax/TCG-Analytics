@@ -614,6 +614,23 @@ function decodeJWT(token) {
 async function init() {
   setView('loading');
   
+  // Restore logged-in user from storage immediately on page load
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.includes('supabase') || key.includes('auth-token') || key.includes('tcg_user_session'))) {
+        const val = localStorage.getItem(key);
+        if (val) {
+          const parsed = JSON.parse(val);
+          if (parsed && parsed.user && parsed.user.id) {
+            currentUser = parsed.user;
+            break;
+          }
+        }
+      }
+    }
+  } catch (e) {}
+
   // Handle OAuth redirect token fragment from Google
   if (window.location.hash.includes('access_token=')) {
     try {
@@ -634,12 +651,13 @@ async function init() {
           const sessionObj = {
             access_token: accessToken,
             refresh_token: refreshToken || '',
-            user: currentUser
+            user: currentUser,
+            expires_at: Math.floor(Date.now() / 1000) + 3600 * 24 * 30
           };
 
-          // Save session directly to storage without blocking network calls
           try {
             localStorage.setItem('sb-api-supabase-auth-token', JSON.stringify(sessionObj));
+            localStorage.setItem('tcg_user_session', JSON.stringify(sessionObj));
           } catch (e) {}
 
           window.history.replaceState(null, '', window.location.pathname + '#/watchlist');
@@ -665,71 +683,15 @@ async function init() {
     } catch(e) {}
   }
 
-  // Safety fallback so app never gets stuck on loading screen
-  const loadingSafetyTimeout = setTimeout(() => {
-    if (currentView === 'loading') {
-      console.warn('Auth initialization timeout, resolving screen...');
-      if (currentUser || localStorage.getItem('sb-api-supabase-auth-token')) {
-        navigate('/watchlist', false);
-      } else {
-        navigate('/login', false);
-      }
+  // If user is logged in (from storage), load dashboard instantly
+  if (currentUser) {
+    loadCachedUserData(currentUser.id);
+    let currentPath = window.location.hash.slice(1) || '/watchlist';
+    if (currentPath.includes('access_token=') || currentPath.includes('error=') || currentPath.includes('provider_token') || currentPath === '/login' || currentPath === '/') {
+      currentPath = '/watchlist';
     }
-  }, 1500);
-
-  let isInitialized = false;
-
-  const handleSession = (session) => {
-    clearTimeout(loadingSafetyTimeout);
-    if (isInitialized && currentUser?.id === session?.user?.id && currentView !== 'loading') return;
-    isInitialized = true;
-
-    if (session) {
-      currentUser = session.user;
-      loadCachedUserData(currentUser.id);
-      
-      // Sync session with extension
-      document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_SESSION', {
-        detail: { session }
-      }));
-
-      let currentPath = window.location.hash.slice(1) || '/watchlist';
-      if (currentPath.includes('access_token=') || currentPath.includes('error=') || currentPath.includes('provider_token') || currentPath === '/login' || currentPath === '/') {
-        currentPath = '/watchlist';
-      }
-      navigate(currentPath, false);
-    } else {
-      currentUser = null;
-      markedCards = [];
-      collectionCards = [];
-      collectionValueHistory = [];
-      navigate('/login', false);
-    }
-  };
-
-  // Listen for auth state changes
-  supabase.auth.onAuthStateChange((event, session) => {
-    if (session || event === 'SIGNED_OUT') {
-      handleSession(session);
-    }
-  });
-
-  try {
-    const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
-    if (!sessionErr && session) {
-      handleSession(session);
-    } else if (!session) {
-      clearTimeout(loadingSafetyTimeout);
-      if (currentView === 'loading') {
-        navigate('/login', false);
-      }
-    }
-  } catch (err) {
-    clearTimeout(loadingSafetyTimeout);
-    console.error('Initialization failed, falling back to login screen:', err);
-    if (currentView === 'loading') {
-      navigate('/login', false);
-    }
+    navigate(currentPath, false);
+    return;
   }
 
   // Handle hashchange for back/forward buttons
@@ -739,6 +701,9 @@ async function init() {
       navigate(hash, false);
     }
   });
+
+  // Safety fallback
+  navigate('/login', false);
 }
 
 async function fetchBulkPriceHistory(cardIds) {
