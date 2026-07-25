@@ -518,11 +518,17 @@ async function uploadImageToStorage(cardId, base64Str) {
 // Return stored image URL directly (Base64, Supabase Storage, or proxied Cardmarket link)
 function getProxiedImageUrl(url) {
   if (!url) return '/logo.png';
-  if (typeof url === 'string' && url.includes('static.cardmarket.com')) {
-    return `https://wsrv.nl/?url=${encodeURIComponent(url)}`;
+  if (typeof url === 'string') {
+    if (url.includes('static.cardmarket.com')) {
+      return `https://wsrv.nl/?url=${encodeURIComponent(url)}`;
+    }
+    if (url.includes('api-supabase.rohdedigital.de') && typeof SUPABASE_URL === 'string' && SUPABASE_URL.includes('/supabase-proxy')) {
+      return url.replace('https://api-supabase.rohdedigital.de', SUPABASE_URL);
+    }
   }
   return url;
 }
+
 
 // Fullscreen Lightbox Modal for zooming card images
 function showLightbox(imgSrc) {
