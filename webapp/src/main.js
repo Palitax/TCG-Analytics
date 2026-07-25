@@ -908,13 +908,16 @@ async function fetchMarkedCards() {
     } catch (fErr) {}
     
     // Purge legacy stream queue items from database so they never clutter the watchlist
-    supabase
-      .from('marked_cards')
-      .delete()
-      .eq('user_id', currentUser.id)
-      .or('tcg.eq.StreamQueue,card_id.ilike.STREAM_%')
-      .then(() => {})
-      .catch(() => {});
+    try {
+      supabase
+        .from('marked_cards')
+        .delete()
+        .eq('user_id', currentUser.id)
+        .or('tcg.eq.StreamQueue,card_id.ilike.STREAM_%')
+        .then(() => {})
+        .catch(err => console.warn('Purge stream queue warning:', err?.message || err));
+    } catch (purgeErr) {}
+
 
     listData = (listData || []).filter(item => 
       item.card_id !== '__STREAM_QUEUE__' && 

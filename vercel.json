@@ -1,7 +1,9 @@
 {
   "cleanUrls": true,
   "routes": [
+    { "src": "/supabase-proxy/(.*)", "dest": "https://api-supabase.rohdedigital.de/$1" },
     { "src": "/api/(.*)", "dest": "/api/$1" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
+
