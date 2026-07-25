@@ -600,8 +600,11 @@ async function syncLocalImageCacheToCloud() {
 function getProxiedImageUrl(url) {
   if (!url) return '/logo.png';
   if (typeof url === 'string') {
-    if (url.includes('static.cardmarket.com')) {
-      return `https://wsrv.nl/?url=${encodeURIComponent(url)}`;
+    // Route ALL Cardmarket images (product-images.s3.cardmarket.com, static.cardmarket.com, etc.) via Vercel image proxy
+    if (url.includes('cardmarket.com')) {
+      const isWeb = typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http');
+      const origin = isWeb ? window.location.origin : '';
+      return `${origin}/api/image-proxy?url=${encodeURIComponent(url)}`;
     }
     if (url.includes('api-supabase.rohdedigital.de') && typeof SUPABASE_URL === 'string' && SUPABASE_URL.includes('/supabase-proxy')) {
       return url.replace('https://api-supabase.rohdedigital.de', SUPABASE_URL);
@@ -609,6 +612,7 @@ function getProxiedImageUrl(url) {
   }
   return url;
 }
+
 
 
 // Fullscreen Lightbox Modal for zooming card images
