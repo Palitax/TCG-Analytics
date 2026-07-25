@@ -746,13 +746,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               }
 
               
-              // 1. Upsert into global card_images table
-              const imgData = {
-                card_id: cardId,
-                tcg: tcg,
-                image_url: finalImageUrl,
-                updated_at: new Date().toISOString()
-              };
+              const cleanCardId = cardId.replace(/^\/+/, '');
+              const slashedCardId = '/' + cleanCardId;
+
+              // 1. Upsert into global card_images table for both clean and slashed card_id formats
+              const imgDataArray = [
+                {
+                  card_id: cleanCardId,
+                  tcg: tcg,
+                  image_url: finalImageUrl,
+                  updated_at: new Date().toISOString()
+                },
+                {
+                  card_id: slashedCardId,
+                  tcg: tcg,
+                  image_url: finalImageUrl,
+                  updated_at: new Date().toISOString()
+                }
+              ];
 
               const imgRes = await fetch(`${SUPABASE_URL}/rest/v1/card_images`, {
                 method: "POST",
@@ -762,7 +773,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   "Content-Type": "application/json",
                   "Prefer": "resolution=merge-duplicates"
                 },
-                body: JSON.stringify(imgData)
+                body: JSON.stringify(imgDataArray)
               });
 
               if (!imgRes.ok) {
@@ -772,8 +783,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               // 2. Update private marked_cards and collection_cards if bookmarked for logged-in user
               const userId = session?.user?.id;
               if (userId) {
+                const encClean = encodeURIComponent(cleanCardId);
+                const encSlashed = encodeURIComponent(slashedCardId);
+
                 try {
-                  await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&card_id=eq.${encodeURIComponent(cardId)}`, {
+                  await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&or=(card_id.eq.${encClean},card_id.eq.${encSlashed})`, {
                     method: "PATCH",
                     headers: {
                       "apikey": SUPABASE_ANON_KEY,
@@ -785,7 +799,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 } catch (e) {}
 
                 try {
-                  await fetch(`${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&card_id=eq.${encodeURIComponent(cardId)}`, {
+                  await fetch(`${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&or=(card_id.eq.${encClean},card_id.eq.${encSlashed})`, {
                     method: "PATCH",
                     headers: {
                       "apikey": SUPABASE_ANON_KEY,
@@ -796,6 +810,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                   });
                 } catch (e) {}
               }
+
             } catch (syncErr) {
               console.error("Failed syncing clipped image to Supabase:", syncErr);
             }

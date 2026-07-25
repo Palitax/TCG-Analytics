@@ -827,7 +827,18 @@ async function fetchBulkPriceHistory(cardIds) {
 
 async function fetchBulkCardImages(cardIds) {
   if (!cardIds || cardIds.length === 0) return [];
-  const validIds = Array.from(new Set(cardIds.filter(id => id && typeof id === 'string')));
+  
+  const allSearchIds = new Set();
+  for (const rawId of cardIds) {
+    if (!rawId || typeof rawId !== 'string') continue;
+    const clean = rawId.replace(/^\/+/, '');
+    if (clean) {
+      allSearchIds.add(clean);
+      allSearchIds.add('/' + clean);
+    }
+  }
+
+  const validIds = Array.from(allSearchIds);
   if (validIds.length === 0) return [];
 
   const chunkSize = 20;
@@ -884,13 +895,23 @@ async function fetchCollectionCards() {
         if (globalImages) {
           for (const img of globalImages) {
             if (img.card_id && img.image_url) {
+              const clean = img.card_id.replace(/^\/+/, '');
               imageMap.set(img.card_id, img.image_url);
+              imageMap.set(clean, img.image_url);
+              imageMap.set('/' + clean, img.image_url);
+              imageMap.set(clean.toLowerCase(), img.image_url);
+              imageMap.set(('/' + clean).toLowerCase(), img.image_url);
             }
           }
         }
 
         for (const card of listData) {
-          const freshUrl = imageMap.get(card.card_id);
+          const cleanId = (card.card_id || '').replace(/^\/+/, '');
+          const freshUrl = imageMap.get(card.card_id) ||
+                           imageMap.get(cleanId) ||
+                           imageMap.get('/' + cleanId) ||
+                           imageMap.get(cleanId.toLowerCase());
+
           if (freshUrl) {
             card.image_url = freshUrl;
             setCachedCardImage(card.card_id, freshUrl);
@@ -898,6 +919,7 @@ async function fetchCollectionCards() {
             card.image_url = getCachedCardImage(card.card_id) || card.image_url || null;
           }
         }
+
       } catch (err) {
         console.error('Error fetching global card images for collection:', err.message);
       }
@@ -1036,13 +1058,23 @@ async function fetchMarkedCards() {
         if (globalImages) {
           for (const img of globalImages) {
             if (img.card_id && img.image_url) {
+              const clean = img.card_id.replace(/^\/+/, '');
               imageMap.set(img.card_id, img.image_url);
+              imageMap.set(clean, img.image_url);
+              imageMap.set('/' + clean, img.image_url);
+              imageMap.set(clean.toLowerCase(), img.image_url);
+              imageMap.set(('/' + clean).toLowerCase(), img.image_url);
             }
           }
         }
 
         for (const card of listData) {
-          const freshUrl = imageMap.get(card.card_id);
+          const cleanId = (card.card_id || '').replace(/^\/+/, '');
+          const freshUrl = imageMap.get(card.card_id) ||
+                           imageMap.get(cleanId) ||
+                           imageMap.get('/' + cleanId) ||
+                           imageMap.get(cleanId.toLowerCase());
+
           if (freshUrl) {
             card.image_url = freshUrl;
             setCachedCardImage(card.card_id, freshUrl);
@@ -1050,6 +1082,7 @@ async function fetchMarkedCards() {
             card.image_url = getCachedCardImage(card.card_id) || card.image_url || null;
           }
         }
+
       } catch (err) {
         console.error('Error fetching global card images:', err.message);
       }
