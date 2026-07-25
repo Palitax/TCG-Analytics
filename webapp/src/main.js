@@ -486,34 +486,115 @@ async function uploadImageToStorage(cardId, base64Str) {
     const sanitizedId = cleanId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
     const fileName = `card_${sanitizedId}.webp`;
 
-    // Convert to WebP blob via canvas
-    const compressed = await compressImage(base64Str, 800);
-    const blob = base64ToBlob(compressed);
+    let compressed = base64Str;
+    let blob = null;
 
-    const { data, error } = await supabase.storage
-      .from('card-images')
-      .upload(fileName, blob, {
-        contentType: 'image/webp',
-        cacheControl: '31536000',
-        upsert: true
-      });
-
-    if (error) {
-      console.warn('Supabase storage upload failed:', error.message);
+    if (base64Str.startsWith('data:')) {
+      compressed = await compressImage(base64Str, 800);
+      blob = base64ToBlob(compressed);
     }
 
-    const { data: publicUrlData } = supabase.storage
-      .from('card-images')
-      .getPublicUrl(fileName);
+    if (blob) {
+      const { data, error } = await supabase.storage
+        .from('card-images')
+        .upload(fileName, blob, {
+          contentType: 'image/webp',
+          cacheControl: '31536000',
+          upsert: true
+        });
 
-    const publicUrl = publicUrlData?.publicUrl || `${SUPABASE_URL}/storage/v1/object/public/card-images/${fileName}`;
-    setCachedCardImage(cardId, publicUrl);
-    return publicUrl;
+      if (!error) {
+        const { data: publicUrlData } = supabase.storage
+          .from('card-images')
+          .getPublicUrl(fileName);
+
+        const publicUrl = publicUrlData?.publicUrl || `${SUPABASE_URL}/storage/v1/object/public/card-images/${fileName}`;
+        setCachedCardImage(cardId, publicUrl);
+        return publicUrl;
+      } else {
+        console.warn('Supabase storage upload failed:', error.message);
+      }
+    }
+
+    // Fallback if Storage upload failed or base64 without blob: return compressed base64 data URL so cloud sync still works!
+    return compressed || base64Str;
   } catch (err) {
     console.warn('Storage upload exception:', err.message);
-    return `${SUPABASE_URL}/storage/v1/object/public/card-images/card_${cardId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()}.webp`;
+    return base64Str;
   }
 }
+
+// Automatically sync any locally cached images in localStorage (from Mac clippings) to Supabase Cloud DB
+async function syncLocalImageCacheToCloud() {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('img_cache_')) {
+        keys.push(k);
+      }
+    }
+
+    if (keys.length === 0) return;
+
+    const cardIds = keys.map(k => k.replace('img_cache_', '')).filter(Boolean);
+
+    // Fetch existing image records from Supabase card_images table
+    const { data: dbImages } = await supabase
+      .from('card_images')
+      .select('card_id, image_url')
+      .in('card_id', cardIds.slice(0, 100));
+
+    const validDbMap = new Map();
+    if (dbImages) {
+      for (const item of dbImages) {
+        if (item.card_id && item.image_url) {
+          validDbMap.set(item.card_id, item.image_url);
+        }
+      }
+    }
+
+    for (const key of keys) {
+      const cardId = key.replace('img_cache_', '');
+      const localImg = localStorage.getItem(key);
+      if (!cardId || !localImg) continue;
+
+      const existingDbUrl = validDbMap.get(cardId);
+
+      // If missing in DB or pointing to unverified storage, push local image to cloud
+      if (!existingDbUrl || (existingDbUrl.includes('/storage/') && !localImg.startsWith('http'))) {
+        try {
+          const finalUrl = localImg.startsWith('data:') 
+            ? await uploadImageToStorage(cardId, localImg)
+            : localImg;
+
+          if (finalUrl) {
+            await supabase
+              .from('card_images')
+              .upsert({
+                card_id: cardId,
+                image_url: finalUrl,
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'card_id' });
+
+            if (currentUser?.id) {
+              await supabase
+                .from('marked_cards')
+                .update({ image_url: finalUrl })
+                .eq('user_id', currentUser.id)
+                .eq('card_id', cardId);
+            }
+          }
+        } catch (syncErr) {
+          console.warn('Failed to sync image to cloud:', cardId, syncErr);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Error in syncLocalImageCacheToCloud:', e);
+  }
+}
+
 
 // Return stored image URL directly (Base64, Supabase Storage, or proxied Cardmarket link)
 function getProxiedImageUrl(url) {
@@ -1131,6 +1212,8 @@ async function navigate(path, pushState = true) {
         lastDataFetchTime = Date.now();
         showLoadingProgress(false);
         isBackgroundFetching = false;
+        syncLocalImageCacheToCloud();
+
         const tabContentWrapper = document.getElementById('dashboard-tab-content');
         if (tabContentWrapper && currentView === 'dashboard') {
           if (activeDashboardTab === 'watchlist') {

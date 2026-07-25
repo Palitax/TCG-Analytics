@@ -700,6 +700,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               const { session } = await chrome.storage.local.get('session');
               const accessToken = session?.access_token || SUPABASE_ANON_KEY;
 
+              let isUploadedToStorage = false;
               if (webpBlob) {
                 try {
                   const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucketName}/${fileName}`, {
@@ -714,21 +715,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     body: webpBlob
                   });
 
-                  if (!storageRes.ok) {
+                  if (storageRes.ok) {
+                    isUploadedToStorage = true;
+                    finalImageUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucketName}/${fileName}`;
+                  } else {
                     const errText = await storageRes.text();
                     console.warn("Storage upload returned status:", storageRes.status, errText);
-                    // Fail-safe fallback: use original card URL if storage upload fails
-                    if (imageUrl && !imageUrl.startsWith('data:')) {
-                      finalImageUrl = imageUrl;
-                    }
                   }
                 } catch (stgErr) {
                   console.error("Storage upload exception:", stgErr);
-                  if (imageUrl && !imageUrl.startsWith('data:')) {
-                    finalImageUrl = imageUrl;
-                  }
                 }
               }
+
+              // Fail-safe: If storage upload was not successful, use webpBlob data URL or original imageUrl so cross-device sync never breaks
+              if (!isUploadedToStorage) {
+                if (webpBlob) {
+                  try {
+                    const base64Data = await new Promise((resolve) => {
+                      const reader = new FileReader();
+                      reader.onloadend = () => resolve(reader.result);
+                      reader.readAsDataURL(webpBlob);
+                    });
+                    if (base64Data) finalImageUrl = base64Data;
+                  } catch (rErr) {
+                    finalImageUrl = imageUrl;
+                  }
+                } else {
+                  finalImageUrl = imageUrl;
+                }
+              }
+
               
               // 1. Upsert into global card_images table
               const imgData = {
