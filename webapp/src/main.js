@@ -3682,8 +3682,8 @@ async function renderStreamOverlayTab(container) {
 
   streamOverlayInstance = new StreamOverlay(wrapper);
 
-  // If activeStreamQueue is empty in local memory, attempt fetching from Supabase for cross-device sync (e.g. Mac -> Tablet)
-  if (activeStreamQueue.length === 0 && currentUser?.id) {
+  // Always attempt fetching the latest Stream Queue payload from Supabase Cloud for cross-device sync (e.g. Mac -> Tablet)
+  if (currentUser?.id) {
     const synced = await fetchStreamQueueFromSupabase();
     if (synced && synced.queue && synced.queue.length > 0) {
       activeStreamQueue = synced.queue;
@@ -3693,6 +3693,7 @@ async function renderStreamOverlayTab(container) {
       return;
     }
   }
+
 
   if (activeStreamQueue.length > 0) {
     streamOverlayInstance.loadQueue(activeStreamQueue);

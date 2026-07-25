@@ -100,6 +100,23 @@ function renderFilterBadges(filterInfo, rawCond, rawLang) {
   `;
 }
 
+function getProxiedImageUrl(url) {
+  if (!url) return null;
+  if (typeof url === 'string') {
+    if (url.includes('cardmarket.com')) {
+      const isWeb = typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http');
+      const origin = isWeb ? window.location.origin : '';
+      return `${origin}/api/image-proxy?url=${encodeURIComponent(url)}`;
+    }
+    if (url.includes('api-supabase.rohdedigital.de')) {
+      const isWeb = typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http');
+      const origin = isWeb ? window.location.origin : '';
+      return `${origin}/supabase-proxy${url.replace('https://api-supabase.rohdedigital.de', '')}`;
+    }
+  }
+  return url;
+}
+
 export class StreamOverlay {
   constructor(container, options = {}) {
     this.container = container;
@@ -257,7 +274,8 @@ export class StreamOverlay {
     const priceDisplay = hasPrice ? `${currentCard.lastPrice.toFixed(2)} €` : 'Keine DB-Daten';
     const checkDisplay = currentCard.lastCheckRelative || currentCard.lastCheckDate || 'Noch nicht gecheckt';
     const filterDisplay = currentCard.filterInfo || 'Standard Filter';
-    const imageSrc = currentCard.imageUrl || currentCard.cardDetails?.image_url || null;
+    const rawImage = currentCard.imageUrl || currentCard.cardDetails?.image_url || null;
+    const imageSrc = getProxiedImageUrl(rawImage);
     const cmUrl = getCardmarketSearchUrl(currentCard);
 
     const filterBadgesHtml = renderFilterBadges(filterDisplay, currentCard.rawCondition, currentCard.rawLanguage);
@@ -288,13 +306,14 @@ export class StreamOverlay {
 
         <div class="so-content-grid">
           <div class="so-image-container">
-            ${imageSrc ? `<img src="${imageSrc}" alt="${cardName}" class="so-card-img" />` : `
+            ${imageSrc ? `<img src="${imageSrc}" alt="${cardName}" class="so-card-img" onerror="this.onerror=null; this.src='/logo.png';" />` : `
               <div class="so-no-img-box">
                 <div style="font-size: 3.5rem; margin-bottom: 0.5rem; opacity: 0.6;">🖼️</div>
                 <div style="color: #a1a1aa; font-weight: 600; font-size: 0.95rem;">Kein Bild in DB</div>
               </div>
             `}
           </div>
+
 
           <div class="so-details-container">
             <div style="display: flex; justify-content: space-between; align-items: center;">
