@@ -3216,7 +3216,7 @@ async function renderAnalyticsTab(container) {
           .from('card_images')
           .select('card_id, image_url')
           .ilike('card_id', `%${qClean}%`)
-          .limit(40);
+          .limit(1000);
 
         if (catalogImages && catalogImages.length > 0) {
           const existingIds = new Set(scannedCards.map(c => c.card_id));
@@ -3297,6 +3297,10 @@ async function renderAnalyticsTab(container) {
           </div>
         `;
         list.appendChild(itemEl);
+
+        if (card.image_url) {
+          try { localStorage.setItem(`img_cache_${card.card_id}`, card.image_url); } catch (e) {}
+        }
 
         const cardEl = itemEl.querySelector('.watchlist-item');
         cardEl.addEventListener('click', () => {
@@ -4088,6 +4092,13 @@ async function loadCardDetails(cardId, tcg, pushState = true, initialImageUrl = 
     if (initLocation !== 'ALL' && !locations.includes(initLocation)) locations.push(initLocation);
     if (initLanguage !== 'ALL' && !languages.includes(initLanguage)) languages.push(initLanguage);
 
+    const finalImageUrl = initialImageUrl || globalImageUrl || bookmarkImageUrl || collectionImageUrl || (parsedHistory.length > 0 ? parsedHistory[0].imageUrl : getCachedCardImage(cardId));
+    if (finalImageUrl) {
+      try {
+        localStorage.setItem(`img_cache_${cardId}`, finalImageUrl);
+      } catch (e) {}
+    }
+
     activeCardDetails = {
       cardId,
       tcg,
@@ -4097,7 +4108,7 @@ async function loadCardDetails(cardId, tcg, pushState = true, initialImageUrl = 
       languages: languages.length > 0 ? languages : ['ALL', 'EN'],
       isMarked: isCurrentlyMarked,
       isCollected: isCurrentlyCollected,
-      imageUrl: initialImageUrl || globalImageUrl || bookmarkImageUrl || collectionImageUrl || (parsedHistory.length > 0 ? parsedHistory[0].imageUrl : getCachedCardImage(cardId)),
+      imageUrl: finalImageUrl,
       
       selectedCondition: initCondition,
       selectedLocation: initLocation,
@@ -4117,7 +4128,7 @@ async function loadCardDetails(cardId, tcg, pushState = true, initialImageUrl = 
       languages: ['ALL', 'EN'],
       isMarked: markedCards.some(m => m.card_id === cardId),
       isCollected: collectionCards.some(m => m.card_id === cardId),
-      imageUrl: getCachedCardImage(cardId) || null,
+      imageUrl: initialImageUrl || getCachedCardImage(cardId) || null,
       selectedCondition: 'ALL',
       selectedLocation: 'ALL',
       selectedLanguage: 'ALL'
