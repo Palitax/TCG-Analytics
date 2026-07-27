@@ -3231,9 +3231,16 @@ async function renderAnalyticsTab(container) {
           .limit(1000);
 
         if (catalogImages && catalogImages.length > 0) {
+          // Filter out TCG Pocket mobile game cards (image_url or card_id containing /tcgp/)
+          const filteredCatalog = catalogImages.filter(item => 
+            !item.image_url.includes('/tcgp/') && 
+            !item.card_id.includes('/tcgp/') && 
+            !item.card_id.includes('PROMO-A')
+          );
+
           // Deduplicate catalog entries sharing the exact same image_url, preferring full card_id with set name & fraction number
           const imageMapByUrl = new Map();
-          for (const item of catalogImages) {
+          for (const item of filteredCatalog) {
             const existing = imageMapByUrl.get(item.image_url);
             if (!existing) {
               imageMapByUrl.set(item.image_url, item);
