@@ -48,14 +48,30 @@ export class BulkScanner {
       let bestRecord = null;
 
       const searchTerms = [];
-      if (altCode) searchTerms.push(altCode);
-      if (safeCode && safeCode !== altCode) searchTerms.push(safeCode);
+      if (code) searchTerms.push(code);
+      if (altCode && !searchTerms.includes(altCode)) searchTerms.push(altCode);
+      if (safeCode && !searchTerms.includes(safeCode)) searchTerms.push(safeCode);
+
+      if (code && code.includes('/')) {
+        const parts = code.split('/');
+        if (parts[0] && parts[0].trim()) {
+          const num = parts[0].trim();
+          const total = parts[1] ? parts[1].trim() : '';
+          if (total) {
+            searchTerms.push(`${num}-${total}`);
+            searchTerms.push(`${num}%${total}`);
+          }
+          searchTerms.push(`-${num}`);
+        }
+      }
 
       for (const term of searchTerms) {
         if (!term || term.length < 2) continue;
         try {
+          const cleanTerm = term.replace(/[\/\\%_]/g, '');
           const encTerm = encodeURIComponent(`%${term}%`);
-          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&card_id=ilike.${encTerm}&order=scanned_at.desc&limit=5`;
+          const encClean = encodeURIComponent(`%${cleanTerm}%`);
+          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&or=(card_id.ilike.${encTerm},comment.ilike.${encTerm},card_id.ilike.${encClean},comment.ilike.${encClean})&order=scanned_at.desc&limit=5`;
           const resp = await fetch(url, {
             headers: {
               'apikey': SUPABASE_ANON_KEY,
@@ -77,7 +93,7 @@ export class BulkScanner {
       if (!bestRecord && cleanName && cleanName.length >= 3 && cleanName.toLowerCase() !== 'karte') {
         try {
           const encName = encodeURIComponent(`%${cleanName.replace(/[\/\\%_]/g, '')}%`);
-          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&card_id=ilike.${encName}&order=scanned_at.desc&limit=5`;
+          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&or=(card_id.ilike.${encName},comment.ilike.${encName})&order=scanned_at.desc&limit=5`;
           const resp = await fetch(url, {
             headers: {
               'apikey': SUPABASE_ANON_KEY,
@@ -101,7 +117,10 @@ export class BulkScanner {
         item.lastCheckDate = formatTimestamp(bestRecord.scanned_at);
         item.lastCheckRelative = formatRelativeDate(bestRecord.scanned_at);
         item.filterInfo = formatFilterInfo(bestRecord.comment);
-        item.detectedName = item.detectedName || cleanCardName(bestRecord.card_id) || item.rawName;
+        const extractedName = cleanCardName(bestRecord.card_id);
+        if (!item.detectedName || item.detectedName.toLowerCase() === 'karte') {
+          item.detectedName = extractedName || item.rawName || 'Karte';
+        }
         item.cardDetails = { cardmarket_url: bestRecord.card_id };
 
         const fetchedImg = await fetchCardImageFromDB(bestRecord.card_id, code, cleanName);

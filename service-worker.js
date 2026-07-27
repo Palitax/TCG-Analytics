@@ -318,8 +318,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         // 2. Perform upload if triggered
         if (shouldUpload) {
-          // Embed specific match details as metadata prefix in the comment column
-          const metadataPrefix = `[${matchedLanguage || ''}|${matchedCountry || ''}|${matchedCondition || ''}]`;
+          // Embed specific match details & searched card code as metadata prefix in comment column
+          const { last_clicked_card_code } = await chrome.storage.local.get('last_clicked_card_code').catch(() => ({}));
+          let metadataPrefix = `[${matchedLanguage || ''}|${matchedCountry || ''}|${matchedCondition || ''}]`;
+          if (last_clicked_card_code) {
+            metadataPrefix += ` Code:${last_clicked_card_code}`;
+            await chrome.storage.local.remove('last_clicked_card_code').catch(() => {});
+          }
           const dbComment = comment ? `${metadataPrefix} ${comment}` : metadataPrefix;
 
           const newRecordData = {

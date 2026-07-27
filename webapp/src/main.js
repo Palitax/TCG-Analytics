@@ -3561,11 +3561,25 @@ function renderBulkScanTab(container) {
           </span>
         </td>
         <td style="text-align: right;">
-          <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 4px 10px; font-size: 0.8rem; background: rgba(251, 133, 0, 0.15); border: 1px solid rgba(251, 133, 0, 0.4); color: #fb8500; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;">
+          <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm cm-check-link" style="padding: 4px 10px; font-size: 0.8rem; background: rgba(251, 133, 0, 0.15); border: 1px solid rgba(251, 133, 0, 0.4); color: #fb8500; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;">
             Check price now ↗
           </a>
         </td>
       `;
+
+      const cmCheckLink = tr.querySelector('.cm-check-link');
+      if (cmCheckLink) {
+        cmCheckLink.addEventListener('click', () => {
+          const cardCode = (item.detectedCode || item.rawCode || '').trim();
+          if (cardCode) {
+            try {
+              if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                chrome.storage.local.set({ last_clicked_card_code: cardCode });
+              }
+            } catch (e) {}
+          }
+        });
+      }
 
       const thumbImg = tr.querySelector('.scan-card-thumb');
       if (thumbImg) {
