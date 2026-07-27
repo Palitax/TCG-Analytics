@@ -3569,14 +3569,15 @@ function renderBulkScanTab(container) {
 
       const cmCheckLink = tr.querySelector('.cm-check-link');
       if (cmCheckLink) {
-        cmCheckLink.addEventListener('click', () => {
+        cmCheckLink.addEventListener('click', async (e) => {
           const cardCode = (item.detectedCode || item.rawCode || '').trim();
-          if (cardCode) {
+          if (cardCode && typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+            e.preventDefault();
+            const targetUrl = cmCheckLink.getAttribute('href');
             try {
-              if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-                chrome.storage.local.set({ last_clicked_card_code: cardCode });
-              }
-            } catch (e) {}
+              await chrome.storage.local.set({ last_clicked_card_code: cardCode });
+            } catch (err) {}
+            window.open(targetUrl, '_blank');
           }
         });
       }
