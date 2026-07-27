@@ -222,9 +222,19 @@ function cleanCardName(cardId) {
   if (!cardId) return '';
   let clean = decodeURIComponent(cardId);
   if (clean.includes('/')) {
-    clean = clean.split('/').filter(Boolean).pop() || clean;
+    const parts = clean.split('/').filter(Boolean);
+    const lastPart = parts.pop() || clean;
+    if (parts.length >= 1) {
+      const setSlug = parts[parts.length - 1];
+      if (setSlug && setSlug.toLowerCase() !== 'singles' && setSlug.toLowerCase() !== 'products') {
+        const setNameClean = setSlug.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
+        const cardNameClean = lastPart.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
+        return `${cardNameClean} (${setNameClean})`;
+      }
+    }
+    clean = lastPart;
   }
-  return clean;
+  return clean.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 // Split card name into Character Name and Card Number, replacing hyphens with spaces
@@ -297,11 +307,13 @@ function getSortedWatchlistCards() {
   );
   if (activeSearchQuery && activeSearchQuery.trim()) {
     const q = activeSearchQuery.toLowerCase();
+    const qWords = q.replace(/[-_]/g, ' ').split(/\s+/).filter(Boolean);
     sortedCards = sortedCards.filter(c => {
-      const cardIdStr = (c.card_id || '').toLowerCase();
-      const cleanNameStr = cleanCardName(c.card_id).toLowerCase();
+      const cardIdStr = (c.card_id || '').toLowerCase().replace(/[-_]/g, ' ');
+      const cleanNameStr = cleanCardName(c.card_id).toLowerCase().replace(/[-_]/g, ' ');
       const tcgStr = (c.tcg || '').toLowerCase();
-      return cardIdStr.includes(q) || cleanNameStr.includes(q) || tcgStr.includes(q);
+
+      return qWords.every(w => cardIdStr.includes(w) || cleanNameStr.includes(w) || tcgStr.includes(w));
     });
   }
 
@@ -362,11 +374,13 @@ function getSortedCollectionCards() {
   let sortedCards = [...collectionCards];
   if (activeSearchQuery && activeSearchQuery.trim()) {
     const q = activeSearchQuery.toLowerCase();
+    const qWords = q.replace(/[-_]/g, ' ').split(/\s+/).filter(Boolean);
     sortedCards = sortedCards.filter(c => {
-      const cardIdStr = (c.card_id || '').toLowerCase();
-      const cleanNameStr = cleanCardName(c.card_id).toLowerCase();
+      const cardIdStr = (c.card_id || '').toLowerCase().replace(/[-_]/g, ' ');
+      const cleanNameStr = cleanCardName(c.card_id).toLowerCase().replace(/[-_]/g, ' ');
       const tcgStr = (c.tcg || '').toLowerCase();
-      return cardIdStr.includes(q) || cleanNameStr.includes(q) || tcgStr.includes(q);
+
+      return qWords.every(w => cardIdStr.includes(w) || cleanNameStr.includes(w) || tcgStr.includes(w));
     });
   }
 
