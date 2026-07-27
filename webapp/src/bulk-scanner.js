@@ -47,31 +47,34 @@ export class BulkScanner {
 
       let bestRecord = null;
 
-      const searchTerms = [];
-      if (code) searchTerms.push(code);
-      if (altCode && !searchTerms.includes(altCode)) searchTerms.push(altCode);
-      if (safeCode && !searchTerms.includes(safeCode)) searchTerms.push(safeCode);
+      const rawFullName = item.detectedName || item.rawName || '';
+      let cardNameClean = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
+      if (cardNameClean.toLowerCase() === 'karte') cardNameClean = '';
 
-      if (code && code.includes('/')) {
-        const parts = code.split('/');
-        if (parts[0] && parts[0].trim()) {
-          const num = parts[0].trim();
-          const total = parts[1] ? parts[1].trim() : '';
-          if (total) {
-            searchTerms.push(`${num}-${total}`);
-            searchTerms.push(`${num}%${total}`);
-          }
-          searchTerms.push(`-${num}`);
+      let setNameClean = item.rawSet || item.set || item.cardDetails?.set_name || '';
+      if (!setNameClean && rawFullName.includes('(')) {
+        const parentheticalMatch = rawFullName.match(/\(([^)]+)\)/);
+        if (parentheticalMatch && parentheticalMatch[1]) {
+          setNameClean = parentheticalMatch[1].trim();
         }
       }
 
-      for (const term of searchTerms) {
-        if (!term || term.length < 2) continue;
+      // Stage 1: Combined Match (Set Name + Card Name + Code)
+      if (!bestRecord && setNameClean && (cardNameClean || code)) {
         try {
-          const cleanTerm = term.replace(/[\/\\%_]/g, '');
-          const encTerm = encodeURIComponent(`%${term}%`);
-          const encClean = encodeURIComponent(`%${cleanTerm}%`);
-          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&or=(card_id.ilike.${encTerm},comment.ilike.${encTerm},card_id.ilike.${encClean},comment.ilike.${encClean})&order=scanned_at.desc&limit=5`;
+          const setSlug = setNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
+          const nameSlug = cardNameClean ? cardNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-') : '';
+          const codeNum = code ? (code.split('/')[0] || code).replace(/[\/\\%_]/g, '') : '';
+
+          let url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&card_id=ilike.%25${encodeURIComponent(setSlug)}%25`;
+          if (nameSlug) {
+            url += `&card_id=ilike.%25${encodeURIComponent(nameSlug)}%25`;
+          }
+          if (codeNum) {
+            url += `&or=(card_id.ilike.%25${encodeURIComponent(codeNum)}%25,comment.ilike.%25${encodeURIComponent(code)}%25)`;
+          }
+          url += `&order=scanned_at.desc&limit=5`;
+
           const resp = await fetch(url, {
             headers: {
               'apikey': SUPABASE_ANON_KEY,
@@ -84,16 +87,17 @@ export class BulkScanner {
             const data = await resp.json();
             if (data && data.length > 0) {
               bestRecord = data[0];
-              break;
             }
           }
         } catch (e) {}
       }
 
-      if (!bestRecord && cleanName && cleanName.length >= 3 && cleanName.toLowerCase() !== 'karte') {
+      // Stage 2: Card Name + Code Match
+      if (!bestRecord && cardNameClean && code) {
         try {
-          const encName = encodeURIComponent(`%${cleanName.replace(/[\/\\%_]/g, '')}%`);
-          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&or=(card_id.ilike.${encName},comment.ilike.${encName})&order=scanned_at.desc&limit=5`;
+          const nameSlug = cardNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
+          const altCode = code.replace('/', '-');
+          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&card_id=ilike.%25${encodeURIComponent(nameSlug)}%25&or=(card_id.ilike.%25${encodeURIComponent(altCode)}%25,comment.ilike.%25${encodeURIComponent(code)}%25)&order=scanned_at.desc&limit=5`;
           const resp = await fetch(url, {
             headers: {
               'apikey': SUPABASE_ANON_KEY,
@@ -109,6 +113,75 @@ export class BulkScanner {
             }
           }
         } catch (e) {}
+      }
+
+      // Stage 3: Exact Code in Comment Match (Code:code)
+      if (!bestRecord && code) {
+        try {
+          const encCode = encodeURIComponent(`%Code:${code}%`);
+          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&comment=ilike.${encCode}&order=scanned_at.desc&limit=5`;
+          const resp = await fetch(url, {
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            },
+            credentials: 'omit'
+          });
+
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data && data.length > 0) {
+              bestRecord = data[0];
+            }
+          }
+        } catch (e) {}
+      }
+
+      // Stage 4: Search by exact full code search terms
+      if (!bestRecord) {
+        const safeCode = code.replace(/[\/\\%_]/g, '');
+        const altCode = code.replace('/', '-');
+        const searchTerms = [];
+        if (code) searchTerms.push(code);
+        if (altCode && !searchTerms.includes(altCode)) searchTerms.push(altCode);
+        if (safeCode && !searchTerms.includes(safeCode)) searchTerms.push(safeCode);
+
+        if (code && code.includes('/')) {
+          const parts = code.split('/');
+          if (parts[0] && parts[0].trim()) {
+            const num = parts[0].trim();
+            const total = parts[1] ? parts[1].trim() : '';
+            if (total) {
+              searchTerms.push(`${num}-${total}`);
+              searchTerms.push(`${num}%${total}`);
+            }
+          }
+        }
+
+        for (const term of searchTerms) {
+          if (!term || term.length < 2) continue;
+          try {
+            const cleanTerm = term.replace(/[\/\\%_]/g, '');
+            const encTerm = encodeURIComponent(`%${term}%`);
+            const encClean = encodeURIComponent(`%${cleanTerm}%`);
+            const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&or=(card_id.ilike.${encTerm},comment.ilike.${encTerm},card_id.ilike.${encClean},comment.ilike.${encClean})&order=scanned_at.desc&limit=5`;
+            const resp = await fetch(url, {
+              headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+              },
+              credentials: 'omit'
+            });
+
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data && data.length > 0) {
+                bestRecord = data[0];
+                break;
+              }
+            }
+          } catch (e) {}
+        }
       }
 
       if (bestRecord) {
