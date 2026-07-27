@@ -4067,7 +4067,10 @@ function renderDetail(container) {
           user_id: currentUser.id,
           tcg: details.tcg,
           card_id: details.cardId,
-          image_url: details.imageUrl
+          image_url: details.imageUrl,
+          condition: details.selectedCondition !== 'ALL' ? details.selectedCondition : null,
+          language: details.selectedLanguage !== 'ALL' ? details.selectedLanguage : null,
+          seller_country: details.selectedLocation !== 'ALL' ? details.selectedLocation : null
         };
         const { error } = await supabase
           .from('marked_cards')
@@ -4107,7 +4110,10 @@ function renderDetail(container) {
           user_id: currentUser.id,
           tcg: details.tcg,
           card_id: details.cardId,
-          image_url: details.imageUrl
+          image_url: details.imageUrl,
+          condition: details.selectedCondition !== 'ALL' ? details.selectedCondition : null,
+          language: details.selectedLanguage !== 'ALL' ? details.selectedLanguage : null,
+          seller_country: details.selectedLocation !== 'ALL' ? details.selectedLocation : null
         };
         const { error } = await supabase
           .from('collection_cards')
@@ -4490,11 +4496,62 @@ function renderDetail(container) {
   const selLang = filterSection.querySelector('#sel-lang');
   const selLoc = filterSection.querySelector('#sel-loc');
 
+  const saveCardFiltersToDb = async () => {
+    if (!currentUser || !details || !details.cardId) return;
+
+    const condVal = details.selectedCondition !== 'ALL' ? details.selectedCondition : null;
+    const langVal = details.selectedLanguage !== 'ALL' ? details.selectedLanguage : null;
+    const locVal = details.selectedLocation !== 'ALL' ? details.selectedLocation : null;
+
+    try {
+      if (details.isMarked) {
+        await supabase
+          .from('marked_cards')
+          .update({
+            condition: condVal,
+            language: langVal,
+            seller_country: locVal
+          })
+          .eq('user_id', currentUser.id)
+          .eq('card_id', details.cardId);
+
+        const localMarked = markedCards.find(m => m.card_id === details.cardId);
+        if (localMarked) {
+          localMarked.condition = condVal;
+          localMarked.language = langVal;
+          localMarked.seller_country = locVal;
+        }
+      }
+
+      if (details.isCollected) {
+        await supabase
+          .from('collection_cards')
+          .update({
+            condition: condVal,
+            language: langVal,
+            seller_country: locVal
+          })
+          .eq('user_id', currentUser.id)
+          .eq('card_id', details.cardId);
+
+        const localColl = collectionCards.find(c => c.card_id === details.cardId);
+        if (localColl) {
+          localColl.condition = condVal;
+          localColl.language = langVal;
+          localColl.seller_country = locVal;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to auto-save filter preference:', e?.message || e);
+    }
+  };
+
   const onFilterChange = () => {
     details.selectedCondition = selCond.value;
     details.selectedLanguage = selLang.value;
     details.selectedLocation = selLoc.value;
     updatePricesAndChart();
+    saveCardFiltersToDb();
   };
 
   selCond.addEventListener('change', onFilterChange);
