@@ -626,11 +626,15 @@ async function syncLocalImageCacheToCloud() {
 function getProxiedImageUrl(url) {
   if (!url) return '/logo.png';
   if (typeof url === 'string') {
-    // Route ALL Cardmarket images (product-images.s3.cardmarket.com, static.cardmarket.com, etc.) via Vercel image proxy
+    // Route ALL Cardmarket images via Vercel image proxy
     if (url.includes('cardmarket.com')) {
       const isWeb = typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http');
       const origin = isWeb ? window.location.origin : '';
       return `${origin}/api/image-proxy?url=${encodeURIComponent(url)}`;
+    }
+    // Route official One Piece card images via wsrv.nl proxy to prevent CORP/CORS blocks
+    if (url.includes('onepiece-cardgame.com') || url.includes('optcg-api')) {
+      return `https://wsrv.nl/?url=${encodeURIComponent(url)}`;
     }
     if (url.includes('api-supabase.rohdedigital.de') && typeof SUPABASE_URL === 'string' && SUPABASE_URL.includes('/supabase-proxy')) {
       return url.replace('https://api-supabase.rohdedigital.de', SUPABASE_URL);
@@ -3257,9 +3261,12 @@ async function renderAnalyticsTab(container) {
           for (const item of imageMapByUrl.values()) {
             if (!existingIds.has(item.card_id)) {
               existingIds.add(item.card_id);
+              const cardIdLower = item.card_id.toLowerCase();
+              const isOnePiece = cardIdLower.includes('onepiece') || cardIdLower.includes('optcg') || /^\/?(OP|ST|EB|PRB|onepiece_)/i.test(item.card_id);
+
               scannedCards.push({
                 card_id: item.card_id,
-                tcg: 'Pokemon',
+                tcg: isOnePiece ? 'OnePiece' : 'Pokemon',
                 latest_price: null,
                 diff_percent: 0,
                 image_url: item.image_url
