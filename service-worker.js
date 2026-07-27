@@ -117,6 +117,7 @@ async function refreshSession(refreshToken) {
   try {
     const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
       method: "POST",
+      credentials: "omit",
       headers: {
         "apikey": SUPABASE_ANON_KEY,
         "Content-Type": "application/json"
@@ -318,6 +319,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           const postResponse = await fetch(`${SUPABASE_URL}/rest/v1/price_history`, {
             method: "POST",
+            credentials: "omit",
             headers: {
               "apikey": SUPABASE_ANON_KEY,
               "Authorization": `Bearer ${accessToken}`,
@@ -348,6 +350,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const bookmarkUrl = `${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}`;
           const bookmarkResponse = await fetch(bookmarkUrl, {
             method: "GET",
+            credentials: "omit",
             headers: {
               "apikey": SUPABASE_ANON_KEY,
               "Authorization": `Bearer ${accessToken}`
@@ -367,6 +370,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const collectionUrl = `${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}`;
           const collectionResponse = await fetch(collectionUrl, {
             method: "GET",
+            credentials: "omit",
             headers: {
               "apikey": SUPABASE_ANON_KEY,
               "Authorization": `Bearer ${accessToken}`
@@ -427,6 +431,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const getRes = await fetch(getUrl, {
           method: "GET",
           cache: "no-store",
+          credentials: "omit",
           headers: {
             "apikey": SUPABASE_ANON_KEY,
             "Authorization": `Bearer ${session.access_token}`
@@ -452,6 +457,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         const updateRes = await fetch(updateUrl, {
           method: "PATCH",
+          credentials: "omit",
           headers: {
             "apikey": SUPABASE_ANON_KEY,
             "Authorization": `Bearer ${session.access_token}`,
@@ -503,6 +509,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           const postRes = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards`, {
             method: "POST",
+            credentials: "omit",
             headers: {
               "apikey": SUPABASE_ANON_KEY,
               "Authorization": `Bearer ${accessToken}`,
@@ -527,6 +534,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const deleteUrl = `${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}`;
           const deleteRes = await fetch(deleteUrl, {
             method: "DELETE",
+            credentials: "omit",
             headers: {
               "apikey": SUPABASE_ANON_KEY,
               "Authorization": `Bearer ${accessToken}`
@@ -565,6 +573,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           const postRes = await fetch(`${SUPABASE_URL}/rest/v1/collection_cards`, {
             method: "POST",
+            credentials: "omit",
             headers: {
               "apikey": SUPABASE_ANON_KEY,
               "Authorization": `Bearer ${accessToken}`,
@@ -589,6 +598,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const deleteUrl = `${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}`;
           const deleteRes = await fetch(deleteUrl, {
             method: "DELETE",
+            credentials: "omit",
             headers: {
               "apikey": SUPABASE_ANON_KEY,
               "Authorization": `Bearer ${accessToken}`
@@ -712,6 +722,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 try {
                   const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucketName}/${fileName}`, {
                     method: "POST",
+                    credentials: "omit",
                     headers: {
                       "apikey": SUPABASE_ANON_KEY,
                       "Authorization": `Bearer ${accessToken}`,
@@ -774,6 +785,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
               const imgRes = await fetch(`${SUPABASE_URL}/rest/v1/card_images`, {
                 method: "POST",
+                credentials: "omit",
                 headers: {
                   "apikey": SUPABASE_ANON_KEY,
                   "Authorization": `Bearer ${accessToken}`,
@@ -796,6 +808,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 try {
                   await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&or=(card_id.eq.${encClean},card_id.eq.${encSlashed})`, {
                     method: "PATCH",
+                    credentials: "omit",
                     headers: {
                       "apikey": SUPABASE_ANON_KEY,
                       "Authorization": `Bearer ${accessToken}`,
@@ -808,6 +821,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 try {
                   await fetch(`${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&or=(card_id.eq.${encClean},card_id.eq.${encSlashed})`, {
                     method: "PATCH",
+                    credentials: "omit",
                     headers: {
                       "apikey": SUPABASE_ANON_KEY,
                       "Authorization": `Bearer ${accessToken}`,

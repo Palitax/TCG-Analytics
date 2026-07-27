@@ -1210,6 +1210,10 @@ function attachListeners() {
             await chrome.storage.local.set({ [cardPrefsKey]: cardPrefs });
           }
           runScan();
+        } else if (response && response.error === 'UNAUTHENTICATED') {
+          alert('Bitte logge dich über das Extension-Popup ein!');
+        } else {
+          alert('Fehler beim Favorisieren der Karte: ' + (response?.error || 'unbekannt'));
         }
       });
     });
