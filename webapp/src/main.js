@@ -815,7 +815,8 @@ async function fetchBulkPriceHistory(cardIds) {
           'apikey': SUPABASE_ANON_KEY,
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
         },
-        credentials: 'omit'
+        credentials: 'omit',
+        signal: AbortSignal.timeout(6000)
       });
 
       if (resp.ok) {
@@ -858,7 +859,8 @@ async function fetchBulkCardImages(cardIds) {
           'apikey': SUPABASE_ANON_KEY,
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
         },
-        credentials: 'omit'
+        credentials: 'omit',
+        signal: AbortSignal.timeout(6000)
       });
 
       if (resp.ok) {
@@ -884,7 +886,8 @@ async function fetchCollectionCards() {
           'apikey': SUPABASE_ANON_KEY,
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
         },
-        credentials: 'omit'
+        credentials: 'omit',
+        signal: AbortSignal.timeout(6000)
       });
       if (resp.ok) {
         listData = await resp.json();
@@ -1013,7 +1016,8 @@ async function fetchMarkedCards() {
           'apikey': SUPABASE_ANON_KEY,
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
         },
-        credentials: 'omit'
+        credentials: 'omit',
+        signal: AbortSignal.timeout(6000)
       });
       if (resp.ok) {
         listData = await resp.json();
@@ -3779,8 +3783,14 @@ async function loadCardDetails(cardId, tcg, pushState = true) {
   cleanupDetailKeydownListener();
   setView('loading');
   if (pushState) {
-    window.location.hash = `/detail?card_id=${encodeURIComponent(cardId)}&tcg=${encodeURIComponent(tcg)}`;
-    return;
+    const targetHash = `#/detail?card_id=${encodeURIComponent(cardId)}&tcg=${encodeURIComponent(tcg)}`;
+    try {
+      if (window.location.hash !== targetHash) {
+        window.history.pushState(null, '', targetHash);
+      }
+    } catch(e) {
+      window.location.hash = targetHash;
+    }
   }
   try {
     const rawId = (cardId || '').trim();
@@ -3850,7 +3860,11 @@ async function loadCardDetails(cardId, tcg, pushState = true) {
       return null;
     })();
 
-    const [rawHistoryData, globalImageUrl] = await Promise.all([historyPromise, imagePromise]);
+    const fetchTimeoutPromise = new Promise((resolve) => setTimeout(() => resolve([[], null]), 4500));
+    const [rawHistoryData, globalImageUrl] = await Promise.race([
+      Promise.all([historyPromise, imagePromise]),
+      fetchTimeoutPromise
+    ]);
     const parsedHistory = (rawHistoryData || []).map(parseHistoryItem);
 
     // Extract unique filter combinations

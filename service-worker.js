@@ -251,7 +251,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           credentials: "omit",
           headers: {
             "apikey": SUPABASE_ANON_KEY
-          }
+          },
+          signal: AbortSignal.timeout(8000)
         });
 
         if (!getResponse.ok) {

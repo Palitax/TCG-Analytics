@@ -17,7 +17,7 @@ export const SUPABASE_URL = isWebBrowser
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
-    autoRefreshToken: false,
+    autoRefreshToken: true,
     detectSessionInUrl: false
   }
 });
