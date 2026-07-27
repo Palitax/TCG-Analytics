@@ -3209,6 +3209,32 @@ async function renderAnalyticsTab(container) {
         }
       }
 
+      // Also search catalog images from card_images so imported cards without price history appear
+      try {
+        const qClean = activeSearchQuery.replace(/[\/\\%_]/g, '');
+        const { data: catalogImages } = await supabase
+          .from('card_images')
+          .select('card_id, image_url')
+          .ilike('card_id', `%${qClean}%`)
+          .limit(40);
+
+        if (catalogImages && catalogImages.length > 0) {
+          const existingIds = new Set(scannedCards.map(c => c.card_id));
+          for (const item of catalogImages) {
+            if (!existingIds.has(item.card_id)) {
+              existingIds.add(item.card_id);
+              scannedCards.push({
+                card_id: item.card_id,
+                tcg: 'Pokemon',
+                latest_price: null,
+                diff_percent: 0,
+                image_url: item.image_url
+              });
+            }
+          }
+        }
+      } catch (err) {}
+
       if (scannedCards.length === 0) {
         dashboard.innerHTML = `
           <div class="empty-state glass-panel" style="padding: 32px 16px;">
