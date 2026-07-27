@@ -2335,7 +2335,7 @@ function renderWatchlistTab(container) {
         hasMoved = false;
         return;
       }
-      loadCardDetails(card.card_id, card.tcg);
+      loadCardDetails(card.card_id, card.tcg, true, card.image_url);
     });
 
     // Lightbox image trigger
@@ -3073,7 +3073,7 @@ function renderCollectionTab(container) {
         hasMoved = false;
         return;
       }
-      loadCardDetails(card.card_id, card.tcg);
+      loadCardDetails(card.card_id, card.tcg, true, card.image_url);
     });
 
     const imgEl = cardEl.querySelector('.watchlist-item-img');
@@ -3301,7 +3301,7 @@ async function renderAnalyticsTab(container) {
         const cardEl = itemEl.querySelector('.watchlist-item');
         cardEl.addEventListener('click', () => {
           addToHistory(card.card_id, card.tcg);
-          loadCardDetails(card.card_id, card.tcg);
+          loadCardDetails(card.card_id, card.tcg, true, card.image_url);
         });
 
         const imgEl = itemEl.querySelector('.watchlist-item-img');
@@ -3956,7 +3956,7 @@ async function loadLatestPriceForDashboard(card) {
 }
 
 // Load full price list and filters for card details panel
-async function loadCardDetails(cardId, tcg, pushState = true) {
+async function loadCardDetails(cardId, tcg, pushState = true, initialImageUrl = null) {
   cleanupDetailKeydownListener();
   setView('loading');
   if (pushState) {
@@ -4014,6 +4014,7 @@ async function loadCardDetails(cardId, tcg, pushState = true) {
     })();
 
     const imagePromise = (async () => {
+      if (initialImageUrl) return initialImageUrl;
       try {
         // 1. Try exact card_id match in card_images
         const { data: d1 } = await supabase
@@ -4096,7 +4097,7 @@ async function loadCardDetails(cardId, tcg, pushState = true) {
       languages: languages.length > 0 ? languages : ['ALL', 'EN'],
       isMarked: isCurrentlyMarked,
       isCollected: isCurrentlyCollected,
-      imageUrl: globalImageUrl || bookmarkImageUrl || collectionImageUrl || (parsedHistory.length > 0 ? parsedHistory[0].imageUrl : getCachedCardImage(cardId)),
+      imageUrl: initialImageUrl || globalImageUrl || bookmarkImageUrl || collectionImageUrl || (parsedHistory.length > 0 ? parsedHistory[0].imageUrl : getCachedCardImage(cardId)),
       
       selectedCondition: initCondition,
       selectedLocation: initLocation,
