@@ -49,8 +49,11 @@ function safeSaveSearchHistory() {
   }
 }
 
-let activeCardDetails = null; // Holds detail view data
 let activeSearchQuery = ''; // Active search query for filtering tabs
+let analyticsSelectedCondition = 'ALL'; // Condition filter for Analytics ('ALL', 'NM', 'EX', 'GD', 'LP', 'PL', 'PO')
+let analyticsSelectedLanguage = 'ALL';  // Language filter for Analytics ('ALL', 'DE', 'EN', 'JP', 'FR', 'ES', 'IT')
+let analyticsSelectedLocation = 'ALL';  // Seller location filter for Analytics ('ALL', 'DE', 'EN', 'AT', 'CH', 'NL', 'FR', 'ES', 'IT')
+let analyticsSelectedTCG = 'ALL';       // TCG filter for Analytics ('ALL', 'Pokemon', 'OnePiece')
 let collectionCards = []; // Cards in collection
 let activeTcgFilter = 'all'; // TCG filter for tabs ('all', 'OnePiece', 'Pokemon', 'Riftbound', 'DragonBall')
 let collectionValueHistory = []; // Historical values of collection market value
@@ -3134,6 +3137,83 @@ async function renderAnalyticsTab(container) {
   dashboard.innerHTML = '';
   container.appendChild(dashboard);
 
+  // Render Filter Bar for Condition, Language, Seller Location, TCG
+  const filterBar = document.createElement('div');
+  filterBar.className = 'glass-panel';
+  filterBar.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 14px; margin-bottom: 16px; border-radius: 12px;';
+  filterBar.innerHTML = `
+    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%;">
+      <!-- TCG Filter -->
+      <select id="select-analytics-tcg" class="watchlist-sort-select" style="padding: 6px 10px; font-size: 0.78rem;">
+        <option value="ALL" ${analyticsSelectedTCG === 'ALL' ? 'selected' : ''}>Alle TCGs</option>
+        <option value="Pokemon" ${analyticsSelectedTCG === 'Pokemon' ? 'selected' : ''}>Pokémon</option>
+        <option value="OnePiece" ${analyticsSelectedTCG === 'OnePiece' ? 'selected' : ''}>One Piece</option>
+      </select>
+
+      <!-- Condition Filter -->
+      <select id="select-analytics-cond" class="watchlist-sort-select" style="padding: 6px 10px; font-size: 0.78rem;">
+        <option value="ALL" ${analyticsSelectedCondition === 'ALL' ? 'selected' : ''}>Alle Zustände</option>
+        <option value="NM" ${analyticsSelectedCondition === 'NM' ? 'selected' : ''}>Near Mint (NM)</option>
+        <option value="EX" ${analyticsSelectedCondition === 'EX' ? 'selected' : ''}>Excellent (EX)</option>
+        <option value="GD" ${analyticsSelectedCondition === 'GD' ? 'selected' : ''}>Good (GD)</option>
+        <option value="LP" ${analyticsSelectedCondition === 'LP' ? 'selected' : ''}>Light Played (LP)</option>
+        <option value="PL" ${analyticsSelectedCondition === 'PL' ? 'selected' : ''}>Played (PL)</option>
+        <option value="PO" ${analyticsSelectedCondition === 'PO' ? 'selected' : ''}>Poor (PO)</option>
+      </select>
+
+      <!-- Language Filter -->
+      <select id="select-analytics-lang" class="watchlist-sort-select" style="padding: 6px 10px; font-size: 0.78rem;">
+        <option value="ALL" ${analyticsSelectedLanguage === 'ALL' ? 'selected' : ''}>Alle Sprachen</option>
+        <option value="DE" ${analyticsSelectedLanguage === 'DE' ? 'selected' : ''}>Deutsch (DE)</option>
+        <option value="EN" ${analyticsSelectedLanguage === 'EN' ? 'selected' : ''}>Englisch (EN)</option>
+        <option value="JP" ${analyticsSelectedLanguage === 'JP' ? 'selected' : ''}>Japanisch (JP)</option>
+        <option value="FR" ${analyticsSelectedLanguage === 'FR' ? 'selected' : ''}>Französisch (FR)</option>
+        <option value="ES" ${analyticsSelectedLanguage === 'ES' ? 'selected' : ''}>Spanisch (ES)</option>
+        <option value="IT" ${analyticsSelectedLanguage === 'IT' ? 'selected' : ''}>Italienisch (IT)</option>
+      </select>
+
+      <!-- Seller Location Filter -->
+      <select id="select-analytics-loc" class="watchlist-sort-select" style="padding: 6px 10px; font-size: 0.78rem;">
+        <option value="ALL" ${analyticsSelectedLocation === 'ALL' ? 'selected' : ''}>Alle Standorte</option>
+        <option value="DE" ${analyticsSelectedLocation === 'DE' ? 'selected' : ''}>Deutschland (DE)</option>
+        <option value="EN" ${analyticsSelectedLocation === 'EN' ? 'selected' : ''}>Großbritannien / EU (EN)</option>
+        <option value="AT" ${analyticsSelectedLocation === 'AT' ? 'selected' : ''}>Österreich (AT)</option>
+        <option value="CH" ${analyticsSelectedLocation === 'CH' ? 'selected' : ''}>Schweiz (CH)</option>
+        <option value="NL" ${analyticsSelectedLocation === 'NL' ? 'selected' : ''}>Niederlande (NL)</option>
+        <option value="FR" ${analyticsSelectedLocation === 'FR' ? 'selected' : ''}>Frankreich (FR)</option>
+        <option value="ES" ${analyticsSelectedLocation === 'ES' ? 'selected' : ''}>Spanien (ES)</option>
+        <option value="IT" ${analyticsSelectedLocation === 'IT' ? 'selected' : ''}>Italienisch (IT)</option>
+      </select>
+    </div>
+  `;
+  dashboard.appendChild(filterBar);
+
+  const selTcg = filterBar.querySelector('#select-analytics-tcg');
+  const selCond = filterBar.querySelector('#select-analytics-cond');
+  const selLang = filterBar.querySelector('#select-analytics-lang');
+  const selLoc = filterBar.querySelector('#select-analytics-loc');
+
+  selTcg.addEventListener('change', (e) => {
+    analyticsSelectedTCG = e.target.value;
+    container.innerHTML = '';
+    renderAnalyticsTab(container);
+  });
+  selCond.addEventListener('change', (e) => {
+    analyticsSelectedCondition = e.target.value;
+    container.innerHTML = '';
+    renderAnalyticsTab(container);
+  });
+  selLang.addEventListener('change', (e) => {
+    analyticsSelectedLanguage = e.target.value;
+    container.innerHTML = '';
+    renderAnalyticsTab(container);
+  });
+  selLoc.addEventListener('change', (e) => {
+    analyticsSelectedLocation = e.target.value;
+    container.innerHTML = '';
+    renderAnalyticsTab(container);
+  });
+
   if (activeSearchQuery) {
     const loadingBox = document.createElement('div');
     loadingBox.className = 'spinner-box';
@@ -3170,6 +3250,19 @@ async function renderAnalyticsTab(container) {
 
       const uniqueCardsMap = {};
       for (const row of data || []) {
+        const item = parseHistoryItem(row);
+
+        // Apply Analytics Filters (Condition, Language, Seller Location)
+        if (analyticsSelectedCondition !== 'ALL' && item.matchedCondition && item.matchedCondition.toUpperCase() !== analyticsSelectedCondition.toUpperCase()) {
+          continue;
+        }
+        if (analyticsSelectedLanguage !== 'ALL' && item.matchedLanguage && item.matchedLanguage.toUpperCase() !== analyticsSelectedLanguage.toUpperCase()) {
+          continue;
+        }
+        if (analyticsSelectedLocation !== 'ALL' && item.matchedCountry && item.matchedCountry.toUpperCase() !== analyticsSelectedLocation.toUpperCase()) {
+          continue;
+        }
+
         if (!uniqueCardsMap[row.card_id]) {
           uniqueCardsMap[row.card_id] = {
             card_id: row.card_id,
@@ -3177,10 +3270,10 @@ async function renderAnalyticsTab(container) {
             history: []
           };
         }
-        uniqueCardsMap[row.card_id].history.push(parseHistoryItem(row));
+        uniqueCardsMap[row.card_id].history.push(item);
       }
 
-      const scannedCards = Object.values(uniqueCardsMap).map(c => {
+      let scannedCards = Object.values(uniqueCardsMap).map(c => {
         const history = c.history;
         const latest = history[history.length - 1];
         const baseline = history[0];
@@ -3199,6 +3292,11 @@ async function renderAnalyticsTab(container) {
           image_url: img
         };
       });
+
+      // Filter scanned cards by TCG if selected
+      if (analyticsSelectedTCG !== 'ALL') {
+        scannedCards = scannedCards.filter(c => c.tcg === analyticsSelectedTCG);
+      }
 
       // Enrich with global custom images
       const cardIds = scannedCards.map(c => c.card_id);
@@ -3236,11 +3334,19 @@ async function renderAnalyticsTab(container) {
 
         if (catalogImages && catalogImages.length > 0) {
           // Filter out TCG Pocket mobile game cards (image_url or card_id containing /tcgp/)
-          const filteredCatalog = catalogImages.filter(item => 
+          let filteredCatalog = catalogImages.filter(item => 
             !item.image_url.includes('/tcgp/') && 
             !item.card_id.includes('/tcgp/') && 
             !item.card_id.includes('PROMO-A')
           );
+
+          if (analyticsSelectedTCG !== 'ALL') {
+            filteredCatalog = filteredCatalog.filter(item => {
+              const cardIdLower = item.card_id.toLowerCase();
+              const isOnePiece = cardIdLower.includes('onepiece') || cardIdLower.includes('optcg') || /^\/?(OP|ST|EB|PRB|onepiece_)/i.test(item.card_id);
+              return analyticsSelectedTCG === 'OnePiece' ? isOnePiece : !isOnePiece;
+            });
+          }
 
           // Deduplicate catalog entries sharing the exact same image_url, preferring full card_id with set name & fraction number
           const imageMapByUrl = new Map();
