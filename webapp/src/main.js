@@ -3414,37 +3414,58 @@ async function renderAnalyticsTab(container) {
   });
 }
 
-// Cardmarket Search URL builder helper (Uses Google site:cardmarket.com search with btnI=1 redirect)
 function buildCardmarketSearchUrl(item) {
-  if (item.cardDetails?.cardmarket_url) {
-    const path = item.cardDetails.cardmarket_url.startsWith('/') ? item.cardDetails.cardmarket_url : `/${item.cardDetails.cardmarket_url}`;
-    return `https://www.cardmarket.com${path}`;
+  let cardId = '';
+  let rawFullName = '';
+  let code = '';
+  let rawSet = '';
+
+  if (typeof item === 'string') {
+    cardId = item;
+  } else if (item) {
+    cardId = item.cardId || item.card_id || '';
+    rawFullName = item.detectedName || item.rawName || item.name || '';
+    code = item.detectedCode || item.rawCode || item.code || '';
+    rawSet = item.rawSet || item.cardDetails?.set_name || item.cardDetails?.expansion || '';
   }
 
-  const code = (item.detectedCode || item.rawCode || '').trim();
-  const rawFullName = item.detectedName || item.rawName || '';
-
-  // Extract set name from rawSet, cardDetails or parentheses e.g. "Pikachu (Mysterious Treasures)"
-  let extractedSet = item.rawSet || item.cardDetails?.set_name || item.cardDetails?.expansion || '';
-  if (!extractedSet) {
-    const parentheticalMatch = rawFullName.match(/\(([^)]+)\)/);
-    if (parentheticalMatch && parentheticalMatch[1]) {
-      extractedSet = parentheticalMatch[1].trim();
+  // Parse details from cardId path if available e.g. "/Pokemon/Products/Singles/Obsidian-Flammen/Glurak-ex-183-165"
+  if (cardId.includes('/')) {
+    const parts = cardId.split('/').filter(Boolean);
+    const lastPart = parts.pop() || '';
+    if (parts.length >= 1) {
+      const setSlug = parts[parts.length - 1];
+      if (setSlug && setSlug.toLowerCase() !== 'singles' && setSlug.toLowerCase() !== 'products') {
+        if (!rawSet) rawSet = setSlug.replace(/[-_]/g, ' ').trim();
+      }
+    }
+    if (!rawFullName) {
+      rawFullName = lastPart.replace(/[-_]/g, ' ').trim();
     }
   }
 
-  // Clean main name: remove parentheses and LV.XX info if any
+  // Extract set name from parentheses if present
+  if (!rawSet && rawFullName.includes('(')) {
+    const match = rawFullName.match(/\(([^)]+)\)/);
+    if (match && match[1]) rawSet = match[1].trim();
+  }
+
   let cleanName = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
+  
+  if (!code) {
+    const codeMatch = rawFullName.match(/(\d+[\/\-]\d+|\b\d+\b)/);
+    if (codeMatch) code = codeMatch[1].replace('-', '/');
+  }
+
+  cleanName = cleanName.replace(/(\b\d+[\/\-]\d+\b|\b\d+\b)/g, '').trim();
   if (!cleanName || cleanName.toLowerCase() === 'karte') cleanName = '';
+  const cleanSet = rawSet.trim();
 
-  let cleanSet = extractedSet.trim();
-
-  // Build query: site:cardmarket.com/de Pikachu Mysterious Treasures 94/123
+  // Always build Google I'm Feeling Lucky search: site:cardmarket.com/de Name Set Code &btnI=1
   const queryParts = ['site:cardmarket.com/de', cleanName, cleanSet, code].filter(p => p && p.length > 0);
   const searchQuery = queryParts.join(' ').trim();
 
-  const encodedQuery = encodeURIComponent(searchQuery);
-  return `https://www.google.com/search?q=${encodedQuery}&btnI=1`;
+  return `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&btnI=1`;
 }
 
 // Bulk Scan Tab Renderer
@@ -4359,12 +4380,13 @@ function renderDetail(container) {
   wrapper.appendChild(detailBody);
 
   // 1. Meta Header Area
+  const cmSearchUrl = buildCardmarketSearchUrl({ cardId: details.cardId, name: cleanCardName(details.cardId) });
   const metaHeader = document.createElement('div');
   metaHeader.className = 'detail-meta-header';
   metaHeader.innerHTML = `
     <span class="hero-tcg">${details.tcg}</span>
     <h1 class="hero-title">${cleanCardName(details.cardId)}</h1>
-    <a href="https://www.cardmarket.com${details.cardId}" target="_blank" rel="noopener noreferrer" class="cardmarket-link" style="font-size: 0.78rem; color: #60a5fa; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 500; transition: color 0.2s;">
+    <a href="${cmSearchUrl}" target="_blank" rel="noopener noreferrer" class="cardmarket-link" style="font-size: 0.78rem; color: #60a5fa; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 500; transition: color 0.2s;">
       Zeige Karte auf Cardmarket
       <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
         <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
