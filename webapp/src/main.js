@@ -3386,6 +3386,7 @@ function renderBulkScanTab(container) {
         <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1.25rem 0; flex-wrap: wrap; gap: 1rem;">
           <h3 style="color: #fff; font-size: 1.15rem; margin: 0; font-weight: 700;" id="scan-summary-title">Gescannt: 0 Karten</h3>
           <div style="display: flex; gap: 0.85rem; flex-wrap: wrap; align-items: center;">
+            <button class="shadcn-btn shadcn-btn-secondary" id="btn-refresh-bulk-db" type="button" title="Fragt Supabase neu ab nach kürzlich gescannten Preisen & Bildern">🔄 DB-Daten aktualisieren</button>
             <button class="shadcn-btn shadcn-btn-primary" id="btn-send-to-overlay" type="button">📱 An Stream Overlay senden</button>
             <button class="shadcn-btn shadcn-btn-secondary" id="btn-save-scans-coll" type="button">💾 In Sammlung speichern</button>
             <button class="shadcn-btn shadcn-btn-secondary" id="btn-export-enriched-csv" type="button">📥 CSV herunterladen</button>
@@ -3417,6 +3418,7 @@ function renderBulkScanTab(container) {
   const fileInput = wrapper.querySelector('#csv-file-input');
   const btnSelect = wrapper.querySelector('#btn-select-csv');
   const btnNewUpload = wrapper.querySelector('#btn-new-csv-upload');
+  const btnRefreshBulkDb = wrapper.querySelector('#btn-refresh-bulk-db');
   const processingInd = wrapper.querySelector('#bulk-processing-indicator');
   const resultsArea = wrapper.querySelector('#bulk-results-area');
   const tbody = wrapper.querySelector('#scan-review-tbody');
@@ -3424,6 +3426,31 @@ function renderBulkScanTab(container) {
   const btnSendOverlay = wrapper.querySelector('#btn-send-to-overlay');
   const btnSaveColl = wrapper.querySelector('#btn-save-scans-coll');
   const btnExportCsv = wrapper.querySelector('#btn-export-enriched-csv');
+
+  btnRefreshBulkDb.addEventListener('click', async () => {
+    if (!bulkScannerInstance.scanItems || bulkScannerInstance.scanItems.length === 0) return;
+    btnRefreshBulkDb.disabled = true;
+    const origText = btnRefreshBulkDb.textContent;
+    btnRefreshBulkDb.textContent = '🔄 DB wird durchsucht...';
+    try {
+      for (let item of bulkScannerInstance.scanItems) {
+        await bulkScannerInstance.enrichItemWithMarketData(item);
+      }
+      renderResults(bulkScannerInstance.scanItems);
+
+      // If Stream Overlay is currently active, sync updated queue in realtime
+      if (activeStreamQueue && activeStreamQueue.length > 0) {
+        activeStreamQueue = [...bulkScannerInstance.scanItems];
+        saveCachedUserData(currentUser?.id);
+        await syncStreamQueueToSupabase(activeStreamQueue, streamOverlayInstance?.currentIndex || 0);
+      }
+    } catch (e) {
+      console.error('Error refreshing DB market data:', e);
+    } finally {
+      btnRefreshBulkDb.disabled = false;
+      btnRefreshBulkDb.textContent = origText;
+    }
+  });
 
   // Entire dropzone area opens file picker on click (with event recursion check)
   dropzone.addEventListener('click', (e) => {

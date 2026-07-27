@@ -104,31 +104,8 @@ export class BulkScanner {
         item.detectedName = item.detectedName || cleanCardName(bestRecord.card_id) || item.rawName;
         item.cardDetails = { cardmarket_url: bestRecord.card_id };
 
-        const term = safeCode || altCode || cleanName;
-        if (term) {
-          try {
-            const encImgTerm = encodeURIComponent(`%${term.replace(/[\/\\%_]/g, '')}%`);
-            const url = `${SUPABASE_URL}/rest/v1/card_images?select=image_url&card_id=ilike.${encImgTerm}&limit=1`;
-            const resp = await fetch(url, {
-              headers: {
-                'apikey': SUPABASE_ANON_KEY,
-                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-              },
-              credentials: 'omit'
-            });
-
-            if (resp.ok) {
-              const imgData = await resp.json();
-              if (imgData && imgData.length > 0 && imgData[0].image_url) {
-                item.imageUrl = imgData[0].image_url;
-              }
-            }
-          } catch (e) {}
-        }
-
-        if (!item.imageUrl) {
-          item.imageUrl = parseImageUrlFromComment(bestRecord.comment);
-        }
+        const fetchedImg = await fetchCardImageFromDB(bestRecord.card_id, code, cleanName);
+        item.imageUrl = fetchedImg || parseImageUrlFromComment(bestRecord.comment) || item.imageUrl || null;
 
         return item;
       }
@@ -138,7 +115,9 @@ export class BulkScanner {
       item.lastCheckDate = null;
       item.lastCheckRelative = null;
       item.filterInfo = null;
-      item.imageUrl = null;
+      const fallbackImg = await fetchCardImageFromDB(null, code, cleanName);
+      if (fallbackImg) item.imageUrl = fallbackImg;
+
       return item;
     } catch (e) {
       console.warn('Database lookup warning for code:', code, e);
@@ -147,7 +126,6 @@ export class BulkScanner {
       item.lastCheckDate = null;
       item.lastCheckRelative = null;
       item.filterInfo = null;
-      item.imageUrl = null;
       return item;
     }
   }
@@ -235,4 +213,73 @@ function cleanCardName(cardId) {
   const parts = cardId.split('/');
   const lastPart = parts[parts.length - 1] || cardId;
   return lastPart.replace(/[-_]/g, ' ').trim();
+}
+
+async function fetchCardImageFromDB(cardId, code, cleanName) {
+  const terms = [];
+  if (cardId) terms.push(cardId.replace(/^\/+/, ''));
+  if (code) {
+    const safeCode = code.replace(/[\/\\%_]/g, '');
+    const altCode = code.replace('/', '-');
+    if (altCode) terms.push(altCode);
+    if (safeCode && safeCode !== altCode) terms.push(safeCode);
+  }
+  if (cleanName && cleanName.length >= 3 && cleanName.toLowerCase() !== 'karte') {
+    terms.push(cleanName.replace(/[\/\\%_]/g, ''));
+  }
+
+  for (const term of terms) {
+    if (!term || term.length < 2) continue;
+    const cleanTerm = term.replace(/[\/\\%_]/g, '');
+    if (!cleanTerm) continue;
+
+    // 1. Check card_images table
+    try {
+      const enc = encodeURIComponent(`%${cleanTerm}%`);
+      const url = `${SUPABASE_URL}/rest/v1/card_images?select=image_url&card_id=ilike.${enc}&limit=1`;
+      const resp = await fetch(url, {
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        credentials: 'omit'
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.length > 0 && data[0].image_url) {
+          return data[0].image_url;
+        }
+      }
+    } catch (e) {}
+
+    // 2. Check marked_cards table
+    try {
+      const enc = encodeURIComponent(`%${cleanTerm}%`);
+      const url = `${SUPABASE_URL}/rest/v1/marked_cards?select=image_url&card_id=ilike.${enc}&image_url=not.is.null&limit=1`;
+      const resp = await fetch(url, {
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        credentials: 'omit'
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.length > 0 && data[0].image_url) {
+          return data[0].image_url;
+        }
+      }
+    } catch (e) {}
+
+    // 3. Check collection_cards table
+    try {
+      const enc = encodeURIComponent(`%${cleanTerm}%`);
+      const url = `${SUPABASE_URL}/rest/v1/collection_cards?select=image_url&card_id=ilike.${enc}&image_url=not.is.null&limit=1`;
+      const resp = await fetch(url, {
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+        credentials: 'omit'
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.length > 0 && data[0].image_url) {
+          return data[0].image_url;
+        }
+      }
+    } catch (e) {}
+  }
+  return null;
 }
