@@ -94,6 +94,22 @@ async function getSession() {
   const { session } = await chrome.storage.local.get('session');
   if (!session) return null;
 
+  // Auto-heal: If access_token is bloated (> 2500 chars from legacy user_metadata), force refresh
+  if (session.access_token && session.access_token.length > 2500) {
+    console.warn("[TCG Tracker SW] Stored access token is oversized (> 2500 chars). Forcing session refresh...");
+    try {
+      const refreshed = await refreshSession(session.refresh_token);
+      if (refreshed && refreshed.access_token && refreshed.access_token.length <= 2500) {
+        return refreshed;
+      }
+    } catch (err) {
+      console.error("[TCG Tracker SW] Failed to refresh oversized session:", err);
+    }
+    console.error("[TCG Tracker SW] Access token remains oversized or invalid. Removing stale session from storage.");
+    await chrome.storage.local.remove('session');
+    return null;
+  }
+
   // Check if access token is expired or close to expiry (e.g. expires in less than 5 minutes)
   try {
     const payload = decodeJWT(session.access_token);

@@ -125,6 +125,7 @@ export class StreamOverlay {
     this.totalSoldValue = 0;
     this.isFullscreen = false;
     this.onProgress = options.onProgress || null;
+    this.onChange = options.onChange || null;
   }
 
   loadQueue(items) {
@@ -132,6 +133,7 @@ export class StreamOverlay {
     this.currentIndex = 0;
     this.totalSoldValue = 0;
     this.render();
+    if (this.onChange) this.onChange(this.queue, this.currentIndex);
   }
 
   nextCard() {
@@ -145,6 +147,7 @@ export class StreamOverlay {
         this.currentIndex = this.queue.length; // Finished
       }
       this.render();
+      if (this.onChange) this.onChange(this.queue, this.currentIndex);
       const newGrid = this.container.querySelector('.so-content-grid');
       if (newGrid) {
         newGrid.classList.add('so-slide-in');
@@ -162,6 +165,7 @@ export class StreamOverlay {
         this.currentIndex--;
       }
       this.render();
+      if (this.onChange) this.onChange(this.queue, this.currentIndex);
       const newGrid = this.container.querySelector('.so-content-grid');
       if (newGrid) {
         newGrid.classList.add('so-slide-in');
@@ -186,6 +190,7 @@ export class StreamOverlay {
         this.currentIndex = this.queue.length;
       }
       this.render();
+      if (this.onChange) this.onChange(this.queue, this.currentIndex);
 
       const newGrid = this.container.querySelector('.so-content-grid');
       if (newGrid) {

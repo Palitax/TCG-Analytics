@@ -3606,30 +3606,87 @@ function renderBulkScanTab(container) {
   });
 }
 
-// Cross-device Stream Session sync helpers (uses existing marked_cards table)
+// Realtime WebSocket broadcast & DB fallback for Cross-Device Stream Overlay (Mac <-> iPad)
+let streamChannel = null;
+
+function initStreamRealtimeSync() {
+  if (!currentUser?.id) return;
+  
+  if (streamChannel) {
+    try { supabase.removeChannel(streamChannel); } catch (e) {}
+  }
+
+  streamChannel = supabase.channel(`stream_overlay_${currentUser.id}`);
+
+  streamChannel
+    .on('broadcast', { event: 'queue_update' }, (payload) => {
+      console.log('[Stream Realtime] Received queue_update broadcast:', payload);
+      if (payload && payload.payload) {
+        const { queue, index } = payload.payload;
+        if (queue && Array.isArray(queue)) {
+          activeStreamQueue = queue;
+          if (streamOverlayInstance) {
+            streamOverlayInstance.queue = queue;
+            streamOverlayInstance.currentIndex = index || 0;
+            streamOverlayInstance.render();
+          }
+        }
+      }
+    })
+    .on('broadcast', { event: 'request_queue' }, () => {
+      console.log('[Stream Realtime] Received request_queue broadcast');
+      if (activeStreamQueue && activeStreamQueue.length > 0) {
+        broadcastStreamQueue(activeStreamQueue, streamOverlayInstance?.currentIndex || 0);
+      }
+    })
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.log('[Stream Realtime] Subscribed to stream_overlay channel');
+        streamChannel.send({
+          type: 'broadcast',
+          event: 'request_queue',
+          payload: {}
+        });
+      }
+    });
+}
+
+function broadcastStreamQueue(queue, currentIndex = 0) {
+  if (!streamChannel || !currentUser?.id) return;
+  streamChannel.send({
+    type: 'broadcast',
+    event: 'queue_update',
+    payload: { queue, index: currentIndex, timestamp: Date.now() }
+  });
+}
+
 async function syncStreamQueueToSupabase(queue, currentIndex = 0) {
   if (!currentUser?.id) return;
+
+  // 1. Broadcast update to all connected devices in realtime via WebSockets
+  broadcastStreamQueue(queue, currentIndex);
+
+  // 2. Persist to marked_cards table for fallback if another device connects later
   try {
     const payload = JSON.stringify({ queue, index: currentIndex, timestamp: Date.now() });
 
-    // 1. Delete existing queue marker in marked_cards table
     await supabase
       .from('marked_cards')
       .delete()
       .eq('user_id', currentUser.id)
       .eq('card_id', '__STREAM_QUEUE__');
 
-    // 2. Insert fresh queue payload
-    await supabase
-      .from('marked_cards')
-      .insert([{
-        user_id: currentUser.id,
-        card_id: '__STREAM_QUEUE__',
-        tcg: 'StreamQueue',
-        comment: payload,
-        created_at: new Date().toISOString()
-      }]);
-
+    if (queue && queue.length > 0) {
+      await supabase
+        .from('marked_cards')
+        .insert([{
+          user_id: currentUser.id,
+          card_id: '__STREAM_QUEUE__',
+          tcg: 'StreamQueue',
+          comment: payload,
+          created_at: new Date().toISOString()
+        }]);
+    }
   } catch (e) {
     console.warn('Cross-device stream sync warning:', e);
   }
@@ -3659,19 +3716,13 @@ async function fetchStreamQueueFromSupabase() {
         } catch (err) {}
       }
     }
-
-    const metaQueue = currentUser?.user_metadata?.active_stream_queue;
-    const metaIndex = currentUser?.user_metadata?.stream_index || 0;
-    if (metaQueue && metaQueue.length > 0) {
-      return { queue: metaQueue, index: metaIndex };
-    }
   } catch (e) {
     console.warn('Error fetching cross-device stream queue:', e);
   }
   return null;
 }
 
-// Stream Overlay Tab Renderer with automatic Cross-Device Sync
+// Stream Overlay Tab Renderer with Realtime Sync
 async function renderStreamOverlayTab(container) {
   container.innerHTML = '';
 
@@ -3680,7 +3731,14 @@ async function renderStreamOverlayTab(container) {
   wrapper.id = 'stream-overlay-view-wrapper';
   container.appendChild(wrapper);
 
-  streamOverlayInstance = new StreamOverlay(wrapper);
+  streamOverlayInstance = new StreamOverlay(wrapper, {
+    onChange: (queue, index) => {
+      syncStreamQueueToSupabase(queue, index);
+    }
+  });
+
+  // Initialize WebSockets Realtime Channel
+  initStreamRealtimeSync();
 
   // Always attempt fetching the latest Stream Queue payload from Supabase Cloud for cross-device sync (e.g. Mac -> Tablet)
   if (currentUser?.id) {
@@ -3693,7 +3751,6 @@ async function renderStreamOverlayTab(container) {
       return;
     }
   }
-
 
   if (activeStreamQueue.length > 0) {
     streamOverlayInstance.loadQueue(activeStreamQueue);
