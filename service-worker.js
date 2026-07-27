@@ -486,7 +486,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return sendResponse({ error: "UNAUTHENTICATED" });
         }
 
-        const { tcg, cardId, shouldMark } = message;
+        const { tcg, cardId, condition, language, sellerCountry, shouldMark } = message;
         const accessToken = session.access_token;
         const userId = session.user.id;
 
@@ -495,7 +495,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             user_id: userId,
             tcg: tcg,
             card_id: cardId,
-            image_url: null
+            image_url: null,
+            condition: condition || null,
+            language: language || null,
+            seller_country: sellerCountry || null
           };
 
           const postRes = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards`, {
@@ -545,7 +548,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return sendResponse({ error: "UNAUTHENTICATED" });
         }
 
-        const { tcg, cardId, shouldCollect } = message;
+        const { tcg, cardId, condition, language, sellerCountry, shouldCollect } = message;
         const accessToken = session.access_token;
         const userId = session.user.id;
 
@@ -554,7 +557,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             user_id: userId,
             tcg: tcg,
             card_id: cardId,
-            image_url: null
+            image_url: null,
+            condition: condition || null,
+            language: language || null,
+            seller_country: sellerCountry || null
           };
 
           const postRes = await fetch(`${SUPABASE_URL}/rest/v1/collection_cards`, {

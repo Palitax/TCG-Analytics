@@ -1173,10 +1173,19 @@ function attachListeners() {
       if (!tcg || !cardId) return;
 
       btnBookmark.style.pointerEvents = 'none';
+      const sidebar = getSidebarState();
+      const sidebarLanguage = sidebar.languages && !sidebar.languages.includes('ALL') ? sidebar.languages[0] : 'ALL';
+      const activeCond = (typeof savedCondition !== 'undefined' && savedCondition) ? savedCondition : (sidebar.condition || 'NM');
+      const activeLoc = (typeof savedLocation !== 'undefined' && savedLocation) ? savedLocation : (sidebar.location || 'DE');
+      const activeLang = (typeof savedLanguage !== 'undefined' && savedLanguage) ? savedLanguage : (sidebarLanguage || 'ALL');
+
       chrome.runtime.sendMessage({
         action: "toggleBookmark",
         tcg: tcg,
         cardId: cardId,
+        condition: activeCond,
+        language: activeLang,
+        sellerCountry: activeLoc,
         shouldMark: !isMarked
       }, async (response) => {
         btnBookmark.style.pointerEvents = 'auto';
@@ -1187,13 +1196,10 @@ function attachListeners() {
             const cardPrefsKey = 'card_preferences_' + currentUserId;
             const { [storageKey]: prefs, [cardPrefsKey]: cardPrefs = {} } = await chrome.storage.local.get([storageKey, cardPrefsKey]);
             
-            const sidebar = getSidebarState();
-            const sidebarLanguage = sidebar.languages.includes('ALL') ? 'ALL' : sidebar.languages[0];
-            
             cardPrefs[cardId] = {
-              condition: sidebar.condition || prefs?.condition || 'NM',
-              location: sidebar.location || prefs?.location || 'DE',
-              language: sidebarLanguage || prefs?.language || 'ALL'
+              condition: activeCond,
+              location: activeLoc,
+              language: activeLang
             };
             await chrome.storage.local.set({ [cardPrefsKey]: cardPrefs });
           } else {
@@ -1219,10 +1225,19 @@ function attachListeners() {
       if (!tcg || !cardId) return;
 
       btnCollection.style.pointerEvents = 'none';
+      const sidebar = getSidebarState();
+      const sidebarLanguage = sidebar.languages && !sidebar.languages.includes('ALL') ? sidebar.languages[0] : 'ALL';
+      const activeCond = (typeof savedCondition !== 'undefined' && savedCondition) ? savedCondition : (sidebar.condition || 'NM');
+      const activeLoc = (typeof savedLocation !== 'undefined' && savedLocation) ? savedLocation : (sidebar.location || 'DE');
+      const activeLang = (typeof savedLanguage !== 'undefined' && savedLanguage) ? savedLanguage : (sidebarLanguage || 'ALL');
+
       chrome.runtime.sendMessage({
         action: "toggleCollection",
         tcg: tcg,
         cardId: cardId,
+        condition: activeCond,
+        language: activeLang,
+        sellerCountry: activeLoc,
         shouldCollect: !isCollected
       }, async (response) => {
         btnCollection.style.pointerEvents = 'auto';

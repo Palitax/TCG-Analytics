@@ -3890,6 +3890,26 @@ async function loadCardDetails(cardId, tcg, pushState = true) {
     const isCurrentlyCollected = !!collectionRecord;
     const collectionImageUrl = collectionRecord ? collectionRecord.image_url : null;
 
+    // Read initial saved filters from bookmark, collection record, or latest scan history
+    let prefCond = bookmarkRecord?.condition || collectionRecord?.condition || null;
+    let prefLoc = bookmarkRecord?.seller_country || collectionRecord?.seller_country || null;
+    let prefLang = bookmarkRecord?.language || collectionRecord?.language || null;
+
+    if ((!prefCond || !prefLoc || !prefLang) && parsedHistory.length > 0) {
+      const latestHist = parsedHistory[parsedHistory.length - 1];
+      if (!prefCond) prefCond = latestHist.condition;
+      if (!prefLoc) prefLoc = latestHist.seller_country;
+      if (!prefLang) prefLang = latestHist.language;
+    }
+
+    const initCondition = (prefCond && prefCond !== 'ALL') ? prefCond : 'ALL';
+    const initLocation = (prefLoc && prefLoc !== 'ALL') ? prefLoc : 'ALL';
+    const initLanguage = (prefLang && prefLang !== 'ALL') ? prefLang : 'ALL';
+
+    if (initCondition !== 'ALL' && !conditions.includes(initCondition)) conditions.push(initCondition);
+    if (initLocation !== 'ALL' && !locations.includes(initLocation)) locations.push(initLocation);
+    if (initLanguage !== 'ALL' && !languages.includes(initLanguage)) languages.push(initLanguage);
+
     activeCardDetails = {
       cardId,
       tcg,
@@ -3901,10 +3921,9 @@ async function loadCardDetails(cardId, tcg, pushState = true) {
       isCollected: isCurrentlyCollected,
       imageUrl: globalImageUrl || bookmarkImageUrl || collectionImageUrl || (parsedHistory.length > 0 ? parsedHistory[0].imageUrl : getCachedCardImage(cardId)),
       
-      // Default initial filters to ALL so history data is NEVER hidden
-      selectedCondition: 'ALL',
-      selectedLocation: 'ALL',
-      selectedLanguage: 'ALL'
+      selectedCondition: initCondition,
+      selectedLocation: initLocation,
+      selectedLanguage: initLanguage
     };
 
     setView('detail');
