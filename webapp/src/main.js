@@ -3231,8 +3231,23 @@ async function renderAnalyticsTab(container) {
           .limit(1000);
 
         if (catalogImages && catalogImages.length > 0) {
-          const existingIds = new Set(scannedCards.map(c => c.card_id));
+          // Deduplicate catalog entries sharing the exact same image_url, preferring full card_id with set name & fraction number
+          const imageMapByUrl = new Map();
           for (const item of catalogImages) {
+            const existing = imageMapByUrl.get(item.image_url);
+            if (!existing) {
+              imageMapByUrl.set(item.image_url, item);
+            } else {
+              const curScore = (item.card_id.includes('/') ? 2 : 0) + (/\d+[-/]\d+/.test(item.card_id) ? 3 : 0) + item.card_id.length;
+              const oldScore = (existing.card_id.includes('/') ? 2 : 0) + (/\d+[-/]\d+/.test(existing.card_id) ? 3 : 0) + existing.card_id.length;
+              if (curScore > oldScore) {
+                imageMapByUrl.set(item.image_url, item);
+              }
+            }
+          }
+
+          const existingIds = new Set(scannedCards.map(c => c.card_id));
+          for (const item of imageMapByUrl.values()) {
             if (!existingIds.has(item.card_id)) {
               existingIds.add(item.card_id);
               scannedCards.push({
