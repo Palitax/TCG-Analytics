@@ -229,9 +229,22 @@ function formatTimestamp(isoString) {
 
 function cleanCardName(cardId) {
   if (!cardId) return '';
-  const parts = cardId.split('/');
-  const lastPart = parts[parts.length - 1] || cardId;
-  return lastPart.replace(/[-_]/g, ' ').trim();
+  const cleanPath = cardId.replace(/^\/+/, '');
+  const parts = cleanPath.split('/').filter(p => p.length > 0);
+  if (parts.length === 0) return cardId;
+
+  const cardSlug = parts[parts.length - 1];
+  const cardNameClean = cardSlug.replace(/[-_]/g, ' ').trim();
+
+  if (parts.length >= 2) {
+    const setSlug = parts[parts.length - 2];
+    if (setSlug && setSlug.toLowerCase() !== 'singles' && setSlug.toLowerCase() !== 'products') {
+      const setNameClean = setSlug.replace(/[-_]/g, ' ').trim();
+      return `${cardNameClean} (${setNameClean})`;
+    }
+  }
+
+  return cardNameClean;
 }
 
 async function fetchCardImageFromDB(cardId, code, cleanName) {
