@@ -3630,10 +3630,6 @@ async function syncStreamQueueToSupabase(queue, currentIndex = 0) {
         created_at: new Date().toISOString()
       }]);
 
-    // 3. Fallback: also update user_metadata
-    await supabase.auth.updateUser({
-      data: { active_stream_queue: queue, stream_index: currentIndex }
-    });
   } catch (e) {
     console.warn('Cross-device stream sync warning:', e);
   }
