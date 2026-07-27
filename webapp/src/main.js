@@ -221,18 +221,30 @@ function getFlagHtml(type, code) {
 function cleanCardName(cardId) {
   if (!cardId) return '';
   let clean = decodeURIComponent(cardId);
+  if (clean.startsWith('tcgdex_')) {
+    return clean.replace('tcgdex_', '').replace(/[-_]/g, ' ').trim();
+  }
+  if (clean.includes('(') && clean.includes(')')) {
+    return clean.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
   if (clean.includes('/')) {
     const parts = clean.split('/').filter(Boolean);
     const lastPart = parts.pop() || clean;
+    let setNameClean = '';
     if (parts.length >= 1) {
       const setSlug = parts[parts.length - 1];
       if (setSlug && setSlug.toLowerCase() !== 'singles' && setSlug.toLowerCase() !== 'products') {
-        const setNameClean = setSlug.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
-        const cardNameClean = lastPart.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
-        return `${cardNameClean} (${setNameClean})`;
+        setNameClean = setSlug.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
       }
     }
-    clean = lastPart;
+
+    let cardNameClean = lastPart.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
+    cardNameClean = cardNameClean.replace(/(\b\d+)\s+(\d+\b)/g, '$1/$2');
+
+    if (setNameClean) {
+      return `${cardNameClean} (${setNameClean})`;
+    }
+    return cardNameClean;
   }
   return clean.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
 }

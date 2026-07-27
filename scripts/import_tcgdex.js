@@ -1,8 +1,9 @@
 /**
  * TCGdex Bulk Importer Script for TCG Card Tracker
  * 
- * Fetches all German and English Pokémon cards from TCGdex API
- * and bulk-upserts them directly into Supabase (card_images & price_history metadata).
+ * Fetches all German and English Pokémon sets & cards from TCGdex API,
+ * attaches Set Names and Full Card Numbers (e.g. "Glurak 12/202 (Schwert & Schild)"),
+ * and bulk-upserts them directly into Supabase (card_images table).
  * 
  * Usage:
  *   node scripts/import_tcgdex.js
@@ -65,66 +66,90 @@ async function bulkUpsertCardImages(records) {
   return totalUploaded;
 }
 
+async function processLanguageSets(lang) {
+  console.log(`📦 Fetching ${lang.toUpperCase()} sets from TCGdex...`);
+  const setsList = await fetchJSON(`https://api.tcgdex.net/v2/${lang}/sets`);
+  console.log(`✅ Found ${setsList.length} ${lang.toUpperCase()} sets.`);
+
+  const recordsMap = new Map();
+
+  for (let sIdx = 0; sIdx < setsList.length; sIdx++) {
+    const setSummary = setsList[sIdx];
+    try {
+      const setDetail = await fetchJSON(`https://api.tcgdex.net/v2/${lang}/sets/${setSummary.id}`);
+      const setName = setDetail.name || setSummary.name || '';
+      const setSlug = slugify(setName);
+      const officialCount = setDetail.cardCount?.official || setDetail.cardCount?.total || '';
+      const cards = setDetail.cards || [];
+
+      for (const card of cards) {
+        if (!card.image) continue;
+
+        const imageUrl = card.image.endsWith('.png') || card.image.endsWith('.webp') || card.image.endsWith('.jpg')
+          ? card.image
+          : `${card.image}/high.webp`;
+
+        const cardName = card.name || '';
+        const localId = card.localId || '';
+        const cardNameSlug = slugify(cardName);
+        const fullNumber = officialCount ? `${localId}/${officialCount}` : localId;
+
+        // Keys for card_images database table:
+        // 1. Primary TCGdex ID
+        const keyTcgdex = `tcgdex_${card.id}`;
+        // 2. Full title key with Set Name and full fraction number: e.g. "Glurak 12/202 (Schwert & Schild)"
+        const keyFullTitle = setSlug 
+          ? `/Pokemon/Products/Singles/${setSlug}/${cardNameSlug}-${localId}`
+          : `/Pokemon/Products/Singles/${cardNameSlug}-${localId}`;
+        
+        // 3. Readable card title key: "Glurak 12/202 (Schwert & Schild)"
+        const keyReadable = `${cardName} ${fullNumber} (${setName})`.trim();
+
+        if (imageUrl) {
+          recordsMap.set(keyTcgdex, { card_id: keyTcgdex, image_url: imageUrl });
+          recordsMap.set(keyFullTitle, { card_id: keyFullTitle, image_url: imageUrl });
+          recordsMap.set(keyReadable, { card_id: keyReadable, image_url: imageUrl });
+          if (localId && fullNumber) {
+            const keyFrac = `/Pokemon/Products/Singles/${cardNameSlug}-${localId}-${officialCount}`;
+            recordsMap.set(keyFrac, { card_id: keyFrac, image_url: imageUrl });
+          }
+        }
+      }
+
+      if ((sIdx + 1) % 20 === 0 || sIdx === setsList.length - 1) {
+        console.log(`[${lang.toUpperCase()}] Processed ${sIdx + 1} / ${setsList.length} sets...`);
+      }
+    } catch (err) {
+      console.warn(`[${lang.toUpperCase()}] Could not process set ${setSummary.id}:`, err.message);
+    }
+  }
+
+  return Array.from(recordsMap.values());
+}
+
 async function runImport() {
-  console.log('🚀 Starting TCGdex Bulk Import to Supabase...');
+  console.log('🚀 Starting Enhanced TCGdex Bulk Importer (Set Names + Full Card Numbers)...');
   console.log(`📍 Supabase Endpoint: ${SUPABASE_URL}`);
 
   try {
-    console.log('📦 Fetching German cards list from TCGdex API...');
-    const deCards = await fetchJSON('https://api.tcgdex.net/v2/de/cards');
-    console.log(`✅ Found ${deCards.length} German cards in TCGdex.`);
+    const deRecords = await processLanguageSets('de');
+    console.log(`📊 Prepared ${deRecords.length} German card image records.`);
 
-    const imageRecordsMap = new Map();
+    const enRecords = await processLanguageSets('en');
+    console.log(`📊 Prepared ${enRecords.length} English card image records.`);
 
-    for (const card of deCards) {
-      if (!card.image) continue;
-      const imageUrl = card.image.endsWith('.png') || card.image.endsWith('.webp') || card.image.endsWith('.jpg') 
-        ? card.image 
-        : `${card.image}/high.webp`;
-
-      const cardNameSlug = slugify(card.name || '');
-      const localId = card.localId || '';
-      
-      // Standard Cardmarket URL path patterns
-      const primaryKey = `tcgdex_${card.id}`;
-      const nameKey = cardNameSlug && localId ? `/Pokemon/Products/Singles/${cardNameSlug}-${localId}` : null;
-      const rawCodeKey = localId ? `code_${localId}` : null;
-
-      if (imageUrl) {
-        imageRecordsMap.set(primaryKey, { card_id: primaryKey, image_url: imageUrl });
-        if (nameKey) imageRecordsMap.set(nameKey, { card_id: nameKey, image_url: imageUrl });
-        if (rawCodeKey && !imageRecordsMap.has(rawCodeKey)) {
-          imageRecordsMap.set(rawCodeKey, { card_id: rawCodeKey, image_url: imageUrl });
-        }
+    const allRecordsMap = new Map();
+    for (const r of [...deRecords, ...enRecords]) {
+      if (!allRecordsMap.has(r.card_id)) {
+        allRecordsMap.set(r.card_id, r);
       }
     }
 
-    console.log(`📦 Fetching English cards list from TCGdex API...`);
-    const enCards = await fetchJSON('https://api.tcgdex.net/v2/en/cards');
-    console.log(`✅ Found ${enCards.length} English cards in TCGdex.`);
-
-    for (const card of enCards) {
-      if (!card.image) continue;
-      const imageUrl = card.image.endsWith('.png') || card.image.endsWith('.webp') || card.image.endsWith('.jpg') 
-        ? card.image 
-        : `${card.image}/high.webp`;
-
-      const cardNameSlug = slugify(card.name || '');
-      const localId = card.localId || '';
-      const primaryKey = `tcgdex_${card.id}`;
-      const nameKey = cardNameSlug && localId ? `/Pokemon/Products/Singles/${cardNameSlug}-${localId}` : null;
-
-      if (imageUrl) {
-        if (!imageRecordsMap.has(primaryKey)) imageRecordsMap.set(primaryKey, { card_id: primaryKey, image_url: imageUrl });
-        if (nameKey && !imageRecordsMap.has(nameKey)) imageRecordsMap.set(nameKey, { card_id: nameKey, image_url: imageUrl });
-      }
-    }
-
-    const uniqueRecords = Array.from(imageRecordsMap.values());
-    console.log(`📊 Prepared ${uniqueRecords.length} unique card image records for bulk upsert.`);
+    const uniqueRecords = Array.from(allRecordsMap.values());
+    console.log(`📊 Total unique card image records to upsert: ${uniqueRecords.length}`);
 
     const count = await bulkUpsertCardImages(uniqueRecords);
-    console.log(`🎉 Import completed! Successfully upserted ${count} card images into Supabase.`);
+    console.log(`🎉 Import completed! Successfully upserted ${count} card image records into Supabase.`);
   } catch (err) {
     console.error('❌ Import failed with error:', err);
   }

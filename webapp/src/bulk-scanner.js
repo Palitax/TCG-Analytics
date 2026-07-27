@@ -302,12 +302,21 @@ function formatTimestamp(isoString) {
 
 function cleanCardName(cardId) {
   if (!cardId) return '';
+  let clean = decodeURIComponent(cardId);
+  if (clean.startsWith('tcgdex_')) {
+    return clean.replace('tcgdex_', '').replace(/[-_]/g, ' ').trim();
+  }
+  if (clean.includes('(') && clean.includes(')')) {
+    return clean.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
   const cleanPath = cardId.replace(/^\/+/, '');
   const parts = cleanPath.split('/').filter(p => p.length > 0);
   if (parts.length === 0) return cardId;
 
   const cardSlug = parts[parts.length - 1];
-  const cardNameClean = cardSlug.replace(/[-_]/g, ' ').trim();
+  let cardNameClean = cardSlug.replace(/[-_]/g, ' ').trim();
+  cardNameClean = cardNameClean.replace(/(\b\d+)\s+(\d+\b)/g, '$1/$2');
 
   if (parts.length >= 2) {
     const setSlug = parts[parts.length - 2];
