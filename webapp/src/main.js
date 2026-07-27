@@ -3126,10 +3126,26 @@ async function renderAnalyticsTab(container) {
     dashboard.appendChild(loadingBox);
 
     try {
+      const qClean = activeSearchQuery.replace(/[\/\\%_]/g, '');
+      const altQ = activeSearchQuery.replace('/', '-');
+      const numMatch = activeSearchQuery.match(/(\d+)/);
+      const numOnly = numMatch ? numMatch[1] : '';
+
+      const searchFilter = [
+        `card_id.ilike.%${encodeURIComponent(activeSearchQuery)}%`,
+        `card_id.ilike.%${encodeURIComponent(altQ)}%`,
+        `card_id.ilike.%${encodeURIComponent(qClean)}%`,
+        `comment.ilike.%${encodeURIComponent(activeSearchQuery)}%`
+      ];
+
+      if (numOnly && numOnly.length >= 2) {
+        searchFilter.push(`card_id.ilike.%${encodeURIComponent(numOnly)}%`);
+      }
+
       const { data, error } = await supabase
         .from('price_history')
         .select('card_id, tcg, price, comment, scanned_at')
-        .ilike('card_id', `%${activeSearchQuery}%`)
+        .or(searchFilter.join(','))
         .order('scanned_at', { ascending: true });
 
       if (error) throw error;
@@ -3575,11 +3591,37 @@ function renderBulkScanTab(container) {
           </span>
         </td>
         <td style="text-align: right;">
-          <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm cm-check-link" style="padding: 4px 10px; font-size: 0.8rem; background: rgba(251, 133, 0, 0.15); border: 1px solid rgba(251, 133, 0, 0.4); color: #fb8500; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;">
-            Check price now ↗
-          </a>
+          <div style="display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; flex-wrap: nowrap;">
+            ${!isMatched ? `
+              <button type="button" class="btn btn-secondary btn-sm btn-find-card-analytics" style="padding: 4px 10px; font-size: 0.8rem; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; border-radius: 6px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;" title="Sucht nach dieser Karte im Analytics & DB-Tab">
+                🔍 Karte finden
+              </button>
+            ` : ''}
+            <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm cm-check-link" style="padding: 4px 10px; font-size: 0.8rem; background: rgba(251, 133, 0, 0.15); border: 1px solid rgba(251, 133, 0, 0.4); color: #fb8500; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;">
+              Check price now ↗
+            </a>
+          </div>
         </td>
       `;
+
+      const btnFindCard = tr.querySelector('.btn-find-card-analytics');
+      if (btnFindCard) {
+        btnFindCard.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          let searchTerm = (item.detectedCode || item.rawCode || '').trim();
+          if (item.detectedName && item.detectedName.toLowerCase() !== 'karte') {
+            searchTerm = `${item.detectedName} ${searchTerm}`.trim();
+          } else if (item.cardDetails?.cardmarket_url) {
+            searchTerm = cleanCardName(item.cardDetails.cardmarket_url);
+          }
+          if (!searchTerm) searchTerm = item.rawName || '';
+
+          activeSearchQuery = searchTerm;
+          const inpSearch = document.querySelector('#inp-search');
+          if (inpSearch) inpSearch.value = searchTerm;
+          await navigate('/analytics');
+        });
+      }
 
       const cmCheckLink = tr.querySelector('.cm-check-link');
       if (cmCheckLink) {
