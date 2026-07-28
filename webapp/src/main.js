@@ -1365,24 +1365,40 @@ async function setView(view) {
 
 async function render() {
   const app = document.getElementById('app');
+  if (!app) return;
   app.innerHTML = '';
 
   let viewEl = null;
 
-  if (currentView === 'loading') {
+  try {
+    if (currentView === 'loading') {
+      viewEl = document.createElement('div');
+      viewEl.className = 'spinner-box';
+      viewEl.innerHTML = `
+        <div class="spinner"></div>
+        <p>Verbindung wird hergestellt...</p>
+      `;
+      app.appendChild(viewEl);
+    } else if (currentView === 'login') {
+      viewEl = renderLogin(app);
+    } else if (currentView === 'dashboard') {
+      viewEl = await renderDashboard(app);
+    } else if (currentView === 'detail') {
+      viewEl = renderDetail(app);
+    }
+  } catch (renderErr) {
+    console.error('Fatal rendering error in view [' + currentView + ']:', renderErr);
     viewEl = document.createElement('div');
-    viewEl.className = 'spinner-box';
+    viewEl.className = 'glass-panel';
+    viewEl.style.cssText = 'max-width: 420px; margin: 60px auto; padding: 24px; text-align: center; color: #fff; font-family: -apple-system, sans-serif;';
     viewEl.innerHTML = `
-      <div class="spinner"></div>
-      <p>Verbindung wird hergestellt...</p>
+      <h3 style="color: #ef4444; margin-bottom: 12px; font-size: 1.1rem;">Anzeigefehler aufgetreten</h3>
+      <p style="color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-bottom: 20px; line-height: 1.5;">${renderErr?.message || 'Die Ansicht konnte nicht geladen werden.'}</p>
+      <button onclick="window.location.hash='#/watchlist'; window.location.reload();" style="background: var(--primary, #3b82f6); color: white; border: none; border-radius: 8px; padding: 10px 18px; font-weight: 600; cursor: pointer;">
+        Zur Watchlist zurückkehren
+      </button>
     `;
     app.appendChild(viewEl);
-  } else if (currentView === 'login') {
-    viewEl = renderLogin(app);
-  } else if (currentView === 'dashboard') {
-    viewEl = await renderDashboard(app);
-  } else if (currentView === 'detail') {
-    viewEl = renderDetail(app);
   }
 
   if (viewEl) {
@@ -4274,9 +4290,19 @@ async function loadLatestPriceForDashboard(card) {
 // Load full price list and filters for card details panel
 async function loadCardDetails(cardId, tcg, pushState = true, initialImageUrl = null) {
   cleanupDetailKeydownListener();
+
+  const safeId = (cardId || '').trim();
+  const safeTcg = (tcg || 'OnePiece').trim();
+
+  if (!safeId) {
+    navigate('/watchlist', false);
+    return;
+  }
+
   setView('loading');
+
   if (pushState) {
-    const targetHash = `#/detail?card_id=${encodeURIComponent(cardId)}&tcg=${encodeURIComponent(tcg)}`;
+    const targetHash = `#/detail?card_id=${encodeURIComponent(safeId)}&tcg=${encodeURIComponent(safeTcg)}`;
     try {
       if (window.location.hash !== targetHash) {
         window.history.pushState(null, '', targetHash);
@@ -4286,7 +4312,7 @@ async function loadCardDetails(cardId, tcg, pushState = true, initialImageUrl = 
     }
   }
   try {
-    const rawId = (cardId || '').trim();
+    const rawId = safeId;
     const cleanPattern = rawId.split('/').pop().replace(/[\/\\%_]/g, '').trim();
     const extractedCode = extractCardCode(rawId);
 
