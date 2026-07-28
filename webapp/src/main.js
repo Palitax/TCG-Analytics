@@ -741,7 +741,9 @@ async function init() {
   
   // 1. Verify active Supabase auth session (triggers token auto-refresh if expiring)
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    const sessionPromise = supabase.auth.getSession();
+    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ data: { session: null } }), 2500));
+    const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]);
     if (session && session.user) {
       currentUser = session.user;
       document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_SESSION', {
@@ -4466,10 +4468,10 @@ function renderDetail(container) {
     backLabel = 'Watchlist';
     backPath = '/watchlist';
   } else {
-    if (collectionCards.some(c => c.card_id === details.cardId)) {
+    if ((collectionCards || []).some(c => c && c.card_id === details.cardId)) {
       backLabel = 'Collection';
       backPath = '/collection';
-    } else if (markedCards.some(m => m.card_id === details.cardId)) {
+    } else if ((markedCards || []).some(m => m && m.card_id === details.cardId)) {
       backLabel = 'Watchlist';
       backPath = '/watchlist';
     } else {
@@ -5075,9 +5077,9 @@ function renderDetail(container) {
   } else {
     const sortedColl = getSortedCollectionCards();
     const sortedWatch = getSortedWatchlistCards();
-    if (sortedColl.some(c => c.card_id === details.cardId)) {
+    if ((sortedColl || []).some(c => c && c.card_id === details.cardId)) {
       activeList = sortedColl;
-    } else if (sortedWatch.some(m => m.card_id === details.cardId)) {
+    } else if ((sortedWatch || []).some(m => m && m.card_id === details.cardId)) {
       activeList = sortedWatch;
     } else if (typeof gridCards !== 'undefined' && gridCards && gridCards.length > 0) {
       activeList = gridCards;
