@@ -2702,6 +2702,31 @@ function renderCollectionTab(container) {
   headerSection.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 12px;">
       <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Sammlung (${sortedCards.length}${activeSearchQuery || activeTcgFilter !== 'all' ? ` von ${collectionCards.length}` : ''})</span>
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+        <button id="btn-collection-sync-all" style="
+          background-color: var(--primary);
+          color: white;
+          border: none;
+          border-radius: 6px;
+          padding: 8px 16px;
+          font-size: 0.82rem;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 8px rgba(251, 133, 0, 0.25);
+        ">
+          <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+          Sync all
+        </button>
+        <span id="collection-sync-all-hint" style="font-size: 0.68rem; color: var(--text-muted); display: none; text-align: right;">
+          Tipp: Pop-ups erlauben, falls nicht alle Tabs öffnen.
+        </span>
+      </div>
     </div>
     
     <div class="watchlist-filter-row" style="display: flex; justify-content: flex-start; align-items: center; gap: 12px; width: 100%; flex-wrap: wrap;">
@@ -2737,8 +2762,49 @@ function renderCollectionTab(container) {
   `;
   dashboard.appendChild(headerSection);
 
+  const btnCollectionSyncAll = headerSection.querySelector('#btn-collection-sync-all');
+  const collectionSyncHint = headerSection.querySelector('#collection-sync-all-hint');
   const selectSort = headerSection.querySelector('#select-collection-sort');
   const selectTcg = headerSection.querySelector('#select-collection-tcg');
+
+  if (btnCollectionSyncAll) {
+    btnCollectionSyncAll.addEventListener('mouseenter', () => {
+      btnCollectionSyncAll.style.backgroundColor = 'var(--primary-hover)';
+    });
+    btnCollectionSyncAll.addEventListener('mouseleave', () => {
+      btnCollectionSyncAll.style.backgroundColor = 'var(--primary)';
+    });
+
+    btnCollectionSyncAll.addEventListener('click', () => {
+      const urls = (sortedCards || []).map(card => {
+        const cardPath = card.card_id.startsWith('/') ? card.card_id : `/${card.card_id}`;
+        return `https://www.cardmarket.com${cardPath}`;
+      });
+
+      const isExtensionActive = document.documentElement.hasAttribute('data-tcg-tracker-extension-active');
+      if (collectionSyncHint) collectionSyncHint.style.display = 'block';
+
+      if (isExtensionActive) {
+        if (collectionSyncHint) {
+          collectionSyncHint.textContent = `Öffne ${urls.length} Tabs im Hintergrund...`;
+          collectionSyncHint.style.color = '#34d399';
+        }
+        document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_ALL', { detail: { urls } }));
+      } else {
+        if (collectionSyncHint) {
+          collectionSyncHint.textContent = 'Tipp: Pop-ups erlauben oder Erweiterung aktivieren, falls nicht alle Tabs öffnen.';
+          collectionSyncHint.style.color = 'var(--text-muted)';
+        }
+        for (const url of urls) {
+          window.open(url, '_blank');
+        }
+      }
+
+      setTimeout(() => {
+        if (collectionSyncHint) collectionSyncHint.style.display = 'none';
+      }, 8000);
+    });
+  }
 
   selectSort.addEventListener('change', () => {
     activeSortOption = selectSort.value;
