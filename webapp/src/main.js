@@ -3,6 +3,7 @@ import { animate } from 'motion';
 import { Chart, registerables } from 'chart.js';
 import { BulkScanner } from './bulk-scanner.js';
 import { StreamOverlay } from './stream-overlay.js';
+import { extractCardCode } from './csv-parser.js';
 Chart.register(...registerables);
 
 // WebKit / motion animation safety wrapper
@@ -738,22 +739,48 @@ function decodeJWT(token) {
 async function init() {
   setView('loading');
   
-  // Restore logged-in user from storage immediately on page load
+  // 1. Verify active Supabase auth session (triggers token auto-refresh if expiring)
   try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && (key.includes('supabase') || key.includes('auth-token') || key.includes('tcg_user_session'))) {
-        const val = localStorage.getItem(key);
-        if (val) {
-          const parsed = JSON.parse(val);
-          if (parsed && parsed.user && parsed.user.id) {
-            currentUser = parsed.user;
-            break;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session && session.user) {
+      currentUser = session.user;
+      document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_SESSION', {
+        detail: { session }
+      }));
+    }
+  } catch (e) {
+    console.warn('[PWA Init] Supabase getSession warning:', e);
+  }
+
+  // 2. Fallback: Check local storage for session if Supabase client did not resolve it yet
+  if (!currentUser) {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('supabase') || key.includes('auth-token') || key.includes('tcg_user_session'))) {
+          const val = localStorage.getItem(key);
+          if (val) {
+            const parsed = JSON.parse(val);
+            if (parsed && parsed.user && parsed.user.id) {
+              const exp = parsed.expires_at || (parsed.access_token ? decodeJWT(parsed.access_token)?.exp : null);
+              const nowSec = Math.floor(Date.now() / 1000);
+              if (!exp || exp > nowSec) {
+                currentUser = parsed.user;
+                if (parsed.access_token) {
+                  document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_SESSION', {
+                    detail: { session: parsed }
+                  }));
+                }
+                break;
+              } else {
+                localStorage.removeItem(key);
+              }
+            }
           }
         }
       }
-    }
-  } catch (e) {}
+    } catch (e) {}
+  }
 
   // Handle OAuth redirect token fragment from Google
   if (window.location.hash.includes('access_token=')) {
@@ -807,7 +834,15 @@ async function init() {
     } catch(e) {}
   }
 
-  // If user is logged in (from storage), load dashboard instantly
+  // Handle hashchange for back/forward buttons
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash.slice(1) || '/watchlist';
+    if (!hash.includes('access_token=')) {
+      navigate(hash, false);
+    }
+  });
+
+  // If user is logged in, load dashboard or current route
   if (currentUser) {
     loadCachedUserData(currentUser.id);
     let currentPath = window.location.hash.slice(1) || '/watchlist';
@@ -817,14 +852,6 @@ async function init() {
     navigate(currentPath, false);
     return;
   }
-
-  // Handle hashchange for back/forward buttons
-  window.addEventListener('hashchange', () => {
-    const hash = window.location.hash.slice(1) || '/watchlist';
-    if (!hash.includes('access_token=')) {
-      navigate(hash, false);
-    }
-  });
 
   // Safety fallback
   navigate('/login', false);
@@ -1203,28 +1230,30 @@ async function navigate(path, pushState = true) {
   
   if (!currentUser) {
     try {
-      const rawStored = localStorage.getItem('sb-api-supabase-auth-token');
-      if (rawStored) {
-        const parsedStored = JSON.parse(rawStored);
-        if (parsedStored && parsedStored.user && parsedStored.user.id) {
-          currentUser = parsedStored.user;
-        }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session && session.user) {
+        currentUser = session.user;
+        document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_SESSION', {
+          detail: { session }
+        }));
       }
     } catch (e) {}
 
     if (!currentUser) {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          currentUser = session.user;
-        } else {
-          await setView('login');
-          return;
+        const rawStored = localStorage.getItem('sb-api-supabase-auth-token');
+        if (rawStored) {
+          const parsedStored = JSON.parse(rawStored);
+          if (parsedStored && parsedStored.user && parsedStored.user.id) {
+            currentUser = parsedStored.user;
+          }
         }
-      } catch (e) {
-        await setView('login');
-        return;
-      }
+      } catch (e) {}
+    }
+
+    if (!currentUser) {
+      await setView('login');
+      return;
     }
   }
 
@@ -4345,11 +4374,11 @@ async function loadCardDetails(cardId, tcg, pushState = true, initialImageUrl = 
     if (!languages.includes('ALL')) languages.unshift('ALL');
 
     // Read initial bookmarked & collection states
-    const bookmarkRecord = markedCards.find(m => m.card_id === cardId || (cleanPattern && m.card_id?.includes(cleanPattern)));
+    const bookmarkRecord = (markedCards || []).find(m => m.card_id === cardId || (cleanPattern && m.card_id?.includes(cleanPattern)));
     const isCurrentlyMarked = !!bookmarkRecord;
     const bookmarkImageUrl = bookmarkRecord ? bookmarkRecord.image_url : null;
 
-    const collectionRecord = collectionCards.find(m => m.card_id === cardId || (cleanPattern && m.card_id?.includes(cleanPattern)));
+    const collectionRecord = (collectionCards || []).find(m => m.card_id === cardId || (cleanPattern && m.card_id?.includes(cleanPattern)));
     const isCurrentlyCollected = !!collectionRecord;
     const collectionImageUrl = collectionRecord ? collectionRecord.image_url : null;
 
@@ -4407,8 +4436,8 @@ async function loadCardDetails(cardId, tcg, pushState = true, initialImageUrl = 
       conditions: ['ALL', 'NM'],
       locations: ['ALL', 'DE'],
       languages: ['ALL', 'EN'],
-      isMarked: markedCards.some(m => m.card_id === cardId),
-      isCollected: collectionCards.some(m => m.card_id === cardId),
+      isMarked: (markedCards || []).some(m => m.card_id === cardId),
+      isCollected: (collectionCards || []).some(m => m.card_id === cardId),
       imageUrl: initialImageUrl || getCachedCardImage(cardId) || null,
       selectedCondition: 'ALL',
       selectedLocation: 'ALL',

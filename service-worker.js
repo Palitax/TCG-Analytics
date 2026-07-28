@@ -735,7 +735,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
             // Sync with Supabase: save to card_images and update marked_cards
             try {
-              const { session } = await chrome.storage.local.get('session');
+              const session = await getSession();
               const accessToken = session?.access_token || SUPABASE_ANON_KEY;
 
               let isUploadedToStorage = false;
