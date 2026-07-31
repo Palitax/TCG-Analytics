@@ -89,10 +89,12 @@ function decodeJWT(token) {
   }
 }
 
+let refreshPromise = null;
+
 // Helper to get active session tokens, with auto-refresh if expired
 async function getSession() {
   const { session } = await chrome.storage.local.get('session');
-  if (!session) return null;
+  if (!session || !session.access_token) return null;
 
   // Auto-heal: If access_token is bloated (> 2500 chars from legacy user_metadata), force refresh
   if (session.access_token && session.access_token.length > 2500) {
@@ -107,9 +109,6 @@ async function getSession() {
     } catch (err) {
       console.error("[TCG Tracker SW] Failed to refresh oversized session:", err);
     }
-    console.error("[TCG Tracker SW] Access token remains oversized or invalid. Removing stale session from storage.");
-    await chrome.storage.local.remove('session');
-    return null;
   }
 
   // Check if access token is expired or close to expiry (e.g. expires in less than 5 minutes)
@@ -118,69 +117,112 @@ async function getSession() {
     if (!payload) return null;
     
     const now = Math.floor(Date.now() / 1000);
-    // If token is expired or expiring in under 5 minutes, refresh it if refresh_token is present
-    if (payload.exp - now < 300) {
-      if (session.refresh_token) {
-        console.log("Access token expiring soon. Refreshing...");
-        const refreshed = await refreshSession(session.refresh_token);
-        if (refreshed) return refreshed;
-      }
-      // If token is completely expired and refresh failed/unavailable, return null
-      if (now >= payload.exp) {
-        return null;
-      }
+    
+    // If token has more than 5 minutes remaining, return it directly
+    if (payload.exp && payload.exp - now >= 300) {
+      return session;
     }
-    return session;
+
+    // If token is expiring in under 5 minutes or already expired, attempt refresh
+    if (session.refresh_token) {
+      console.log("[SW] Access token expiring soon or expired. Attempting refresh...");
+      const refreshed = await refreshSession(session.refresh_token);
+      if (refreshed) return refreshed;
+    }
+
+    // Fallback: If refresh failed or was unavailable, BUT current token hasn't reached its exp timestamp yet:
+    if (payload.exp && now < payload.exp) {
+      console.warn("[SW] Token refresh did not complete, but current access_token is still unexpired. Retaining session.");
+      return session;
+    }
+
+    // Only return null if token is TRULY expired and refresh failed
+    console.warn("[SW] Access token is expired and refresh failed.");
+    return null;
   } catch (err) {
     console.error("Error checking token expiry:", err);
     return null;
   }
 }
 
-// Refresh Supabase session using the refresh token
+// Refresh Supabase session using the refresh token (with concurrency lock to prevent parallel token reuse failures)
 async function refreshSession(refreshToken) {
   if (!refreshToken) return null;
-  try {
-    const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
-      method: "POST",
-      credentials: "omit",
-      headers: {
-        "apikey": SUPABASE_ANON_KEY,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ refresh_token: refreshToken })
-    });
-
-    if (!response.ok) {
-      const status = response.status;
-      // Only remove session if server explicitly rejects credentials (400 or 401)
-      if (status === 400 || status === 401) {
-        console.warn(`[SW] Refresh token rejected by server (HTTP ${status}). Clearing invalid session.`);
-        await chrome.storage.local.remove('session');
-      } else {
-        console.warn(`[SW] Supabase refresh token returned server status ${status}. Retaining current session.`);
-      }
-      return null;
-    }
-
-    const data = await response.json();
-    if (!data || !data.access_token) return null;
-
-    const payload = decodeJWT(data.access_token);
-    const newSession = {
-      access_token: data.access_token,
-      refresh_token: data.refresh_token || refreshToken,
-      user: data.user || (payload ? { id: payload.sub, email: payload.email } : null)
-    };
-
-    await chrome.storage.local.set({ session: newSession });
-    console.log("Session refreshed successfully.");
-    return newSession;
-  } catch (err) {
-    // Network errors, offline state, timeouts: DO NOT delete session from storage!
-    console.warn("[SW] Token refresh failed due to network error. Retaining existing session:", err);
-    return null;
+  
+  if (refreshPromise) {
+    console.log("[SW] Concurrent refresh attempt detected. Reusing existing refresh promise...");
+    return await refreshPromise;
   }
+
+  refreshPromise = (async () => {
+    try {
+      // Check if session was already refreshed by another tab/call while waiting
+      const { session: currentSession } = await chrome.storage.local.get('session');
+      if (currentSession && currentSession.access_token) {
+        const currentPayload = decodeJWT(currentSession.access_token);
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (currentPayload && currentPayload.exp && (currentPayload.exp - nowSec >= 300)) {
+          console.log("[SW] Session was already refreshed by another request.");
+          return currentSession;
+        }
+      }
+
+      const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+        method: "POST",
+        credentials: "omit",
+        headers: {
+          "apikey": SUPABASE_ANON_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
+
+      if (!response.ok) {
+        const status = response.status;
+        console.warn(`[SW] Supabase refresh token endpoint returned HTTP ${status}`);
+        
+        // Only clear session if token is 400/401 AND the current access token is already expired
+        if (status === 400 || status === 401) {
+          const { session: latestSession } = await chrome.storage.local.get('session');
+          if (latestSession && latestSession.access_token) {
+            const payload = decodeJWT(latestSession.access_token);
+            const nowSec = Math.floor(Date.now() / 1000);
+            if (!payload || !payload.exp || nowSec >= payload.exp) {
+              console.warn("[SW] Refresh token rejected and access token is expired. Removing session.");
+              await chrome.storage.local.remove('session');
+              return null;
+            } else {
+              console.warn("[SW] Refresh token rejected but access token is still unexpired. Retaining session.");
+              return latestSession;
+            }
+          }
+          await chrome.storage.local.remove('session');
+        }
+        return null;
+      }
+
+      const data = await response.json();
+      if (!data || !data.access_token) return null;
+
+      const payload = decodeJWT(data.access_token);
+      const newSession = {
+        access_token: data.access_token,
+        refresh_token: data.refresh_token || refreshToken,
+        user: data.user || (payload ? { id: payload.sub, email: payload.email } : null)
+      };
+
+      await chrome.storage.local.set({ session: newSession });
+      console.log("[SW] Session refreshed successfully.");
+      return newSession;
+    } catch (err) {
+      console.warn("[SW] Token refresh network error:", err);
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return await refreshPromise;
 }
 
 // Trigger Google OAuth authorization flow via launchWebAuthFlow, with fallback to Webapp Login tab
@@ -266,12 +308,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       else if (message.action === "setSession") {
         if (message.session && message.session.access_token) {
-          await chrome.storage.local.set({ session: message.session });
-          console.log("[SW] Session synced from webapp:", message.session.user?.email);
-          sendResponse({ success: true });
-        } else {
-          sendResponse({ success: false });
+          const incomingToken = message.session.access_token;
+          const incomingPayload = decodeJWT(incomingToken);
+          
+          if (incomingPayload) {
+            const nowSec = Math.floor(Date.now() / 1000);
+            if (!incomingPayload.exp || incomingPayload.exp > nowSec) {
+              const { session: existingSession } = await chrome.storage.local.get('session');
+              
+              // Preserve existing refresh_token if incoming session payload does not include one
+              const finalRefreshToken = message.session.refresh_token || existingSession?.refresh_token || '';
+              
+              const cleanSession = {
+                access_token: incomingToken,
+                refresh_token: finalRefreshToken,
+                user: message.session.user || existingSession?.user || { id: incomingPayload.sub, email: incomingPayload.email }
+              };
+
+              await chrome.storage.local.set({ session: cleanSession });
+              console.log("[SW] Session synced safely from webapp:", cleanSession.user?.email);
+              sendResponse({ success: true });
+              return;
+            }
+          }
         }
+        sendResponse({ success: false });
       }
       
       else if (message.action === "scanCard") {
