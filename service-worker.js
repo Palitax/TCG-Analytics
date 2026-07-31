@@ -98,9 +98,11 @@ async function getSession() {
   if (session.access_token && session.access_token.length > 2500) {
     console.warn("[TCG Tracker SW] Stored access token is oversized (> 2500 chars). Forcing session refresh...");
     try {
-      const refreshed = await refreshSession(session.refresh_token);
-      if (refreshed && refreshed.access_token && refreshed.access_token.length <= 2500) {
-        return refreshed;
+      if (session.refresh_token) {
+        const refreshed = await refreshSession(session.refresh_token);
+        if (refreshed && refreshed.access_token && refreshed.access_token.length <= 2500) {
+          return refreshed;
+        }
       }
     } catch (err) {
       console.error("[TCG Tracker SW] Failed to refresh oversized session:", err);
@@ -116,10 +118,17 @@ async function getSession() {
     if (!payload) return null;
     
     const now = Math.floor(Date.now() / 1000);
-    // If token is expired or expiring in under 5 minutes, refresh it
+    // If token is expired or expiring in under 5 minutes, refresh it if refresh_token is present
     if (payload.exp - now < 300) {
-      console.log("Access token expiring soon. Refreshing...");
-      return await refreshSession(session.refresh_token);
+      if (session.refresh_token) {
+        console.log("Access token expiring soon. Refreshing...");
+        const refreshed = await refreshSession(session.refresh_token);
+        if (refreshed) return refreshed;
+      }
+      // If token is completely expired and refresh failed/unavailable, return null
+      if (now >= payload.exp) {
+        return null;
+      }
     }
     return session;
   } catch (err) {
@@ -130,6 +139,7 @@ async function getSession() {
 
 // Refresh Supabase session using the refresh token
 async function refreshSession(refreshToken) {
+  if (!refreshToken) return null;
   try {
     const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
       method: "POST",
@@ -142,22 +152,33 @@ async function refreshSession(refreshToken) {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to refresh token: ${response.statusText}`);
+      const status = response.status;
+      // Only remove session if server explicitly rejects credentials (400 or 401)
+      if (status === 400 || status === 401) {
+        console.warn(`[SW] Refresh token rejected by server (HTTP ${status}). Clearing invalid session.`);
+        await chrome.storage.local.remove('session');
+      } else {
+        console.warn(`[SW] Supabase refresh token returned server status ${status}. Retaining current session.`);
+      }
+      return null;
     }
 
     const data = await response.json();
+    if (!data || !data.access_token) return null;
+
+    const payload = decodeJWT(data.access_token);
     const newSession = {
       access_token: data.access_token,
-      refresh_token: data.refresh_token,
-      user: data.user
+      refresh_token: data.refresh_token || refreshToken,
+      user: data.user || (payload ? { id: payload.sub, email: payload.email } : null)
     };
 
     await chrome.storage.local.set({ session: newSession });
     console.log("Session refreshed successfully.");
     return newSession;
   } catch (err) {
-    console.error("Token refresh failed. User must log in again.", err);
-    await chrome.storage.local.remove('session');
+    // Network errors, offline state, timeouts: DO NOT delete session from storage!
+    console.warn("[SW] Token refresh failed due to network error. Retaining existing session:", err);
     return null;
   }
 }
@@ -186,8 +207,8 @@ async function loginUser() {
           const accessToken = url.searchParams.get('access_token');
           const refreshToken = url.searchParams.get('refresh_token');
 
-          if (!accessToken || !refreshToken) {
-            throw new Error("Missing tokens in OAuth callback response");
+          if (!accessToken) {
+            throw new Error("Missing access_token in OAuth callback response");
           }
 
           const payload = decodeJWT(accessToken);
@@ -197,7 +218,7 @@ async function loginUser() {
 
           const session = {
             access_token: accessToken,
-            refresh_token: refreshToken,
+            refresh_token: refreshToken || '',
             user: {
               id: payload.sub,
               email: payload.email
@@ -214,9 +235,9 @@ async function loginUser() {
     });
   } catch (flowError) {
     console.warn("[SW] launchWebAuthFlow failed, opening webapp login tab fallback...", flowError.message);
-    const webappUrl = "https://tcg-analytics-chi.vercel.app/#/login";
+    const webappUrl = "https://tcg-analytics-chi.vercel.app/#/login?from=extension";
     await chrome.tabs.create({ url: webappUrl });
-    throw new Error("Bitte schließe die Google-Anmeldung im geöffneten Browser-Tab ab.");
+    return { fallbackOpened: true, message: "Bitte schließe die Google-Anmeldung im geöffneten Browser-Tab ab." };
   }
 }
 
@@ -225,8 +246,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
       if (message.action === "login") {
-        const session = await loginUser();
-        sendResponse({ success: true, user: session.user });
+        const sessionResult = await loginUser();
+        if (sessionResult && sessionResult.fallbackOpened) {
+          sendResponse({ success: false, fallbackOpened: true, message: sessionResult.message });
+        } else {
+          sendResponse({ success: true, user: sessionResult?.user });
+        }
       } 
       
       else if (message.action === "logout") {

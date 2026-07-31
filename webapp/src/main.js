@@ -741,6 +741,20 @@ function decodeJWT(token) {
 async function init() {
   setView('loading');
   
+  // Register Supabase auth state change listener to keep extension continuously synced
+  try {
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (session && session.access_token) {
+        currentUser = session.user;
+        document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_SESSION', {
+          detail: { session }
+        }));
+      }
+    });
+  } catch (e) {
+    console.warn('[PWA Init] Auth state change listener error:', e);
+  }
+
   // 1. Verify active Supabase auth session (triggers token auto-refresh if expiring)
   try {
     const sessionPromise = supabase.auth.getSession();
@@ -821,6 +835,10 @@ async function init() {
             detail: { session: sessionObj }
           }));
 
+          if (window.location.href.includes('from=extension')) {
+            showToast('Erfolgreich in der Extension angemeldet! Du kannst diesen Tab schließen.');
+          }
+
           loadCachedUserData(currentUser.id);
           navigate('/watchlist', false);
           return;
@@ -848,6 +866,9 @@ async function init() {
 
   // If user is logged in, load dashboard or current route
   if (currentUser) {
+    if (window.location.href.includes('from=extension')) {
+      showToast('Erfolgreich in der Extension angemeldet! Du kannst diesen Tab schließen.');
+    }
     loadCachedUserData(currentUser.id);
     let currentPath = window.location.hash.slice(1) || '/watchlist';
     if (currentPath.includes('access_token=') || currentPath.includes('error=') || currentPath.includes('provider_token') || currentPath === '/login' || currentPath === '/') {
