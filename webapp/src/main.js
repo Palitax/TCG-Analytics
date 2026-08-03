@@ -3765,7 +3765,6 @@ async function renderAnalyticsTab(container) {
       if (e.target.closest('.btn-delete-history-item')) return;
       await loadCardDetails(cardId, tcg);
     });
-
     itemEl.querySelector('.btn-delete-history-item').addEventListener('click', (e) => {
       e.stopPropagation();
       searchHistory.splice(idx, 1);
@@ -3781,14 +3780,43 @@ function buildCardmarketSearchUrl(item) {
   let rawFullName = '';
   let code = '';
   let rawSet = '';
+  let rawCond = 'NM';
+  let rawLoc = 'DE';
+  let rawLang = 'EN';
 
   if (typeof item === 'string') {
     cardId = item;
   } else if (item) {
-    cardId = item.cardId || item.card_id || '';
+    cardId = item.cardDetails?.cardmarket_url || item.cardId || item.card_id || '';
     rawFullName = item.detectedName || item.rawName || item.name || '';
     code = item.detectedCode || item.rawCode || item.code || '';
     rawSet = item.rawSet || item.cardDetails?.set_name || item.cardDetails?.expansion || '';
+    rawCond = item.rawCondition || 'NM';
+    rawLoc = item.rawLocation || 'DE';
+    rawLang = item.rawLanguage || 'EN';
+  }
+
+  const CONDITION_URL_MAP = {
+    "MT": "1", "NM": "2", "EX": "3", "GD": "4", "LP": "5", "PL": "6", "PO": "7"
+  };
+  const LANGUAGE_URL_MAP = {
+    "EN": "1", "FR": "2", "DE": "3", "ES": "4", "IT": "5", "JP": "7", "ZH": "8", "KO": "10"
+  };
+
+  const minConditionVal = CONDITION_URL_MAP[rawCond] || '2';
+  const sellerCountryVal = rawLoc === 'DE' ? '7' : '';
+  const languageVal = LANGUAGE_URL_MAP[rawLang] || '1';
+
+  // Direct Cardmarket URL path if matched in DB e.g. "/de/OnePiece/Products/Singles/..." or "https://www.cardmarket.com..."
+  if (cardId && (cardId.startsWith('/') || cardId.includes('cardmarket.com'))) {
+    let baseUrl = cardId.startsWith('/') ? `https://www.cardmarket.com${cardId}` : cardId;
+    try {
+      const urlObj = new URL(baseUrl);
+      urlObj.searchParams.set('minCondition', minConditionVal);
+      if (sellerCountryVal) urlObj.searchParams.set('sellerCountry', sellerCountryVal);
+      if (languageVal) urlObj.searchParams.set('language', languageVal);
+      return urlObj.toString();
+    } catch (e) {}
   }
 
   // Parse details from cardId path if available e.g. "/Pokemon/Products/Singles/Obsidian-Flammen/Glurak-ex-183-165"
@@ -4074,11 +4102,27 @@ function renderBulkScanTab(container) {
       if (cmCheckLink) {
         cmCheckLink.addEventListener('click', async (e) => {
           const cardCode = (item.detectedCode || item.rawCode || '').trim();
-          if (cardCode && typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+          if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
             e.preventDefault();
             const targetUrl = cmCheckLink.getAttribute('href');
             try {
-              await chrome.storage.local.set({ last_clicked_card_code: cardCode });
+              if (cardCode) {
+                await chrome.storage.local.set({ last_clicked_card_code: cardCode });
+              }
+              if (item.cardDetails?.cardmarket_url) {
+                const session = await chrome.storage.local.get('session');
+                const userId = session?.session?.user?.id;
+                if (userId) {
+                  const cardPrefsKey = 'card_preferences_' + userId;
+                  const { [cardPrefsKey]: existingPrefs = {} } = await chrome.storage.local.get(cardPrefsKey);
+                  existingPrefs[item.cardDetails.cardmarket_url] = {
+                    condition: item.rawCondition || 'NM',
+                    location: item.rawLocation || 'DE',
+                    language: item.rawLanguage || 'EN'
+                  };
+                  await chrome.storage.local.set({ [cardPrefsKey]: existingPrefs });
+                }
+              }
             } catch (err) {}
             window.open(targetUrl, '_blank');
           }

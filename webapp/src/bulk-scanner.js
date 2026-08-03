@@ -184,12 +184,14 @@ export class BulkScanner {
         }
       }
 
+      const defaultFilterInfo = `${item.rawCondition || 'NM'}, ${item.rawLocation || 'DE'}, ${item.rawLanguage || 'EN'}`;
+
       if (bestRecord) {
         item.status = 'matched';
         item.lastPrice = parseFloat(bestRecord.price) || null;
         item.lastCheckDate = formatTimestamp(bestRecord.scanned_at);
         item.lastCheckRelative = formatRelativeDate(bestRecord.scanned_at);
-        item.filterInfo = formatFilterInfo(bestRecord.comment);
+        item.filterInfo = formatFilterInfo(bestRecord.comment) || defaultFilterInfo;
         const extractedName = cleanCardName(bestRecord.card_id);
         if (!item.detectedName || item.detectedName.toLowerCase() === 'karte') {
           item.detectedName = extractedName || item.rawName || 'Karte';
@@ -206,7 +208,7 @@ export class BulkScanner {
       item.lastPrice = null;
       item.lastCheckDate = null;
       item.lastCheckRelative = null;
-      item.filterInfo = null;
+      item.filterInfo = defaultFilterInfo;
       const fallbackImg = await fetchCardImageFromDB(null, code, cleanName);
       if (fallbackImg) item.imageUrl = fallbackImg;
 
@@ -217,7 +219,7 @@ export class BulkScanner {
       item.lastPrice = null;
       item.lastCheckDate = null;
       item.lastCheckRelative = null;
-      item.filterInfo = null;
+      item.filterInfo = `${item.rawCondition || 'NM'}, ${item.rawLocation || 'DE'}, ${item.rawLanguage || 'EN'}`;
       return item;
     }
   }

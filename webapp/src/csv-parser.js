@@ -74,6 +74,34 @@ export function parseCSV(csvText) {
   return { headers: rawHeaders, rows, data, delimiter };
 }
 
+export function normalizeLanguage(langStr) {
+  if (!langStr || typeof langStr !== 'string') return 'EN';
+  const clean = langStr.trim().toUpperCase();
+  if (clean === 'ENGLISH' || clean === 'EN' || clean === 'ENGLISCH') return 'EN';
+  if (clean === 'GERMAN' || clean === 'DE' || clean === 'DEUTSCH') return 'DE';
+  if (clean === 'FRENCH' || clean === 'FR' || clean === 'FRANZÖSISCH') return 'FR';
+  if (clean === 'SPANISH' || clean === 'ES' || clean === 'SPANISCH') return 'ES';
+  if (clean === 'ITALIAN' || clean === 'IT' || clean === 'ITALIENISCH') return 'IT';
+  if (clean === 'JAPANESE' || clean === 'JP' || clean === 'JAPANISCH') return 'JP';
+  if (clean === 'CHINESE' || clean === 'ZH' || clean === 'CHINESISCH') return 'ZH';
+  if (clean === 'KOREAN' || clean === 'KO' || clean === 'KOREANISCH') return 'KO';
+  if (clean === 'RUSSIAN' || clean === 'RU' || clean === 'RUSSISCH') return 'RU';
+  return 'EN';
+}
+
+export function normalizeCondition(condStr) {
+  if (!condStr || typeof condStr !== 'string') return 'NM';
+  const clean = condStr.trim().toUpperCase();
+  if (clean.includes('MINT') || clean === 'MT') return 'MT';
+  if (clean.includes('NEAR') || clean === 'NM') return 'NM';
+  if (clean.includes('EXCELLENT') || clean === 'EX') return 'EX';
+  if (clean.includes('GOOD') || clean === 'GD') return 'GD';
+  if (clean.includes('LIGHT') || clean === 'LP') return 'LP';
+  if (clean.includes('PLAYED') || clean === 'PL') return 'PL';
+  if (clean.includes('POOR') || clean === 'PO') return 'PO';
+  return 'NM';
+}
+
 /**
  * Normalizes CSV records into standardized TCG Scan Items
  */
@@ -86,9 +114,13 @@ export function normalizeScanData(parsedCSV) {
     const rawName = row['card name'] || row['card_name'] || row['name'] || row['title'] || '';
     const rawSet = row['set'] || row['expansion'] || row['set_code'] || row['set code'] || '';
     const rawFile = row['filename'] || row['file_name'] || row['file'] || row['filepath'] || row['image'] || row['img'] || '';
-    const rawCondition = row['condition'] || row['grade'] || 'Near Mint';
-    const rawLanguage = row['language'] || row['lang'] || 'EN';
+    const rawCondInput = row['condition'] || row['grade'] || 'Near Mint';
+    const rawLangInput = row['language'] || row['lang'] || row['sprache'] || 'EN';
     const rawPrice = row['price'] || row['value'] || row['cardmarket_price'] || '';
+
+    const rawCondition = normalizeCondition(rawCondInput);
+    const rawLanguage = normalizeLanguage(rawLangInput);
+    const rawLocation = 'DE'; // Always default seller country to DE (Germany)
 
     // Extracted candidate code if code is embedded in filename or zone ocr
     const extractedCode = extractCardCode(rawCode || rawFile || rawName);
@@ -102,6 +134,7 @@ export function normalizeScanData(parsedCSV) {
       rawFile,
       rawCondition,
       rawLanguage,
+      rawLocation,
       rawPrice: parseFloat(rawPrice) || null,
       detectedCode: extractedCode || rawCode || null,
       detectedName: rawName || null,
