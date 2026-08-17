@@ -61,7 +61,168 @@ let gridCards = []; // Active search/analytics grid cards
 let activeTcgFilter = 'all'; // TCG filter for tabs ('all', 'OnePiece', 'Pokemon', 'Riftbound', 'DragonBall')
 let collectionValueHistory = []; // Historical values of collection market value
 let isBackgroundFetching = false; // Flag to indicate active database load operation
-let lastDataFetchTime = 0; // Timestamp of last successful background fetch
+let watchlistSyncOffset = 0; // Current batch offset for syncing watchlist tabs in chunks of 20
+let collectionSyncOffset = 0; // Current batch offset for syncing collection tabs in chunks of 20
+const SYNC_BATCH_SIZE = 20;
+
+function executeSyncUrls(urls, rangeStart, rangeEnd, totalCount, hintEl) {
+  const isExtensionActive = document.documentElement.hasAttribute('data-tcg-tracker-extension-active');
+  if (hintEl) hintEl.style.display = 'block';
+
+  if (isExtensionActive) {
+    if (hintEl) {
+      if (rangeStart === 1 && rangeEnd === totalCount) {
+        hintEl.textContent = `Öffne alle ${totalCount} Tabs im Hintergrund...`;
+      } else {
+        hintEl.textContent = `Öffne Karten ${rangeStart}–${rangeEnd} von ${totalCount} im Hintergrund...`;
+      }
+      hintEl.style.color = '#34d399';
+    }
+    document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_ALL', { detail: { urls } }));
+  } else {
+    if (hintEl) {
+      if (rangeStart === 1 && rangeEnd === totalCount) {
+        hintEl.textContent = 'Tipp: Pop-ups erlauben oder Erweiterung aktivieren, falls nicht alle Tabs öffnen.';
+      } else {
+        hintEl.textContent = `Öffne ${rangeStart}–${rangeEnd} von ${totalCount}... (Pop-ups erlauben)`;
+      }
+      hintEl.style.color = 'var(--text-muted)';
+    }
+    for (const url of urls) {
+      window.open(url, '_blank');
+    }
+  }
+
+  setTimeout(() => {
+    if (hintEl) hintEl.style.display = 'none';
+  }, 6000);
+}
+
+function initBatchSyncContainer(containerEl, totalCount, getUrlsFn, getOffsetFn, setOffsetFn) {
+  if (!containerEl) return;
+
+  const updateUI = () => {
+    const offset = getOffsetFn();
+    const hasMoreThanBatch = totalCount > SYNC_BATCH_SIZE;
+
+    let primaryBtnHtml = '';
+    let showReset = false;
+    let showAllDirect = hasMoreThanBatch;
+
+    if (!hasMoreThanBatch) {
+      primaryBtnHtml = `
+        <button class="btn btn-primary btn-sm btn-batch-sync-primary" style="display: inline-flex; align-items: center; gap: 6px;">
+          <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+          Sync all (${totalCount})
+        </button>
+      `;
+    } else {
+      const nextStart = offset + 1;
+      const nextEnd = Math.min(offset + SYNC_BATCH_SIZE, totalCount);
+
+      if (offset === 0) {
+        primaryBtnHtml = `
+          <button class="btn btn-primary btn-sm btn-batch-sync-primary" style="display: inline-flex; align-items: center; gap: 6px;">
+            <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+            </svg>
+            Erste ${SYNC_BATCH_SIZE} öffnen (1–${nextEnd})
+          </button>
+        `;
+      } else if (offset < totalCount) {
+        showReset = true;
+        primaryBtnHtml = `
+          <button class="btn btn-primary btn-sm btn-batch-sync-primary" style="display: inline-flex; align-items: center; gap: 6px;">
+            <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            </svg>
+            Proceed (${nextStart}–${nextEnd})
+          </button>
+        `;
+      } else {
+        showReset = true;
+        primaryBtnHtml = `
+          <button class="btn btn-secondary btn-sm btn-batch-sync-primary" style="display: inline-flex; align-items: center; gap: 6px; color: #22c55e;">
+            <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            Alle ${totalCount} geöffnet ✓
+          </button>
+        `;
+      }
+    }
+
+    containerEl.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end;">
+        ${primaryBtnHtml}
+        ${showAllDirect ? `
+          <button class="btn btn-secondary btn-sm btn-batch-sync-all" title="Alle ${totalCount} Karten auf einmal öffnen">
+            Alle (${totalCount})
+          </button>
+        ` : ''}
+        ${showReset ? `
+          <button class="btn btn-secondary btn-sm btn-batch-sync-reset" title="Batch-Fortschritt zurücksetzen" style="padding: 0 8px; display: inline-flex; align-items: center; justify-content: center;">
+            <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        ` : ''}
+      </div>
+      <span class="batch-sync-hint" style="font-size: 0.68rem; color: var(--text-muted); display: none; text-align: right;"></span>
+    `;
+
+    const hintEl = containerEl.querySelector('.batch-sync-hint');
+    const primaryBtn = containerEl.querySelector('.btn-batch-sync-primary');
+    const allDirectBtn = containerEl.querySelector('.btn-batch-sync-all');
+    const resetBtn = containerEl.querySelector('.btn-batch-sync-reset');
+
+    if (primaryBtn) {
+      primaryBtn.addEventListener('click', () => {
+        const allUrls = getUrlsFn();
+        if (!allUrls || allUrls.length === 0) return;
+
+        if (!hasMoreThanBatch) {
+          executeSyncUrls(allUrls, 1, allUrls.length, allUrls.length, hintEl);
+          return;
+        }
+
+        const currentOffset = getOffsetFn();
+        if (currentOffset >= totalCount) {
+          setOffsetFn(0);
+          updateUI();
+          return;
+        }
+
+        const curStart = currentOffset;
+        const curEnd = Math.min(curStart + SYNC_BATCH_SIZE, totalCount);
+        const batchUrls = allUrls.slice(curStart, curEnd);
+
+        executeSyncUrls(batchUrls, curStart + 1, curEnd, totalCount, hintEl);
+        setOffsetFn(curEnd);
+        updateUI();
+      });
+    }
+
+    if (allDirectBtn) {
+      allDirectBtn.addEventListener('click', () => {
+        const allUrls = getUrlsFn();
+        if (!allUrls || allUrls.length === 0) return;
+        executeSyncUrls(allUrls, 1, allUrls.length, allUrls.length, hintEl);
+      });
+    }
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        setOffsetFn(0);
+        updateUI();
+      });
+    }
+  };
+
+  updateUI();
+}
 
 function loadCachedUserData(userId) {
   try {
@@ -1932,19 +2093,9 @@ function renderWatchlistTab(container) {
   headerSection.className = 'watchlist-header-actions';
   headerSection.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; width: 100%; padding: 0 4px;';
   headerSection.innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 12px; flex-wrap: wrap;">
       <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Watchlist (${sortedCards.length}${activeSearchQuery ? ` von ${markedCards.length}` : ''})</span>
-      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-        <button id="btn-web-sync-all" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
-          <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-          </svg>
-          Sync all
-        </button>
-        <span id="sync-all-hint" style="font-size: 0.68rem; color: var(--text-muted); display: none; text-align: right;">
-          Tipp: Pop-ups erlauben, falls nicht alle Tabs öffnen.
-        </span>
-      </div>
+      <div id="watchlist-sync-actions-container" style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;"></div>
     </div>
     
     <div class="watchlist-filter-row" style="display: flex; justify-content: flex-start; align-items: center; gap: 12px; width: 100%; flex-wrap: wrap;">
@@ -2002,13 +2153,21 @@ function renderWatchlistTab(container) {
     return;
   }
 
-  const btnWebSyncAll = headerSection.querySelector('#btn-web-sync-all');
-  const syncHint = headerSection.querySelector('#sync-all-hint');
+  const watchlistSyncContainer = headerSection.querySelector('#watchlist-sync-actions-container');
+  initBatchSyncContainer(
+    watchlistSyncContainer,
+    sortedCards.length,
+    () => sortedCards.map(c => `https://www.cardmarket.com${c.card_id.startsWith('/') ? c.card_id : '/' + c.card_id}`),
+    () => watchlistSyncOffset,
+    (val) => { watchlistSyncOffset = val; }
+  );
+
   const selectSort = headerSection.querySelector('#select-watchlist-sort');
   const selectTcg = headerSection.querySelector('#select-watchlist-tcg');
 
   selectSort.addEventListener('change', () => {
     activeSortOption = selectSort.value;
+    watchlistSyncOffset = 0;
     try {
       localStorage.setItem('watchlist_sort_option', activeSortOption);
     } catch (e) {}
@@ -2018,34 +2177,9 @@ function renderWatchlistTab(container) {
 
   selectTcg.addEventListener('change', () => {
     activeTcgFilter = selectTcg.value;
+    watchlistSyncOffset = 0;
     container.innerHTML = '';
     renderWatchlistTab(container);
-  });
-
-  btnWebSyncAll.addEventListener('click', () => {
-    const urls = markedCards.map(card => {
-      const cardPath = card.card_id.startsWith('/') ? card.card_id : `/${card.card_id}`;
-      return `https://www.cardmarket.com${cardPath}`;
-    });
-
-    const isExtensionActive = document.documentElement.hasAttribute('data-tcg-tracker-extension-active');
-    syncHint.style.display = 'block';
-
-    if (isExtensionActive) {
-      syncHint.textContent = `Öffne ${urls.length} Tabs im Hintergrund...`;
-      syncHint.style.color = '#34d399'; // Green success color
-      document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_ALL', { detail: { urls } }));
-    } else {
-      syncHint.textContent = 'Tipp: Pop-ups erlauben oder Erweiterung aktivieren, falls nicht alle Tabs öffnen.';
-      syncHint.style.color = 'var(--text-muted)';
-      for (const url of urls) {
-        window.open(url, '_blank');
-      }
-    }
-    
-    setTimeout(() => {
-      syncHint.style.display = 'none';
-    }, 8000);
   });
 
   const list = document.createElement('div');
@@ -2688,19 +2822,9 @@ function renderCollectionTab(container) {
   headerSection.className = 'watchlist-header-actions';
   headerSection.style.cssText = 'display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; width: 100%; padding: 0 4px;';
   headerSection.innerHTML = `
-    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 12px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 12px; flex-wrap: wrap;">
       <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Sammlung (${sortedCards.length}${activeSearchQuery || activeTcgFilter !== 'all' ? ` von ${collectionCards.length}` : ''})</span>
-      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-        <button id="btn-collection-sync-all" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
-          <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-          </svg>
-          Sync all
-        </button>
-        <span id="collection-sync-all-hint" style="font-size: 0.68rem; color: var(--text-muted); display: none; text-align: right;">
-          Tipp: Pop-ups erlauben, falls nicht alle Tabs öffnen.
-        </span>
-      </div>
+      <div id="collection-sync-actions-container" style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;"></div>
     </div>
     
     <div class="watchlist-filter-row" style="display: flex; justify-content: flex-start; align-items: center; gap: 12px; width: 100%; flex-wrap: wrap;">
@@ -2736,45 +2860,24 @@ function renderCollectionTab(container) {
   `;
   dashboard.appendChild(headerSection);
 
-  const btnCollectionSyncAll = headerSection.querySelector('#btn-collection-sync-all');
-  const collectionSyncHint = headerSection.querySelector('#collection-sync-all-hint');
+  const collectionSyncContainer = headerSection.querySelector('#collection-sync-actions-container');
+  initBatchSyncContainer(
+    collectionSyncContainer,
+    sortedCards.length,
+    () => sortedCards.map(card => {
+      const cardPath = card.card_id.startsWith('/') ? card.card_id : `/${card.card_id}`;
+      return `https://www.cardmarket.com${cardPath}`;
+    }),
+    () => collectionSyncOffset,
+    (val) => { collectionSyncOffset = val; }
+  );
+
   const selectSort = headerSection.querySelector('#select-collection-sort');
   const selectTcg = headerSection.querySelector('#select-collection-tcg');
 
-  if (btnCollectionSyncAll) {
-    btnCollectionSyncAll.addEventListener('click', () => {
-      const urls = (sortedCards || []).map(card => {
-        const cardPath = card.card_id.startsWith('/') ? card.card_id : `/${card.card_id}`;
-        return `https://www.cardmarket.com${cardPath}`;
-      });
-
-      const isExtensionActive = document.documentElement.hasAttribute('data-tcg-tracker-extension-active');
-      if (collectionSyncHint) collectionSyncHint.style.display = 'block';
-
-      if (isExtensionActive) {
-        if (collectionSyncHint) {
-          collectionSyncHint.textContent = `Öffne ${urls.length} Tabs im Hintergrund...`;
-          collectionSyncHint.style.color = '#34d399';
-        }
-        document.dispatchEvent(new CustomEvent('TCG_TRACKER_SYNC_ALL', { detail: { urls } }));
-      } else {
-        if (collectionSyncHint) {
-          collectionSyncHint.textContent = 'Tipp: Pop-ups erlauben oder Erweiterung aktivieren, falls nicht alle Tabs öffnen.';
-          collectionSyncHint.style.color = 'var(--text-muted)';
-        }
-        for (const url of urls) {
-          window.open(url, '_blank');
-        }
-      }
-
-      setTimeout(() => {
-        if (collectionSyncHint) collectionSyncHint.style.display = 'none';
-      }, 8000);
-    });
-  }
-
   selectSort.addEventListener('change', () => {
     activeSortOption = selectSort.value;
+    collectionSyncOffset = 0;
     try {
       localStorage.setItem('watchlist_sort_option', activeSortOption);
     } catch (e) {}
@@ -2784,6 +2887,7 @@ function renderCollectionTab(container) {
 
   selectTcg.addEventListener('change', () => {
     activeTcgFilter = selectTcg.value;
+    collectionSyncOffset = 0;
     container.innerHTML = '';
     renderCollectionTab(container);
   });
