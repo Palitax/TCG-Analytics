@@ -288,9 +288,15 @@ export class StreamOverlay {
     if (this.queue.length === 0) {
       this.container.innerHTML = `
         <div class="stream-overlay-empty glass-panel">
-          <div class="empty-icon">📱</div>
-          <h2>Keine Karten in der Stream-Queue</h2>
-          <p style="color: #94a3b8; max-width: 460px; margin-top: 0.5rem;">
+          <div class="empty-icon" style="margin-bottom: 1rem;">
+            <svg style="width: 52px; height: 52px; color: #a1a1aa; margin: 0 auto; display: block;" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+          </div>
+          <h2 style="font-size: 1.35rem; font-weight: 700; color: #ffffff; margin-bottom: 0.5rem;">Keine Karten in der Stream-Queue</h2>
+          <p style="color: #a1a1aa; max-width: 440px; margin-top: 0.5rem; font-size: 0.875rem; line-height: 1.5;">
             Importiere eine CSV-Datei im Bulk Scan Tab und klicke auf <strong>"An Stream Overlay senden"</strong>, um deine Verkaufssession auf dem iPad zu starten!
           </p>
         </div>
@@ -303,8 +309,13 @@ export class StreamOverlay {
     if (this.currentIndex >= totalCards) {
       this.container.innerHTML = `
         <div class="stream-overlay-finished glass-panel">
-          <div class="finished-badge">🎉 Session beendet!</div>
-          <h1 style="font-size: 2.5rem; font-weight: 800; margin: 0.5rem 0;">Alle Karten verkauft!</h1>
+          <div class="finished-badge" style="display: inline-flex; align-items: center; gap: 8px;">
+            <svg style="width: 16px; height: 16px; color: #4ade80;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Session beendet!</span>
+          </div>
+          <h1 style="font-size: 2.2rem; font-weight: 800; margin: 0.5rem 0; color: #ffffff;">Alle Karten verkauft!</h1>
           <div class="session-stats">
             <div class="stat-box">
               <span class="stat-label">Gesamtverkäufe</span>
@@ -312,11 +323,14 @@ export class StreamOverlay {
             </div>
             <div class="stat-box accent">
               <span class="stat-label">Erzielter Umsatz</span>
-              <span class="stat-val" style="color: #10b981;">${this.totalSoldValue.toFixed(2)} €</span>
+              <span class="stat-val" style="color: #22c55e;">${this.totalSoldValue.toFixed(2)} €</span>
             </div>
           </div>
           <button class="btn btn-primary btn-lg" id="so-restart-btn" style="margin-top: 1rem;">
-            🔄 Session neu starten
+            <svg style="width: 16px; height: 16px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Session neu starten
           </button>
         </div>
       `;
@@ -373,7 +387,11 @@ export class StreamOverlay {
           <div class="so-image-container">
             ${imageSrc ? `<img src="${imageSrc}" alt="${cardName}" class="so-card-img" onerror="this.onerror=null; this.src='/logo.png';" />` : `
               <div class="so-no-img-box">
-                <div style="font-size: 2.5rem; margin-bottom: 0.5rem; opacity: 0.6;">🖼️</div>
+                <svg style="width: 44px; height: 44px; color: #71717a; margin-bottom: 8px; opacity: 0.7;" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="18" height="18" rx="3" />
+                  <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 15l-5-5L5 21" />
+                </svg>
                 <div style="color: #a1a1aa; font-weight: 500; font-size: 0.875rem;">Kein Bild in DB</div>
               </div>
             `}

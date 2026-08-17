@@ -64,6 +64,16 @@ let isBackgroundFetching = false; // Flag to indicate active database load opera
 let lastDataFetchTime = 0; // Timestamp of last successful background fetch
 
 function loadCachedUserData(userId) {
+  try {
+    const cachedQueue = localStorage.getItem('cache_stream_queue');
+    if (cachedQueue) {
+      const parsedQueue = JSON.parse(cachedQueue);
+      if (parsedQueue && parsedQueue.length > 0) {
+        activeStreamQueue = parsedQueue;
+      }
+    }
+  } catch(e) {}
+
   if (!userId) return;
   try {
     const cachedMarked = localStorage.getItem(`cache_marked_${userId}`);
@@ -87,6 +97,12 @@ function loadCachedUserData(userId) {
 }
 
 function saveCachedUserData(userId) {
+  try {
+    if (activeStreamQueue && activeStreamQueue.length > 0) {
+      localStorage.setItem('cache_stream_queue', JSON.stringify(activeStreamQueue));
+    }
+  } catch(e) {}
+
   if (!userId) return;
   try {
     const cleanMarked = (markedCards || []).filter(item => 
@@ -1421,8 +1437,7 @@ async function render() {
     viewEl.style.cssText = 'max-width: 420px; margin: 60px auto; padding: 24px; text-align: center; color: #fff; font-family: -apple-system, sans-serif;';
     viewEl.innerHTML = `
       <h3 style="color: #ef4444; margin-bottom: 12px; font-size: 1.1rem;">Anzeigefehler aufgetreten</h3>
-      <p style="color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-bottom: 20px; line-height: 1.5;">${renderErr?.message || 'Die Ansicht konnte nicht geladen werden.'}</p>
-      <button onclick="window.location.hash='#/watchlist'; window.location.reload();" style="background: var(--primary, #3b82f6); color: white; border: none; border-radius: 8px; padding: 10px 18px; font-weight: 600; cursor: pointer;">
+      <button onclick="window.location.hash='#/watchlist'; window.location.reload();" class="btn btn-primary" style="margin: 0 auto;">
         Zur Watchlist zurückkehren
       </button>
     `;
@@ -1920,21 +1935,7 @@ function renderWatchlistTab(container) {
     <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 12px;">
       <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Watchlist (${sortedCards.length}${activeSearchQuery ? ` von ${markedCards.length}` : ''})</span>
       <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-        <button id="btn-web-sync-all" style="
-          background-color: var(--primary);
-          color: white;
-          border: none;
-          border-radius: 6px;
-          padding: 8px 16px;
-          font-size: 0.82rem;
-          font-weight: 600;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          transition: all 0.2s ease;
-          box-shadow: 0 2px 8px rgba(251, 133, 0, 0.25);
-        ">
+        <button id="btn-web-sync-all" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
           <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
           </svg>
@@ -2019,13 +2020,6 @@ function renderWatchlistTab(container) {
     activeTcgFilter = selectTcg.value;
     container.innerHTML = '';
     renderWatchlistTab(container);
-  });
-
-  btnWebSyncAll.addEventListener('mouseenter', () => {
-    btnWebSyncAll.style.backgroundColor = 'var(--primary-hover)';
-  });
-  btnWebSyncAll.addEventListener('mouseleave', () => {
-    btnWebSyncAll.style.backgroundColor = 'var(--primary)';
   });
 
   btnWebSyncAll.addEventListener('click', () => {
@@ -2697,21 +2691,7 @@ function renderCollectionTab(container) {
     <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 12px;">
       <span style="font-size: 0.9rem; font-weight: 600; color: var(--text-secondary);">Sammlung (${sortedCards.length}${activeSearchQuery || activeTcgFilter !== 'all' ? ` von ${collectionCards.length}` : ''})</span>
       <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-        <button id="btn-collection-sync-all" style="
-          background-color: var(--primary);
-          color: white;
-          border: none;
-          border-radius: 6px;
-          padding: 8px 16px;
-          font-size: 0.82rem;
-          font-weight: 600;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          transition: all 0.2s ease;
-          box-shadow: 0 2px 8px rgba(251, 133, 0, 0.25);
-        ">
+        <button id="btn-collection-sync-all" class="btn btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
           <svg style="width: 13px; height: 13px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
           </svg>
@@ -2762,13 +2742,6 @@ function renderCollectionTab(container) {
   const selectTcg = headerSection.querySelector('#select-collection-tcg');
 
   if (btnCollectionSyncAll) {
-    btnCollectionSyncAll.addEventListener('mouseenter', () => {
-      btnCollectionSyncAll.style.backgroundColor = 'var(--primary-hover)';
-    });
-    btnCollectionSyncAll.addEventListener('mouseleave', () => {
-      btnCollectionSyncAll.style.backgroundColor = 'var(--primary)';
-    });
-
     btnCollectionSyncAll.addEventListener('click', () => {
       const urls = (sortedCards || []).map(card => {
         const cardPath = card.card_id.startsWith('/') ? card.card_id : `/${card.card_id}`;
@@ -3843,18 +3816,37 @@ function renderBulkScanTab(container) {
     <div class="glass-panel bulk-scan-container">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
         <div>
-          <h2 style="font-size: 1.5rem; font-weight: 700; color: #fff; margin: 0 0 0.25rem 0;">🖨️ Bulk Scan & CSV Importer</h2>
+          <h2 style="font-size: 1.35rem; font-weight: 700; color: #fff; margin: 0 0 0.25rem 0; display: flex; align-items: center; gap: 10px;">
+            <svg style="width: 22px; height: 22px; color: #a1a1aa;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Bulk Scan & CSV Importer
+          </h2>
           <p style="color: #94a3b8; font-size: 0.9rem; margin: 0;">Lade eine PaperStream Index-CSV oder Standard-Karten-CSV hoch, um Kartendaten & Marktpreise abzufragen.</p>
         </div>
-        <button class="shadcn-btn shadcn-btn-secondary" id="btn-new-csv-upload" style="display: none;">📁 Neue CSV laden</button>
+        <button class="shadcn-btn shadcn-btn-secondary" id="btn-new-csv-upload" style="display: none;">
+          <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          Neue CSV laden
+        </button>
       </div>
 
       <div class="dropzone-box" id="csv-dropzone" style="cursor: pointer;">
-        <div class="dropzone-icon">📁</div>
+        <div class="dropzone-icon" style="margin-bottom: 12px;">
+          <svg style="width: 44px; height: 44px; color: #71717a; margin: 0 auto; display: block;" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+          </svg>
+        </div>
         <h3 style="color: #f8fafc; font-size: 1.15rem; margin: 0 0 0.5rem 0; font-weight: 700;">PaperStream / TCG CSV-Datei hier ablegen</h3>
         <p style="color: #94a3b8; font-size: 0.9rem; margin: 0 0 1.25rem 0;">oder Klicke auf die gesamte Fläche zum Durchsuchen deiner Dateien</p>
         <input type="file" id="csv-file-input" accept=".csv,.txt" style="display: none;" />
-        <button class="shadcn-btn shadcn-btn-primary" id="btn-select-csv" type="button">CSV-Datei auswählen</button>
+        <button class="shadcn-btn shadcn-btn-primary" id="btn-select-csv" type="button">
+          <svg style="width: 15px; height: 15px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          CSV-Datei auswählen
+        </button>
       </div>
 
       <div id="bulk-processing-indicator" style="display: none; text-align: center; padding: 2rem;">
@@ -3866,10 +3858,32 @@ function renderBulkScanTab(container) {
         <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1.25rem 0; flex-wrap: wrap; gap: 1rem;">
           <h3 style="color: #fff; font-size: 1.15rem; margin: 0; font-weight: 700;" id="scan-summary-title">Gescannt: 0 Karten</h3>
           <div style="display: flex; gap: 0.85rem; flex-wrap: wrap; align-items: center;">
-            <button class="shadcn-btn shadcn-btn-secondary" id="btn-refresh-bulk-db" type="button" title="Fragt Supabase neu ab nach kürzlich gescannten Preisen & Bildern">🔄 DB-Daten aktualisieren</button>
-            <button class="shadcn-btn shadcn-btn-primary" id="btn-send-to-overlay" type="button">📱 An Stream Overlay senden</button>
-            <button class="shadcn-btn shadcn-btn-secondary" id="btn-save-scans-coll" type="button">💾 In Sammlung speichern</button>
-            <button class="shadcn-btn shadcn-btn-secondary" id="btn-export-enriched-csv" type="button">📥 CSV herunterladen</button>
+            <button class="shadcn-btn shadcn-btn-secondary" id="btn-refresh-bulk-db" type="button" title="Fragt Supabase neu ab nach kürzlich gescannten Preisen & Bildern">
+              <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              DB-Daten aktualisieren
+            </button>
+            <button class="shadcn-btn shadcn-btn-primary" id="btn-send-to-overlay" type="button">
+              <svg style="width: 15px; height: 15px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+              An Stream Overlay senden
+            </button>
+            <button class="shadcn-btn shadcn-btn-secondary" id="btn-save-scans-coll" type="button">
+              <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+              </svg>
+              In Sammlung speichern
+            </button>
+            <button class="shadcn-btn shadcn-btn-secondary" id="btn-export-enriched-csv" type="button">
+              <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              CSV herunterladen
+            </button>
           </div>
         </div>
 
@@ -4036,18 +4050,22 @@ function renderBulkScanTab(container) {
         <td style="color: ${hasPrice ? '#10b981' : '#94a3b8'}; font-weight: 700;">${priceText}</td>
         <td style="color: #94a3b8; font-size: 0.85rem;">${checkDetails}</td>
         <td>
-          <span class="status-badge ${isMatched ? 'matched' : 'needs_review'}">
-            ${isMatched ? '✅ In DB' : '⚠️ Nicht in DB'}
+          <span class="status-badge ${isMatched ? 'matched' : 'needs_review'}" style="display: inline-flex; align-items: center; gap: 6px;">
+            <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: ${isMatched ? '#22c55e' : '#a1a1aa'};"></span>
+            ${isMatched ? 'In DB' : 'Nicht in DB'}
           </span>
         </td>
         <td style="text-align: right;">
           <div style="display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; flex-wrap: nowrap;">
             ${!isMatched ? `
-              <button type="button" class="btn btn-secondary btn-sm btn-find-card-analytics" style="padding: 4px 10px; font-size: 0.8rem; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; border-radius: 6px; cursor: pointer; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;" title="Sucht nach dieser Karte im Analytics & DB-Tab">
-                🔍 Karte finden
+              <button type="button" class="btn btn-secondary btn-sm btn-find-card-analytics" style="padding: 4px 10px; font-size: 0.8rem; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 4px;" title="Sucht nach dieser Karte im Analytics & DB-Tab">
+                <svg style="width: 12px; height: 12px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                Karte finden
               </button>
             ` : ''}
-            <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm cm-check-link" style="padding: 4px 10px; font-size: 0.8rem; background: rgba(251, 133, 0, 0.15); border: 1px solid rgba(251, 133, 0, 0.4); color: #fb8500; border-radius: 6px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;">
+            <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm cm-check-link">
               Check price now ↗
             </a>
           </div>
@@ -4132,8 +4150,14 @@ function renderBulkScanTab(container) {
   }
 
   btnSendOverlay.addEventListener('click', async () => {
-    if (bulkScannerInstance.scanItems.length === 0) return;
+    if (!bulkScannerInstance.scanItems || bulkScannerInstance.scanItems.length === 0) {
+      alert('Keine gescannten Karten zum Senden vorhanden.');
+      return;
+    }
     activeStreamQueue = [...bulkScannerInstance.scanItems];
+    try {
+      localStorage.setItem('cache_stream_queue', JSON.stringify(activeStreamQueue));
+    } catch(e) {}
     saveCachedUserData(currentUser?.id);
     await syncStreamQueueToSupabase(activeStreamQueue, 0);
     navigate('/stream-overlay');
@@ -4339,25 +4363,35 @@ async function renderStreamOverlayTab(container) {
     }
   });
 
-  // Initialize WebSockets Realtime Channel
+  // 1. Restore from cache if memory queue is empty
+  if (!activeStreamQueue || activeStreamQueue.length === 0) {
+    try {
+      const cached = localStorage.getItem('cache_stream_queue');
+      if (cached) {
+        activeStreamQueue = JSON.parse(cached) || [];
+      }
+    } catch(e) {}
+  }
+
+  // 2. Immediately render queue if available
+  if (activeStreamQueue && activeStreamQueue.length > 0) {
+    streamOverlayInstance.loadQueue(activeStreamQueue);
+  } else {
+    streamOverlayInstance.render();
+  }
+
+  // 3. Initialize WebSockets Realtime Channel
   initStreamRealtimeSync();
 
-  // Always attempt fetching the latest Stream Queue payload from Supabase Cloud for cross-device sync (e.g. Mac -> Tablet)
-  if (currentUser?.id) {
+  // 4. If logged in and queue is still empty, query cloud backup
+  if (currentUser?.id && (!activeStreamQueue || activeStreamQueue.length === 0)) {
     const synced = await fetchStreamQueueFromSupabase();
     if (synced && synced.queue && synced.queue.length > 0) {
       activeStreamQueue = synced.queue;
       streamOverlayInstance.loadQueue(activeStreamQueue);
       streamOverlayInstance.currentIndex = synced.index || 0;
       streamOverlayInstance.render();
-      return;
     }
-  }
-
-  if (activeStreamQueue.length > 0) {
-    streamOverlayInstance.loadQueue(activeStreamQueue);
-  } else {
-    streamOverlayInstance.render();
   }
 }
 

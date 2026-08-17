@@ -40,15 +40,16 @@
 }
 
 .shadcn-btn-primary {
-  background: #ffffff;
-  color: #09090b;
-  border-color: #ffffff;
+  background: #ffffff !important;
+  color: #09090b !important;
+  border-color: #ffffff !important;
   font-weight: 600;
 }
 
 .shadcn-btn-primary:hover {
-  background: #e4e4e7;
-  border-color: #e4e4e7;
+  background: #e4e4e7 !important;
+  border-color: #e4e4e7 !important;
+  color: #09090b !important;
 }
 
 .shadcn-btn-primary:active {
