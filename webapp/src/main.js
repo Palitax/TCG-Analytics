@@ -1301,6 +1301,11 @@ async function navigate(path, pushState = true) {
       lastOriginScreen = 'watchlist';
     }
     
+    if (pathname !== '/stream-overlay' && streamOverlayInstance) {
+      streamOverlayInstance.destroy();
+      streamOverlayInstance = null;
+    }
+
     const existingTabWrapper = document.getElementById('dashboard-tab-content');
     if (currentView === 'dashboard' && existingTabWrapper) {
       // Highlight active tab button
@@ -3847,15 +3852,17 @@ function buildCardmarketSearchUrl(item) {
     if (codeMatch) code = codeMatch[1].replace('-', '/');
   }
 
-  cleanName = cleanName.replace(/(\b\d+[\/\-]\d+\b|\b\d+\b)/g, '').trim();
-  if (!cleanName || cleanName.toLowerCase() === 'karte') cleanName = '';
-  const cleanSet = rawSet.trim();
+  // Direct Cardmarket search URL with filters
+  const searchParts = [cleanName, cleanSet, code].filter(p => p && p.length > 0);
+  const searchQuery = searchParts.join(' ').trim() || code || cleanName || 'Karte';
 
-  // Always build Google I'm Feeling Lucky search: site:cardmarket.com/de Name Set Code &btnI=1
-  const queryParts = ['site:cardmarket.com/de', cleanName, cleanSet, code].filter(p => p && p.length > 0);
-  const searchQuery = queryParts.join(' ').trim();
+  const cmSearchUrl = new URL('https://www.cardmarket.com/de/Search');
+  cmSearchUrl.searchParams.set('searchString', searchQuery);
+  if (minConditionVal) cmSearchUrl.searchParams.set('minCondition', minConditionVal);
+  if (sellerCountryVal) cmSearchUrl.searchParams.set('sellerCountry', sellerCountryVal);
+  if (languageVal) cmSearchUrl.searchParams.set('language', languageVal);
 
-  return `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&btnI=1`;
+  return cmSearchUrl.toString();
 }
 
 // Bulk Scan Tab Renderer
@@ -4164,20 +4171,54 @@ function renderBulkScanTab(container) {
     navigate('/stream-overlay');
   });
 
-  btnSaveColl.addEventListener('click', () => {
+  btnSaveColl.addEventListener('click', async () => {
     if (bulkScannerInstance.scanItems.length === 0) return;
-    const newCollItems = bulkScannerInstance.scanItems.map(item => ({
-      card_id: item.detectedCode || item.rawCode || `SCAN_${Date.now()}`,
-      name: item.detectedName || item.rawName || 'Gescannte Karte',
-      price: item.marketPrices?.lowPrice || item.rawPrice || 0,
-      condition: item.rawCondition || 'Near Mint',
-      tcg: 'OnePiece',
-      added_at: new Date().toISOString()
-    }));
+    if (!currentUser?.id) {
+      alert('Bitte logge dich ein, um Karten in deiner Sammlung zu speichern!');
+      return;
+    }
 
-    collectionCards.push(...newCollItems);
-    saveCachedUserData(currentUser?.id);
-    alert(`${newCollItems.length} Karten wurden erfolgreich in deine Sammlung übernommen!`);
+    btnSaveColl.disabled = true;
+    const origText = btnSaveColl.textContent;
+    btnSaveColl.textContent = '💾 Wird gespeichert...';
+
+    try {
+      const inserts = bulkScannerInstance.scanItems.map(item => {
+        const cardId = item.cardDetails?.cardmarket_url || item.detectedCode || item.rawCode || `SCAN_${Date.now()}`;
+        return {
+          user_id: currentUser.id,
+          card_id: cardId,
+          tcg: 'OnePiece',
+          image_url: item.imageUrl || null,
+          condition: item.rawCondition || 'NM',
+          language: item.rawLanguage || 'EN',
+          seller_country: item.rawLocation || 'DE'
+        };
+      });
+
+      // Upsert / Insert ignore duplicates into Supabase
+      const { error } = await supabase
+        .from('collection_cards')
+        .upsert(inserts, { onConflict: 'user_id,card_id', ignoreDuplicates: true });
+
+      if (error) {
+        // Fallback insert if upsert fails
+        const { error: insertErr } = await supabase
+          .from('collection_cards')
+          .insert(inserts);
+        if (insertErr && insertErr.code !== '23505') throw insertErr;
+      }
+
+      await fetchCollectionCards();
+      saveCachedUserData(currentUser.id);
+      showToast(`${inserts.length} Karten erfolgreich in deiner Sammlung gespeichert!`);
+    } catch (err) {
+      console.error('Error saving bulk scans to collection:', err);
+      alert('Fehler beim Speichern in der Sammlung: ' + (err.message || 'Unbekannter Fehler'));
+    } finally {
+      btnSaveColl.disabled = false;
+      btnSaveColl.textContent = origText;
+    }
   });
 
   btnExportCsv.addEventListener('click', () => {
@@ -4313,6 +4354,10 @@ async function fetchStreamQueueFromSupabase() {
 
 // Stream Overlay Tab Renderer with Realtime Sync
 async function renderStreamOverlayTab(container) {
+  if (streamOverlayInstance) {
+    streamOverlayInstance.destroy();
+    streamOverlayInstance = null;
+  }
   container.innerHTML = '';
 
   const wrapper = document.createElement('div');

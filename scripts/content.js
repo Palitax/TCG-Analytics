@@ -446,24 +446,31 @@ function extractSellerCountry(sellerCol) {
 }
 
 function extractCondition(conditionElements) {
-  let foundConditionCode = null;
+  const codes = ["MT", "NM", "EX", "GD", "LP", "PL", "PO"];
   for (const el of conditionElements) {
+    const title = (el.getAttribute('title') || el.getAttribute('data-bs-original-title') || el.getAttribute('data-original-title') || '').trim();
+    if (title) {
+      for (const code of codes) {
+        if (CONDITION_NAMES[code] && title.toLowerCase().includes(CONDITION_NAMES[code].toLowerCase())) {
+          return code;
+        }
+      }
+    }
+
     const text = el.textContent.trim().toUpperCase();
-    const codes = ["MT", "NM", "EX", "GD", "LP", "PL", "PO"];
     for (const code of codes) {
       if (
         text === code ||
         text.startsWith(code + ' ') ||
         text.startsWith(code + '(') ||
+        text.startsWith(code + '\n') ||
         text.split(/[^A-Z]/)[0] === code
       ) {
-        foundConditionCode = code;
-        break;
+        return code;
       }
     }
-    if (foundConditionCode) break;
   }
-  return foundConditionCode;
+  return null;
 }
 
 function extractLanguage(productInfoCell) {
@@ -502,16 +509,42 @@ function extractLanguage(productInfoCell) {
   return 'EN';
 }
 
-function extractPrice(priceElements) {
-  for (const el of priceElements) {
+function extractPriceFromRow(row) {
+  if (!row) return null;
+
+  // 1. Target the specific price column first (.col-price, .price-container, .col-offer, [class*="price"])
+  const priceCol = row.querySelector('.col-price, .price-container, .col-offer, .font-weight-bold.color-primary, .color-primary');
+  const searchArea = priceCol || row;
+
+  // Search price candidates in price column first
+  const candidates = searchArea.querySelectorAll('.font-weight-bold.color-primary, .color-primary, .price-container, [class*="price"], span, div');
+  for (const el of candidates) {
+    // Avoid reading from seller, comments, or shipping info containers
+    if (el.closest('.col-seller, .product-info, .col-product, .article-comment, .comment, [class*="comment"], .shipping-info, .seller-name')) {
+      continue;
+    }
     const text = el.textContent.trim();
     if (text.includes('€')) {
-      const cleaned = text
-        .replace('€', '')
-        .replace(/\s/g, '')
-        .replace(/\./g, '')
-        .replace(',', '.');
+      const match = text.match(/(\d+(?:[.,]\d+)?)\s*€/);
+      if (match) {
+        const cleaned = match[1].replace(/\./g, '').replace(',', '.');
+        const parsed = parseFloat(cleaned);
+        if (!isNaN(parsed) && parsed > 0) {
+          return parsed;
+        }
+      }
+    }
+  }
 
+  // Fallback scan of the row excluding comments and seller area
+  const allRowEls = row.querySelectorAll('.color-primary, [class*="price"], span');
+  for (const el of allRowEls) {
+    if (el.closest('.col-seller, .product-info, .col-product, .article-comment, .comment, [class*="comment"], .shipping-info, .seller-name')) {
+      continue;
+    }
+    const text = el.textContent.trim();
+    if (text.includes('€')) {
+      const cleaned = text.replace('€', '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
       const parsed = parseFloat(cleaned);
       if (!isNaN(parsed) && parsed > 0) {
         return parsed;
@@ -550,9 +583,9 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
       "PL": 6,
       "PO": 7
     };
-    const conditionElements = row.querySelectorAll('.article-condition, .condition, .badge, span, a');
+    const conditionElements = row.querySelectorAll('.article-condition, .condition, .badge, [class*="condition"]');
     let conditionMatches = false;
-    const foundConditionCode = extractCondition(conditionElements);
+    const foundConditionCode = extractCondition(conditionElements.length > 0 ? conditionElements : row.querySelectorAll('span, a'));
 
     if (foundConditionCode) {
       const targetVal = CONDITION_RANK[targetCondition] || 7;
@@ -594,8 +627,7 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     }
 
     // 5. Extract price
-    const priceElements = row.querySelectorAll('[class*="price"], .color-primary, span');
-    const parsedPrice = extractPrice(priceElements);
+    const parsedPrice = extractPriceFromRow(row);
     if (parsedPrice !== null) {
       return {
         price: parsedPrice,
@@ -1149,6 +1181,16 @@ function attachListeners() {
     }
   };
 
+  const getActiveFilters = () => {
+    const sidebar = getSidebarState();
+    const sidebarLanguage = sidebar.languages && !sidebar.languages.includes('ALL') ? sidebar.languages[0] : 'ALL';
+    return {
+      activeCond: selectCondition?.value || activeOverlayDetails?.selectedCondition || sidebar.condition || 'NM',
+      activeLoc: selectLocation?.value || activeOverlayDetails?.selectedLocation || sidebar.location || 'DE',
+      activeLang: selectLanguage?.value || activeOverlayDetails?.selectedLanguage || sidebarLanguage || 'ALL'
+    };
+  };
+
   const btnApply = document.getElementById('cm-btn-apply-filters');
   if (btnApply) {
     btnApply.addEventListener('click', saveAndRefresh);
@@ -1173,11 +1215,7 @@ function attachListeners() {
       if (!tcg || !cardId) return;
 
       btnBookmark.style.pointerEvents = 'none';
-      const sidebar = getSidebarState();
-      const sidebarLanguage = sidebar.languages && !sidebar.languages.includes('ALL') ? sidebar.languages[0] : 'ALL';
-      const activeCond = (typeof savedCondition !== 'undefined' && savedCondition) ? savedCondition : (sidebar.condition || 'NM');
-      const activeLoc = (typeof savedLocation !== 'undefined' && savedLocation) ? savedLocation : (sidebar.location || 'DE');
-      const activeLang = (typeof savedLanguage !== 'undefined' && savedLanguage) ? savedLanguage : (sidebarLanguage || 'ALL');
+      const { activeCond, activeLoc, activeLang } = getActiveFilters();
 
       chrome.runtime.sendMessage({
         action: "toggleBookmark",
@@ -1229,11 +1267,7 @@ function attachListeners() {
       if (!tcg || !cardId) return;
 
       btnCollection.style.pointerEvents = 'none';
-      const sidebar = getSidebarState();
-      const sidebarLanguage = sidebar.languages && !sidebar.languages.includes('ALL') ? sidebar.languages[0] : 'ALL';
-      const activeCond = (typeof savedCondition !== 'undefined' && savedCondition) ? savedCondition : (sidebar.condition || 'NM');
-      const activeLoc = (typeof savedLocation !== 'undefined' && savedLocation) ? savedLocation : (sidebar.location || 'DE');
-      const activeLang = (typeof savedLanguage !== 'undefined' && savedLanguage) ? savedLanguage : (sidebarLanguage || 'ALL');
+      const { activeCond, activeLoc, activeLang } = getActiveFilters();
 
       chrome.runtime.sendMessage({
         action: "toggleCollection",
@@ -1594,8 +1628,7 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
     if (targetLanguages[0] !== 'ALL' && !targetLanguages.includes(language)) continue;
 
     // 4. Price
-    const priceElements = row.querySelectorAll('[class*="price"], .color-primary, span');
-    const price = extractPrice(priceElements);
+    const price = extractPriceFromRow(row);
     if (price === null) continue;
 
     // 5. Comment

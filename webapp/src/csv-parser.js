@@ -151,16 +151,21 @@ export function normalizeScanData(parsedCSV) {
 export function extractCardCode(text) {
   if (!text || typeof text !== 'string') return null;
 
-  // One Piece TCG formats: OP01-001, ST01-001, EB01-001, P-001, PRB01-001
-  const opMatch = text.match(/\b(OP\d{2}|ST\d{2}|EB\d{2}|PRB\d{2}|P)-\d{3}\b/i);
-  if (opMatch) return opMatch[0].toUpperCase();
+  // One Piece TCG formats: OP01-001, OP-01-001, ST01-001, EB01-001, PRB01-001, P-001, etc.
+  const opMatch = text.match(/\b(OP|ST|EB|PRB)[\s-]*\d{1,2}[\s-]+\d{3}\b/i) ||
+                  text.match(/\b(OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|P)[-\s]*\d{3}\b/i);
+  if (opMatch) {
+    return opMatch[0].toUpperCase().replace(/\s+/g, '-').replace(/--+/g, '-');
+  }
 
-  // Pokémon TCG format: e.g. 123/197 or SV01-123
-  const pokemonMatch = text.match(/\b(SV\d{2}|PAL|OBF|PAR|TEF|TWM|SFA|SCR)-\d{3}\b/i) || text.match(/\b\d{1,3}\/\d{1,3}\b/);
-  if (pokemonMatch) return pokemonMatch[0].toUpperCase();
+  // Pokémon TCG format: e.g. 123/197, 094/123, SV01-123, SVP001, SWSH123, TG01/TG30, GG01/GG70
+  const pokemonSetNumMatch = text.match(/\b\d{1,3}\/\d{1,3}\b/) ||
+                             text.match(/\b(TG|GG)\d{1,2}\/(TG|GG)\d{1,2}\b/i) ||
+                             text.match(/\b(SV\d{1,2}|PAL|OBF|PAR|TEF|TWM|SFA|SCR|SSP|PRE|SWSH|SVP|SM)[-\s]*\d{1,3}\b/i);
+  if (pokemonSetNumMatch) return pokemonSetNumMatch[0].toUpperCase().replace(/\s+/g, '-');
 
-  // Yu-Gi-Oh format: LOB-001, SDK-001
-  const yugiohMatch = text.match(/\b[A-Z0-9]{3,4}-[A-Z0-9]{3,4}\b/i);
+  // Yu-Gi-Oh format: LOB-001, SDK-E001, RA01-EN001
+  const yugiohMatch = text.match(/\b[A-Z0-9]{3,4}-[A-Z0-9]{3,5}\b/i);
   if (yugiohMatch) return yugiohMatch[0].toUpperCase();
 
   return null;

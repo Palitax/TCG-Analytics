@@ -22,12 +22,13 @@ function getCardmarketSearchUrl(item) {
 
   let cleanSet = extractedSet.trim();
 
-  // Build query: site:cardmarket.com/de Pikachu Mysterious Treasures 94/123
-  const queryParts = ['site:cardmarket.com/de', cleanName, cleanSet, code].filter(p => p && p.length > 0);
-  const searchQuery = queryParts.join(' ').trim();
+  // Direct Cardmarket search URL with clean parameters
+  const queryParts = [cleanName, cleanSet, code].filter(p => p && p.length > 0);
+  const searchQuery = queryParts.join(' ').trim() || code || cleanName || 'Karte';
 
-  const encodedQuery = encodeURIComponent(searchQuery);
-  return `https://www.google.com/search?q=${encodedQuery}&btnI=1`;
+  const cmSearchUrl = new URL('https://www.cardmarket.com/de/Search');
+  cmSearchUrl.searchParams.set('searchString', searchQuery);
+  return cmSearchUrl.toString();
 }
 
 function getCountryFlag(countryCodeStr) {
@@ -124,8 +125,43 @@ export class StreamOverlay {
     this.currentIndex = 0;
     this.totalSoldValue = 0;
     this.isFullscreen = false;
+    this.isTransitioning = false;
     this.onProgress = options.onProgress || null;
     this.onChange = options.onChange || null;
+    this.keyListener = null;
+
+    this.bindKeyboardShortcuts();
+  }
+
+  bindKeyboardShortcuts() {
+    this.keyListener = (e) => {
+      // Avoid triggering when user is typing in an input
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        const soldBtn = this.container?.querySelector('#so-sold-btn');
+        if (soldBtn) soldBtn.classList.add('sold-animated');
+        this.markAsSold();
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault();
+        this.nextCard();
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault();
+        this.prevCard();
+      } else if (e.code === 'KeyF') {
+        e.preventDefault();
+        this.toggleFullscreen();
+      }
+    };
+    window.addEventListener('keydown', this.keyListener);
+  }
+
+  destroy() {
+    if (this.keyListener) {
+      window.removeEventListener('keydown', this.keyListener);
+      this.keyListener = null;
+    }
   }
 
   loadQueue(items) {
@@ -137,6 +173,9 @@ export class StreamOverlay {
   }
 
   nextCard() {
+    if (this.isTransitioning) return;
+    this.isTransitioning = true;
+
     const grid = this.container.querySelector('.so-content-grid');
     if (grid) grid.classList.add('so-slide-out');
 
@@ -151,12 +190,20 @@ export class StreamOverlay {
       const newGrid = this.container.querySelector('.so-content-grid');
       if (newGrid) {
         newGrid.classList.add('so-slide-in');
-        setTimeout(() => newGrid.classList.remove('so-slide-in'), 250);
+        setTimeout(() => {
+          newGrid.classList.remove('so-slide-in');
+          this.isTransitioning = false;
+        }, 250);
+      } else {
+        this.isTransitioning = false;
       }
     }, 200);
   }
 
   prevCard() {
+    if (this.isTransitioning) return;
+    this.isTransitioning = true;
+
     const grid = this.container.querySelector('.so-content-grid');
     if (grid) grid.classList.add('so-slide-out');
 
@@ -169,12 +216,20 @@ export class StreamOverlay {
       const newGrid = this.container.querySelector('.so-content-grid');
       if (newGrid) {
         newGrid.classList.add('so-slide-in');
-        setTimeout(() => newGrid.classList.remove('so-slide-in'), 250);
+        setTimeout(() => {
+          newGrid.classList.remove('so-slide-in');
+          this.isTransitioning = false;
+        }, 250);
+      } else {
+        this.isTransitioning = false;
       }
     }, 200);
   }
 
   markAsSold() {
+    if (this.isTransitioning) return;
+    this.isTransitioning = true;
+
     const grid = this.container.querySelector('.so-content-grid');
     if (grid) grid.classList.add('so-slide-out');
 
@@ -195,7 +250,12 @@ export class StreamOverlay {
       const newGrid = this.container.querySelector('.so-content-grid');
       if (newGrid) {
         newGrid.classList.add('so-slide-in');
-        setTimeout(() => newGrid.classList.remove('so-slide-in'), 250);
+        setTimeout(() => {
+          newGrid.classList.remove('so-slide-in');
+          this.isTransitioning = false;
+        }, 250);
+      } else {
+        this.isTransitioning = false;
       }
     }, 200);
   }

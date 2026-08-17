@@ -353,7 +353,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           cache: "no-store",
           credentials: "omit",
           headers: {
-            "apikey": SUPABASE_ANON_KEY
+            "apikey": SUPABASE_ANON_KEY,
+            "Authorization": `Bearer ${accessToken}`
           },
           signal: AbortSignal.timeout(8000)
         });
@@ -390,9 +391,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const currentComment = comment || '';
           const timeSinceLastScan = Date.now() - new Date(latestRecordBeforeScan.scanned_at).getTime();
           
+          const isPriceChanged = Math.abs(lastPrice - currentPrice) > 0.005;
+          const isCommentChanged = (parsedLastComment || '') !== (currentComment || '');
+
           if (force === true) {
             shouldUpload = true;
-          } else if (lastPrice !== currentPrice || parsedLastComment !== currentComment) {
+          } else if (isPriceChanged || isCommentChanged) {
             shouldUpload = true;
           } else if (timeSinceLastScan >= 86400000) {
             shouldUpload = true;
@@ -724,271 +728,262 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       else if (message.action === "openTabs") {
         const { urls } = message;
         if (urls && Array.isArray(urls)) {
-          (async () => {
-            try {
-              const session = await getSession();
-              let cardPrefs = {};
-              let globalPrefs = {};
-              if (session && session.user) {
-                const userId = session.user.id;
-                const cardPrefsKey = 'card_preferences_' + userId;
-                const globalPrefsKey = 'preferences_' + userId;
-                const storage = await chrome.storage.local.get([cardPrefsKey, globalPrefsKey]);
-                cardPrefs = storage[cardPrefsKey] || {};
-                globalPrefs = storage[globalPrefsKey] || {};
-              }
-
-              const CONDITION_URL_MAP = {
-                "MT": "1",
-                "NM": "2",
-                "EX": "3",
-                "GD": "4",
-                "LP": "5",
-                "PL": "6",
-                "PO": "7"
-              };
-
-              const LANGUAGE_URL_MAP = {
-                "EN": "1",
-                "FR": "2",
-                "DE": "3",
-                "ES": "4",
-                "IT": "5",
-                "JP": "7",
-                "ZH": "8",
-                "KO": "10"
-              };
-
-              for (const urlStr of urls) {
-                let resolvedUrl = urlStr;
-                try {
-                  const urlObj = new URL(urlStr);
-                  const cardId = urlObj.pathname;
-                  
-                  const filters = cardPrefs[cardId] || globalPrefs || {};
-                  const params = new URLSearchParams(urlObj.search);
-                  
-                  const condition = filters.condition || 'NM';
-                  if (CONDITION_URL_MAP[condition]) {
-                    params.set('minCondition', CONDITION_URL_MAP[condition]);
-                  }
-                  
-                  const language = filters.language || 'ALL';
-                  if (language !== 'ALL' && LANGUAGE_URL_MAP[language]) {
-                    params.set('language', LANGUAGE_URL_MAP[language]);
-                  }
-                  
-                  const location = filters.location || 'DE';
-                  if (location === 'DE') {
-                    params.set('sellerCountry', '7');
-                  } else {
-                    params.delete('sellerCountry');
-                  }
-                  
-                  urlObj.search = params.toString();
-                  resolvedUrl = urlObj.toString();
-                } catch (e) {
-                  console.error("Failed to parse/resolve URL:", urlStr, e);
-                }
-
-                chrome.tabs.create({ url: resolvedUrl, active: false });
-                await new Promise(r => setTimeout(r, 50));
-              }
-            } catch (err) {
-              console.error("Error in openTabs loop:", err);
+          try {
+            const session = await getSession();
+            let cardPrefs = {};
+            let globalPrefs = {};
+            if (session && session.user) {
+              const userId = session.user.id;
+              const cardPrefsKey = 'card_preferences_' + userId;
+              const globalPrefsKey = 'preferences_' + userId;
+              const storage = await chrome.storage.local.get([cardPrefsKey, globalPrefsKey]);
+              cardPrefs = storage[cardPrefsKey] || {};
+              globalPrefs = storage[globalPrefsKey] || {};
             }
-          })();
+
+            const CONDITION_URL_MAP = {
+              "MT": "1",
+              "NM": "2",
+              "EX": "3",
+              "GD": "4",
+              "LP": "5",
+              "PL": "6",
+              "PO": "7"
+            };
+
+            const LANGUAGE_URL_MAP = {
+              "EN": "1",
+              "FR": "2",
+              "DE": "3",
+              "ES": "4",
+              "IT": "5",
+              "JP": "7",
+              "ZH": "8",
+              "KO": "10"
+            };
+
+            for (const urlStr of urls) {
+              let resolvedUrl = urlStr;
+              try {
+                const urlObj = new URL(urlStr);
+                const cardId = urlObj.pathname;
+                
+                const filters = cardPrefs[cardId] || globalPrefs || {};
+                const params = new URLSearchParams(urlObj.search);
+                
+                const condition = filters.condition || 'NM';
+                if (CONDITION_URL_MAP[condition]) {
+                  params.set('minCondition', CONDITION_URL_MAP[condition]);
+                }
+                
+                const language = filters.language || 'ALL';
+                if (language !== 'ALL' && LANGUAGE_URL_MAP[language]) {
+                  params.set('language', LANGUAGE_URL_MAP[language]);
+                }
+                
+                const location = filters.location || 'DE';
+                if (location === 'DE') {
+                  params.set('sellerCountry', '7');
+                } else {
+                  params.delete('sellerCountry');
+                }
+                
+                urlObj.search = params.toString();
+                resolvedUrl = urlObj.toString();
+              } catch (e) {
+                console.error("Failed to parse/resolve URL:", urlStr, e);
+              }
+
+              await chrome.tabs.create({ url: resolvedUrl, active: false });
+              await new Promise(r => setTimeout(r, 50));
+            }
+          } catch (err) {
+            console.error("Error in openTabs loop:", err);
+          }
         }
         sendResponse({ success: true });
       }
 
       else if (message.action === "saveClippedImage") {
         const { cardId, tcg, imageUrl } = message;
-        (async () => {
+        try {
+          const rawBlob = await fetchImageBlob(imageUrl);
+          if (!rawBlob) {
+            throw new Error("Failed to fetch image blob");
+          }
+
+          const webpBlob = await convertImageBlobToWebP(rawBlob, 800, 0.8);
+          
+          const sanitizedId = cardId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+          const sanitizedTcg = tcg ? tcg.toLowerCase() : 'tcg';
+          const fileName = `${sanitizedTcg}_${sanitizedId}.webp`;
+          const bucketName = 'card-images';
+          let finalImageUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucketName}/${fileName}`;
+
+          // Sync with Supabase: save to card_images and update marked_cards
           try {
-            const rawBlob = await fetchImageBlob(imageUrl);
-            if (!rawBlob) {
-              throw new Error("Failed to fetch image blob");
+            const session = await getSession();
+            const accessToken = session?.access_token || SUPABASE_ANON_KEY;
+
+            let isUploadedToStorage = false;
+            if (webpBlob) {
+              try {
+                const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucketName}/${fileName}`, {
+                  method: "POST",
+                  credentials: "omit",
+                  headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${accessToken}`,
+                    "Content-Type": "image/webp",
+                    "cache-control": "31536000",
+                    "x-upsert": "true"
+                  },
+                  body: webpBlob
+                });
+
+                if (storageRes.ok) {
+                  isUploadedToStorage = true;
+                  finalImageUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucketName}/${fileName}`;
+                } else {
+                  const errText = await storageRes.text();
+                  console.warn("Storage upload returned status:", storageRes.status, errText);
+                }
+              } catch (stgErr) {
+                console.error("Storage upload exception:", stgErr);
+              }
             }
 
-            const webpBlob = await convertImageBlobToWebP(rawBlob, 800, 0.8);
-            
-            const sanitizedId = cardId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
-            const sanitizedTcg = tcg ? tcg.toLowerCase() : 'tcg';
-            const fileName = `${sanitizedTcg}_${sanitizedId}.webp`;
-            const bucketName = 'card-images';
-            let finalImageUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucketName}/${fileName}`;
-
-            // Sync with Supabase: save to card_images and update marked_cards
-            try {
-              const session = await getSession();
-              const accessToken = session?.access_token || SUPABASE_ANON_KEY;
-
-              let isUploadedToStorage = false;
+            // Fail-safe: If storage upload was not successful, use webpBlob data URL or original imageUrl
+            if (!isUploadedToStorage) {
               if (webpBlob) {
                 try {
-                  const storageRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucketName}/${fileName}`, {
-                    method: "POST",
-                    credentials: "omit",
-                    headers: {
-                      "apikey": SUPABASE_ANON_KEY,
-                      "Authorization": `Bearer ${accessToken}`,
-                      "Content-Type": "image/webp",
-                      "cache-control": "31536000",
-                      "x-upsert": "true"
-                    },
-                    body: webpBlob
+                  const base64Data = await new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.readAsDataURL(webpBlob);
                   });
-
-                  if (storageRes.ok) {
-                    isUploadedToStorage = true;
-                    finalImageUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucketName}/${fileName}`;
-                  } else {
-                    const errText = await storageRes.text();
-                    console.warn("Storage upload returned status:", storageRes.status, errText);
-                  }
-                } catch (stgErr) {
-                  console.error("Storage upload exception:", stgErr);
-                }
-              }
-
-              // Fail-safe: If storage upload was not successful, use webpBlob data URL or original imageUrl so cross-device sync never breaks
-              if (!isUploadedToStorage) {
-                if (webpBlob) {
-                  try {
-                    const base64Data = await new Promise((resolve) => {
-                      const reader = new FileReader();
-                      reader.onloadend = () => resolve(reader.result);
-                      reader.readAsDataURL(webpBlob);
-                    });
-                    if (base64Data) finalImageUrl = base64Data;
-                  } catch (rErr) {
-                    finalImageUrl = imageUrl;
-                  }
-                } else {
+                  if (base64Data) finalImageUrl = base64Data;
+                } catch (rErr) {
                   finalImageUrl = imageUrl;
                 }
+              } else {
+                finalImageUrl = imageUrl;
               }
-
-              
-              const cleanCardId = cardId.replace(/^\/+/, '');
-              const slashedCardId = '/' + cleanCardId;
-
-              // 1. Upsert into global card_images table for both clean and slashed card_id formats
-              const imgDataArray = [
-                {
-                  card_id: cleanCardId,
-                  tcg: tcg,
-                  image_url: finalImageUrl,
-                  updated_at: new Date().toISOString()
-                },
-                {
-                  card_id: slashedCardId,
-                  tcg: tcg,
-                  image_url: finalImageUrl,
-                  updated_at: new Date().toISOString()
-                }
-              ];
-
-              const imgRes = await fetch(`${SUPABASE_URL}/rest/v1/card_images`, {
-                method: "POST",
-                credentials: "omit",
-                headers: {
-                  "apikey": SUPABASE_ANON_KEY,
-                  "Authorization": `Bearer ${accessToken}`,
-                  "Content-Type": "application/json",
-                  "Prefer": "resolution=merge-duplicates"
-                },
-                body: JSON.stringify(imgDataArray)
-              });
-
-              if (!imgRes.ok) {
-                console.error("Failed to upload clipped image to card_images:", imgRes.status, await imgRes.text());
-              }
-
-              // 2. Update private marked_cards and collection_cards if bookmarked for logged-in user
-              const userId = session?.user?.id;
-              if (userId) {
-                const encClean = encodeURIComponent(cleanCardId);
-                const encSlashed = encodeURIComponent(slashedCardId);
-
-                try {
-                  await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&or=(card_id.eq.${encClean},card_id.eq.${encSlashed})`, {
-                    method: "PATCH",
-                    credentials: "omit",
-                    headers: {
-                      "apikey": SUPABASE_ANON_KEY,
-                      "Authorization": `Bearer ${accessToken}`,
-                      "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ image_url: finalImageUrl })
-                  });
-                } catch (e) {}
-
-                try {
-                  await fetch(`${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&or=(card_id.eq.${encClean},card_id.eq.${encSlashed})`, {
-                    method: "PATCH",
-                    credentials: "omit",
-                    headers: {
-                      "apikey": SUPABASE_ANON_KEY,
-                      "Authorization": `Bearer ${accessToken}`,
-                      "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ image_url: finalImageUrl })
-                  });
-                } catch (e) {}
-              }
-
-            } catch (syncErr) {
-              console.error("Failed syncing clipped image to Supabase:", syncErr);
             }
 
-            sendResponse({ success: true, imageUrl: finalImageUrl });
-          } catch (err) {
-            console.error("Failed to save clipped image:", err);
-            sendResponse({ error: err.message });
+            const cleanCardId = cardId.replace(/^\/+/, '');
+            const slashedCardId = '/' + cleanCardId;
+
+            // 1. Upsert into global card_images table for both clean and slashed card_id formats
+            const imgDataArray = [
+              {
+                card_id: cleanCardId,
+                tcg: tcg,
+                image_url: finalImageUrl,
+                updated_at: new Date().toISOString()
+              },
+              {
+                card_id: slashedCardId,
+                tcg: tcg,
+                image_url: finalImageUrl,
+                updated_at: new Date().toISOString()
+              }
+            ];
+
+            const imgRes = await fetch(`${SUPABASE_URL}/rest/v1/card_images`, {
+              method: "POST",
+              credentials: "omit",
+              headers: {
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates"
+              },
+              body: JSON.stringify(imgDataArray)
+            });
+
+            if (!imgRes.ok) {
+              console.error("Failed to upload clipped image to card_images:", imgRes.status, await imgRes.text());
+            }
+
+            // 2. Update private marked_cards and collection_cards if bookmarked for logged-in user
+            const userId = session?.user?.id;
+            if (userId) {
+              const encClean = encodeURIComponent(cleanCardId);
+              const encSlashed = encodeURIComponent(slashedCardId);
+
+              try {
+                await fetch(`${SUPABASE_URL}/rest/v1/marked_cards?user_id=eq.${userId}&or=(card_id.eq.${encClean},card_id.eq.${encSlashed})`, {
+                  method: "PATCH",
+                  credentials: "omit",
+                  headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${accessToken}`,
+                    "Content-Type": "application/json"
+                  },
+                  body: JSON.stringify({ image_url: finalImageUrl })
+                });
+              } catch (e) {}
+
+              try {
+                await fetch(`${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&or=(card_id.eq.${encClean},card_id.eq.${encSlashed})`, {
+                  method: "PATCH",
+                  credentials: "omit",
+                  headers: {
+                    "apikey": SUPABASE_ANON_KEY,
+                    "Authorization": `Bearer ${accessToken}`,
+                    "Content-Type": "application/json"
+                  },
+                  body: JSON.stringify({ image_url: finalImageUrl })
+                });
+              } catch (e) {}
+            }
+
+          } catch (syncErr) {
+            console.error("Failed syncing clipped image to Supabase:", syncErr);
           }
-        })();
+
+          sendResponse({ success: true, imageUrl: finalImageUrl });
+        } catch (err) {
+          console.error("Failed to save clipped image:", err);
+          sendResponse({ error: err.message });
+        }
       }
 
       else if (message.action === "getClippedImages") {
         const { cardId } = message;
-        (async () => {
-          try {
-            const { clippedImages = [] } = await chrome.storage.local.get('clippedImages');
-            const filtered = cardId 
-              ? clippedImages.filter(img => img.cardId === cardId)
-              : clippedImages;
-            sendResponse({ success: true, images: filtered });
-          } catch (err) {
-            console.error("Failed to get clipped images:", err);
-            sendResponse({ error: err.message });
-          }
-        })();
+        try {
+          const { clippedImages = [] } = await chrome.storage.local.get('clippedImages');
+          const filtered = cardId 
+            ? clippedImages.filter(img => img.cardId === cardId)
+            : clippedImages;
+          sendResponse({ success: true, images: filtered });
+        } catch (err) {
+          console.error("Failed to get clipped images:", err);
+          sendResponse({ error: err.message });
+        }
       }
 
       else if (message.action === "deleteClippedImage") {
         const { cardId, image, timestamp } = message;
-        (async () => {
-          try {
-            const { clippedImages = [] } = await chrome.storage.local.get('clippedImages');
-            const updated = clippedImages.filter(img => {
-              if (timestamp && img.timestamp === timestamp) return false;
-              if (img.cardId === cardId && img.image === image) return false;
-              return true;
-            });
-            await chrome.storage.local.set({ clippedImages: updated });
-            
-            // Return updated list of remaining images for this cardId
-            const filtered = cardId 
-              ? updated.filter(img => img.cardId === cardId)
-              : updated;
-            sendResponse({ success: true, images: filtered });
-          } catch (err) {
-            console.error("Failed to delete clipped image:", err);
-            sendResponse({ error: err.message });
-          }
-        })();
+        try {
+          const { clippedImages = [] } = await chrome.storage.local.get('clippedImages');
+          const updated = clippedImages.filter(img => {
+            if (timestamp && img.timestamp === timestamp) return false;
+            if (img.cardId === cardId && img.image === image) return false;
+            return true;
+          });
+          await chrome.storage.local.set({ clippedImages: updated });
+          
+          // Return updated list of remaining images for this cardId
+          const filtered = cardId 
+            ? updated.filter(img => img.cardId === cardId)
+            : updated;
+          sendResponse({ success: true, images: filtered });
+        } catch (err) {
+          console.error("Failed to delete clipped image:", err);
+          sendResponse({ error: err.message });
+        }
       }
     } catch (err) {
       console.error("Error handling message:", err);
