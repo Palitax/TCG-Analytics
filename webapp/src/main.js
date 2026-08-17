@@ -3891,6 +3891,7 @@ function buildCardmarketSearchUrl(item) {
   }
 
   let cleanName = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
+  let cleanSet = (rawSet || '').trim();
   
   if (!code) {
     const codeMatch = rawFullName.match(/(\d+[\/\-]\d+|\b\d+\b)/);
