@@ -87,14 +87,14 @@ function renderFilterBadges(filterInfo, rawCond, rawLang) {
   const langFlag = getLanguageFlag(cardLang);
 
   return `
-    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
-      <span style="background: rgba(251, 133, 0, 0.2); color: #fb8500; border: 1px solid rgba(251, 133, 0, 0.4); padding: 4px 10px; border-radius: 8px; font-weight: 700; font-size: 0.85rem;" title="Zustand">
+    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
+      <span style="background: rgba(255, 255, 255, 0.08); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.12); padding: 2px 8px; border-radius: 6px; font-weight: 600; font-size: 0.75rem;" title="Zustand">
         ${cond}
       </span>
-      <span style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); padding: 4px 10px; border-radius: 8px; font-size: 0.85rem; color: #fff; display: inline-flex; align-items: center; gap: 4px;" title="Verkäufer Standort: ${sellerCountry}">
+      <span style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; color: #a1a1aa; display: inline-flex; align-items: center; gap: 4px;" title="Verkäufer Standort: ${sellerCountry}">
         ${sellerFlag} ${sellerCountry}
       </span>
-      <span style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); padding: 4px 10px; border-radius: 8px; font-size: 0.85rem; color: #fff; display: inline-flex; align-items: center; gap: 4px;" title="Kartensprache: ${cardLang}">
+      <span style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; color: #a1a1aa; display: inline-flex; align-items: center; gap: 4px;" title="Kartensprache: ${cardLang}">
         ${langFlag} ${cardLang}
       </span>
     </div>
@@ -315,7 +315,7 @@ export class StreamOverlay {
               <span class="stat-val" style="color: #10b981;">${this.totalSoldValue.toFixed(2)} €</span>
             </div>
           </div>
-          <button class="btn btn-primary btn-lg" id="so-restart-btn" style="padding: 0.9rem 2rem; font-size: 1.1rem; border-radius: 14px; font-weight: 700; margin-top: 1rem; background: linear-gradient(135deg, #fb8500, #ff9e00); border: none; color: #fff; cursor: pointer;">
+          <button class="btn btn-primary btn-lg" id="so-restart-btn" style="margin-top: 1rem;">
             🔄 Session neu starten
           </button>
         </div>
@@ -361,7 +361,7 @@ export class StreamOverlay {
 
           <div style="display: flex; align-items: center; gap: 1rem;">
             <div class="so-session-summary">
-              <span>Umsatz: <strong>${this.totalSoldValue.toFixed(2)} €</strong></span>
+              <span>Umsatz: <strong style="color: #22c55e;">${this.totalSoldValue.toFixed(2)} €</strong></span>
             </div>
             <button class="so-btn-fs-trigger" id="so-fs-trigger-btn" title="Vollbild Modus für iPad">
               ${this.isFullscreen ? '↙ Beenden' : '⛶ Vollbild'}
@@ -373,17 +373,16 @@ export class StreamOverlay {
           <div class="so-image-container">
             ${imageSrc ? `<img src="${imageSrc}" alt="${cardName}" class="so-card-img" onerror="this.onerror=null; this.src='/logo.png';" />` : `
               <div class="so-no-img-box">
-                <div style="font-size: 3.5rem; margin-bottom: 0.5rem; opacity: 0.6;">🖼️</div>
-                <div style="color: #a1a1aa; font-weight: 600; font-size: 0.95rem;">Kein Bild in DB</div>
+                <div style="font-size: 2.5rem; margin-bottom: 0.5rem; opacity: 0.6;">🖼️</div>
+                <div style="color: #a1a1aa; font-weight: 500; font-size: 0.875rem;">Kein Bild in DB</div>
               </div>
             `}
           </div>
 
-
           <div class="so-details-container">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <div class="so-card-badge">${cardCode}</div>
-              <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 6px 14px; font-size: 0.85rem; background: rgba(251, 133, 0, 0.15); border: 1px solid rgba(251, 133, 0, 0.4); color: #fb8500; border-radius: 8px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;">
+              <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
                 Check price now ↗
               </a>
             </div>

@@ -1515,47 +1515,15 @@ function showLogoutModal() {
   const modal = document.createElement('div');
   modal.className = 'custom-modal-overlay';
   modal.innerHTML = `
-    <div class="custom-modal glass-panel">
-      <h3 style="margin-top: 0; color: var(--text-primary); font-size: 1.1rem; font-weight: 700;">Abmelden</h3>
-      <p style="color: var(--text-secondary); font-size: 0.88rem; line-height: 1.5; margin: 8px 0 20px 0;">
+    <div class="custom-modal">
+      <h3 style="margin-top: 0; color: #ffffff; font-size: 1.1rem; font-weight: 600;">Abmelden</h3>
+      <p style="color: var(--text-secondary); font-size: 0.875rem; line-height: 1.5; margin: 4px 0 16px 0;">
         Möchtest du dich abmelden oder den Google-Account wechseln?
       </p>
       <div style="display: flex; flex-direction: column; gap: 8px;">
-        <button id="modal-btn-switch" style="
-          background-color: var(--primary);
-          color: white;
-          border: none;
-          border-radius: 8px;
-          padding: 10px;
-          font-size: 0.88rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background-color 0.2s;
-        ">Google-Account wechseln</button>
-        
-        <button id="modal-btn-logout" style="
-          background-color: rgba(239, 68, 68, 0.15);
-          color: #ef4444;
-          border: 1px solid rgba(239, 68, 68, 0.3);
-          border-radius: 8px;
-          padding: 10px;
-          font-size: 0.88rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background-color 0.2s;
-        ">Ausloggen</button>
-        
-        <button id="modal-btn-cancel" style="
-          background-color: transparent;
-          color: var(--text-muted);
-          border: 1px solid var(--border-glass);
-          border-radius: 8px;
-          padding: 10px;
-          font-size: 0.88rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background-color 0.2s;
-        ">Abbrechen</button>
+        <button id="modal-btn-switch" class="btn btn-primary">Google-Account wechseln</button>
+        <button id="modal-btn-logout" class="btn btn-destructive">Ausloggen</button>
+        <button id="modal-btn-cancel" class="btn btn-secondary">Abbrechen</button>
       </div>
     </div>
   `;
@@ -2540,8 +2508,8 @@ function drawCollectionChart(chartContainer, historyData) {
 
   // Create gradient
   const gradient = ctx.createLinearGradient(0, 0, 0, 180);
-  gradient.addColorStop(0, 'rgba(16, 185, 129, 0.22)');
-  gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+  gradient.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+  gradient.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
 
   new Chart(ctx, {
     type: 'line',
@@ -2550,16 +2518,16 @@ function drawCollectionChart(chartContainer, historyData) {
       datasets: [{
         label: 'Wert',
         data: values,
-        borderColor: '#10b981',
+        borderColor: '#ffffff',
         borderWidth: 2,
         backgroundColor: gradient,
         fill: true,
         tension: 0.3,
         pointRadius: values.length < 15 ? 3 : 0,
-        pointHoverRadius: 6,
-        pointBackgroundColor: '#10b981',
-        pointBorderColor: '#ffffff',
-        pointBorderWidth: 1.5
+        pointHoverRadius: 5,
+        pointBackgroundColor: '#ffffff',
+        pointBorderColor: '#09090b',
+        pointBorderWidth: 2
       }]
     },
     options: {
@@ -2572,8 +2540,8 @@ function drawCollectionChart(chartContainer, historyData) {
         tooltip: {
           mode: 'index',
           intersect: false,
-          backgroundColor: 'rgba(15, 23, 42, 0.95)',
-          titleColor: '#94a3b8',
+          backgroundColor: '#18181b',
+          titleColor: '#a1a1aa',
           bodyColor: '#ffffff',
           borderColor: 'rgba(255, 255, 255, 0.1)',
           borderWidth: 1,
@@ -5092,10 +5060,10 @@ function renderDetail(container) {
     const canvas = chartSection.querySelector('#detailsValueChart');
     const ctx = canvas.getContext('2d');
 
-    // Create gradient using var(--primary) which is #fb8500
+    // Create minimalist shadcn monochrome gradient
     const gradient = ctx.createLinearGradient(0, 0, 0, 180);
-    gradient.addColorStop(0, 'rgba(251, 133, 0, 0.25)');
-    gradient.addColorStop(1, 'rgba(251, 133, 0, 0.0)');
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
 
     new Chart(ctx, {
       type: 'line',
@@ -5104,16 +5072,16 @@ function renderDetail(container) {
         datasets: [{
           label: 'Preis',
           data: prices,
-          borderColor: '#fb8500',
+          borderColor: '#ffffff',
           borderWidth: 2,
           backgroundColor: gradient,
           fill: true,
           tension: 0.3,
           pointRadius: prices.length < 15 ? 3 : 0,
-          pointHoverRadius: 6,
-          pointBackgroundColor: '#fb8500',
-          pointBorderColor: '#ffffff',
-          pointBorderWidth: 1.5
+          pointHoverRadius: 5,
+          pointBackgroundColor: '#ffffff',
+          pointBorderColor: '#09090b',
+          pointBorderWidth: 2
         }]
       },
       options: {
@@ -5126,8 +5094,8 @@ function renderDetail(container) {
           tooltip: {
             mode: 'index',
             intersect: false,
-            backgroundColor: 'rgba(15, 23, 42, 0.95)',
-            titleColor: '#94a3b8',
+            backgroundColor: '#18181b',
+            titleColor: '#a1a1aa',
             bodyColor: '#ffffff',
             borderColor: 'rgba(255, 255, 255, 0.1)',
             borderWidth: 1,
