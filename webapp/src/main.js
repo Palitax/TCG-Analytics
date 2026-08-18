@@ -3925,9 +3925,9 @@ function renderBulkScanTab(container) {
             <svg style="width: 22px; height: 22px; color: #a1a1aa;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            Bulk Scan & CSV Importer
+            Bulk Scan & Whatnot CSV Importer
           </h2>
-          <p style="color: #94a3b8; font-size: 0.9rem; margin: 0;">Lade eine PaperStream Index-CSV oder Standard-Karten-CSV hoch, um Kartendaten & Marktpreise abzufragen.</p>
+          <p style="color: #94a3b8; font-size: 0.9rem; margin: 0;">Lade eine Whatnot Bulk-Upload CSV (z. B. aus ScanConverter3000) oder PaperStream / TCG CSV hoch, um Kartendaten & Marktpreise abzufragen.</p>
         </div>
         <button class="shadcn-btn shadcn-btn-secondary" id="btn-new-csv-upload" style="display: none;">
           <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -3943,7 +3943,7 @@ function renderBulkScanTab(container) {
             <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
         </div>
-        <h3 style="color: #f8fafc; font-size: 1.15rem; margin: 0 0 0.5rem 0; font-weight: 700;">PaperStream / TCG CSV-Datei hier ablegen</h3>
+        <h3 style="color: #f8fafc; font-size: 1.15rem; margin: 0 0 0.5rem 0; font-weight: 700;">Whatnot / ScanConverter3000 / TCG CSV-Datei hier ablegen</h3>
         <p style="color: #94a3b8; font-size: 0.9rem; margin: 0 0 1.25rem 0;">oder Klicke auf die gesamte Fläche zum Durchsuchen deiner Dateien</p>
         <input type="file" id="csv-file-input" accept=".csv,.txt" style="display: none;" />
         <button class="shadcn-btn shadcn-btn-primary" id="btn-select-csv" type="button">
@@ -4319,14 +4319,15 @@ function renderBulkScanTab(container) {
   });
 
   btnExportCsv.addEventListener('click', () => {
-    const csvContent = bulkScannerInstance.exportEnrichedCSV();
+    const hasWhatnot = bulkScannerInstance.scanItems.some(item => item.whatnot && (item.whatnot.titel || item.whatnot.unterkategorie));
+    const csvContent = hasWhatnot ? bulkScannerInstance.exportWhatnotCSV() : bulkScannerInstance.exportEnrichedCSV();
     if (!csvContent) return;
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `card_tracker_scans_${Date.now()}.csv`);
+    link.setAttribute('download', hasWhatnot ? `whatnot_upload_${Date.now()}.csv` : `card_tracker_scans_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

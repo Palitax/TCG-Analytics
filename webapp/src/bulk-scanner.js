@@ -1,5 +1,14 @@
-import { parseCSV, normalizeScanData, extractCardCode } from './csv-parser.js';
+import { parseCSV, normalizeScanData, extractCardCode, WHATNOT_COLUMNS } from './csv-parser.js';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase.js';
+
+export function escapeCsvCell(val) {
+  if (val === undefined || val === null) return '';
+  const str = String(val);
+  if (str.includes(',') || str.includes(';') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
 
 export class BulkScanner {
   constructor(options = {}) {
@@ -35,7 +44,6 @@ export class BulkScanner {
       item.lastCheckDate = null;
       item.lastCheckRelative = null;
       item.filterInfo = null;
-      item.imageUrl = null;
       return item;
     }
 
@@ -47,7 +55,6 @@ export class BulkScanner {
 
       let bestRecord = null;
 
-      const rawFullName = item.detectedName || item.rawName || '';
       let cardNameClean = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
       if (cardNameClean.toLowerCase() === 'karte') cardNameClean = '';
 
@@ -117,8 +124,6 @@ export class BulkScanner {
 
       // Stage 4: Search by exact full code search terms
       if (!bestRecord && code) {
-        const safeCode = code.replace(/[\/\\%_]/g, '');
-        const altCode = code.replace('/', '-');
         const searchTerms = [code];
         if (altCode && altCode !== code) searchTerms.push(altCode);
         if (safeCode && !searchTerms.includes(safeCode)) searchTerms.push(safeCode);
@@ -159,8 +164,9 @@ export class BulkScanner {
         }
         item.cardDetails = { cardmarket_url: bestRecord.card_id };
 
+        // Keep existing scan image from Whatnot CSV or fetch from DB
         const fetchedImg = await fetchCardImageFromDB(bestRecord.card_id, code, cleanName);
-        item.imageUrl = fetchedImg || parseImageUrlFromComment(bestRecord.comment) || item.imageUrl || null;
+        item.imageUrl = item.imageUrl || fetchedImg || parseImageUrlFromComment(bestRecord.comment) || null;
 
         return item;
       }
@@ -170,8 +176,10 @@ export class BulkScanner {
       item.lastCheckDate = null;
       item.lastCheckRelative = null;
       item.filterInfo = defaultFilterInfo;
-      const fallbackImg = await fetchCardImageFromDB(null, code, cleanName);
-      if (fallbackImg) item.imageUrl = fallbackImg;
+      if (!item.imageUrl) {
+        const fallbackImg = await fetchCardImageFromDB(null, code, cleanName);
+        if (fallbackImg) item.imageUrl = fallbackImg;
+      }
 
       return item;
     } catch (e) {
@@ -202,6 +210,55 @@ export class BulkScanner {
     ]);
 
     return [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
+  }
+
+  exportWhatnotCSV() {
+    if (this.scanItems.length === 0) return null;
+
+    const headerRow = WHATNOT_COLUMNS.map(escapeCsvCell).join(',');
+    const rows = this.scanItems.map((item) => {
+      const w = item.whatnot || {};
+      const offerValue =
+        w.angeboteAnnehmen === 'Ja' ||
+        w.angeboteAnnehmen === 'TRUE' ||
+        w.angeboteAnnehmen === 'true' ||
+        w.angeboteAnnehmen === 'WAHR'
+          ? 'TRUE'
+          : 'FALSE';
+
+      const priceVal =
+        item.lastPrice !== null && item.lastPrice !== undefined
+          ? Math.max(1, Math.round(item.lastPrice)).toString()
+          : (w.preis ?? item.rawPrice ?? '1').toString();
+
+      const cells = [
+        w.kategorie || 'Trading Card Games',
+        w.unterkategorie || (item.tcg === 'OnePiece' ? 'One-Piece-Karten' : 'Pokémon-Karten'),
+        w.titel || item.detectedName || item.rawName || '',
+        w.beschreibung || '',
+        w.menge ?? item.quantity ?? 1,
+        w.verkaufsformat || 'Auktion',
+        priceVal,
+        w.versandprofil || 'Single (15 g)',
+        offerValue,
+        w.gefahrgut || 'Not Hazmat',
+        w.zustand || (item.rawCondition === 'NM' ? 'Near Mint' : item.rawCondition) || 'Near Mint',
+        w.stueckpreis || '',
+        w.artikelnummer || `CARD-${String(item.index || 1).padStart(4, '0')}`,
+        w.bildUrl1 || item.imageUrl || '',
+        w.bildUrl2 || item.imageBackUrl || '',
+        w.bildUrl3 || '',
+        w.bildUrl4 || '',
+        w.bildUrl5 || '',
+        w.bildUrl6 || '',
+        w.bildUrl7 || '',
+        w.bildUrl8 || '',
+      ];
+      return cells.map(escapeCsvCell).join(',');
+    });
+
+    // UTF-8 BOM + Header + Rows
+    return '\uFEFF' + [headerRow, ...rows].join('\r\n');
   }
 }
 
