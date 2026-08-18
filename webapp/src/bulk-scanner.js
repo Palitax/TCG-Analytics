@@ -1,4 +1,5 @@
 import { parseCSV, normalizeScanData, extractCardCode, WHATNOT_COLUMNS } from './csv-parser.js';
+import { getGermanCardDetails } from './tcg-translations.js';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase.js';
 
 export function escapeCsvCell(val) {
@@ -163,6 +164,10 @@ export class BulkScanner {
           item.detectedName = extractedName || item.rawName || 'Karte';
         }
         item.cardDetails = { cardmarket_url: bestRecord.card_id };
+
+        const germanDetails = getGermanCardDetails(item);
+        item.nameDe = germanDetails.nameDe;
+        item.setNameDe = germanDetails.setNameDe;
 
         // Keep existing scan image from Whatnot CSV or fetch from DB
         const fetchedImg = await fetchCardImageFromDB(bestRecord.card_id, code, cleanName);

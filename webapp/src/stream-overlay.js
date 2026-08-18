@@ -1,3 +1,5 @@
+import { getGermanCardDetails } from './tcg-translations.js';
+
 function getCardmarketSearchUrl(item) {
   if (item.cardDetails?.cardmarket_url) {
     const path = item.cardDetails.cardmarket_url.startsWith('/') ? item.cardDetails.cardmarket_url : `/${item.cardDetails.cardmarket_url}`;
@@ -123,9 +125,10 @@ export class StreamOverlay {
     this.container = container;
     this.queue = options.queue || [];
     this.currentIndex = 0;
-    this.totalSoldValue = 0;
     this.isFullscreen = false;
     this.isTransitioning = false;
+    this.isListOpen = false;
+    this.searchTerm = '';
     this.onProgress = options.onProgress || null;
     this.onChange = options.onChange || null;
     this.keyListener = null;
@@ -135,20 +138,42 @@ export class StreamOverlay {
 
   bindKeyboardShortcuts() {
     this.keyListener = (e) => {
-      // Avoid triggering when user is typing in an input
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+      // If typing in input, only handle Escape
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
+        if (e.code === 'Escape') {
+          this.closeListModal();
+        }
+        return;
+      }
 
-      if (e.code === 'Space' || e.code === 'Enter') {
+      if (e.code === 'KeyL') {
         e.preventDefault();
-        const soldBtn = this.container?.querySelector('#so-sold-btn');
-        if (soldBtn) soldBtn.classList.add('sold-animated');
-        this.markAsSold();
+        this.toggleListModal();
+      } else if (e.code === 'Escape') {
+        if (this.isListOpen) {
+          e.preventDefault();
+          this.closeListModal();
+        } else if (this.isFullscreen) {
+          e.preventDefault();
+          this.toggleFullscreen();
+        }
+      } else if (e.code === 'Space' || e.code === 'Enter') {
+        if (!this.isListOpen) {
+          e.preventDefault();
+          const soldBtn = this.container?.querySelector('#so-sold-btn');
+          if (soldBtn) soldBtn.classList.add('sold-animated');
+          this.markAsSold();
+        }
       } else if (e.code === 'ArrowRight') {
-        e.preventDefault();
-        this.nextCard();
+        if (!this.isListOpen) {
+          e.preventDefault();
+          this.nextCard();
+        }
       } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        this.prevCard();
+        if (!this.isListOpen) {
+          e.preventDefault();
+          this.prevCard();
+        }
       } else if (e.code === 'KeyF') {
         e.preventDefault();
         this.toggleFullscreen();
@@ -167,9 +192,28 @@ export class StreamOverlay {
   loadQueue(items) {
     this.queue = items || [];
     this.currentIndex = 0;
-    this.totalSoldValue = 0;
+    this.isListOpen = false;
+    this.searchTerm = '';
     this.render();
     if (this.onChange) this.onChange(this.queue, this.currentIndex);
+  }
+
+  jumpToCard(index) {
+    if (index < 0 || index >= this.queue.length) return;
+    this.currentIndex = index;
+    this.isListOpen = false;
+    this.render();
+    if (this.onChange) this.onChange(this.queue, this.currentIndex);
+  }
+
+  toggleListModal() {
+    this.isListOpen = !this.isListOpen;
+    this.render();
+  }
+
+  closeListModal() {
+    this.isListOpen = false;
+    this.render();
   }
 
   nextCard() {
@@ -234,11 +278,6 @@ export class StreamOverlay {
     if (grid) grid.classList.add('so-slide-out');
 
     setTimeout(() => {
-      const card = this.queue[this.currentIndex];
-      if (card) {
-        const price = card.lastPrice !== null && card.lastPrice !== undefined ? card.lastPrice : 0;
-        this.totalSoldValue += price;
-      }
       if (this.currentIndex < this.queue.length - 1) {
         this.currentIndex++;
       } else {
@@ -282,6 +321,92 @@ export class StreamOverlay {
     this.render();
   }
 
+  renderListDrawerHtml(totalCards) {
+    const q = (this.searchTerm || '').toLowerCase().trim();
+    const filtered = this.queue.map((card, idx) => ({ card, originalIndex: idx })).filter(({ card, originalIndex }) => {
+      if (!q) return true;
+      const details = getGermanCardDetails(card);
+      const nameDe = (card.nameDe || details.nameDe || '').toLowerCase();
+      const nameEn = (card.nameEn || card.detectedName || card.rawName || '').toLowerCase();
+      const setName = (card.setNameDe || details.setNameDe || '').toLowerCase();
+      const code = (card.detectedCode || card.rawCode || '').toLowerCase();
+      const indexStr = String(originalIndex + 1);
+      return nameDe.includes(q) || nameEn.includes(q) || setName.includes(q) || code.includes(q) || indexStr === q;
+    });
+
+    return `
+      <div class="so-list-drawer-backdrop" id="so-list-backdrop">
+        <div class="so-list-drawer" id="so-list-drawer">
+          <div class="so-list-header">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 1.25rem;">📋</span>
+              <div>
+                <h2 style="font-size: 1.1rem; font-weight: 700; color: #ffffff; margin: 0;">Karten-Übersicht</h2>
+                <div style="font-size: 0.75rem; color: #a1a1aa;">${totalCards} Karten in der Queue</div>
+              </div>
+            </div>
+            <button class="so-list-close-btn" id="so-list-close-btn" title="Schließen (Esc)">✕</button>
+          </div>
+
+          <div class="so-list-search-bar">
+            <div style="position: relative;">
+              <input type="text" class="so-list-search-input" id="so-list-search-inp" placeholder="Karte, Set, Nummer oder Code suchen..." value="${this.searchTerm || ''}" />
+              ${this.searchTerm ? `<button id="so-list-clear-search" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #a1a1aa; cursor: pointer; font-size: 0.9rem;">✕</button>` : ''}
+            </div>
+          </div>
+
+          <div class="so-list-scroll">
+            ${filtered.length === 0 ? `
+              <div style="text-align: center; padding: 48px 20px; color: #71717a;">
+                Keine Karten für "<strong>${this.searchTerm}</strong>" gefunden.
+              </div>
+            ` : filtered.map(({ card, originalIndex }) => {
+              const details = getGermanCardDetails(card);
+              const nameDe = card.nameDe || details.nameDe;
+              const nameEn = card.nameEn || card.detectedName || '';
+              const setNameDe = card.setNameDe || details.setNameDe;
+              const cardCode = card.detectedCode || card.rawCode || '';
+              const isCurrent = originalIndex === this.currentIndex;
+              const isSold = originalIndex < this.currentIndex;
+              const hasPrice = card.lastPrice !== null && card.lastPrice !== undefined;
+              const priceDisplay = hasPrice ? `${card.lastPrice.toFixed(2)} €` : '-';
+              const rawImage = card.imageUrl || card.cardDetails?.image_url || null;
+              const imageSrc = getProxiedImageUrl(rawImage);
+              const langFlag = getLanguageFlag(card.rawLanguage);
+
+              return `
+                <div class="so-list-card-item ${isCurrent ? 'is-current' : ''} ${isSold ? 'is-sold' : ''}" data-card-idx="${originalIndex}">
+                  <div class="so-list-index-badge">#${originalIndex + 1}</div>
+                  ${imageSrc ? `<img src="${imageSrc}" class="so-list-thumb" alt="Thumb" onerror="this.onerror=null; this.src='/logo.png';" />` : `
+                    <div class="so-list-thumb-placeholder">🃏</div>
+                  `}
+                  <div class="so-list-info">
+                    <div class="so-list-title-de">${nameDe}</div>
+                    ${nameEn && nameEn !== nameDe ? `<div class="so-list-title-en">${nameEn}</div>` : ''}
+                    <div class="so-list-set-code">
+                      <span>${setNameDe}</span>
+                      ${cardCode ? `<span>• <strong>${cardCode}</strong></span>` : ''}
+                    </div>
+                    <div style="display: flex; gap: 6px; margin-top: 4px; align-items: center; flex-wrap: wrap;">
+                      <span class="so-list-pill">${card.rawCondition || 'NM'}</span>
+                      <span class="so-list-pill">${langFlag} ${card.rawLanguage || 'EN'}</span>
+                      ${isCurrent ? `<span class="so-list-status-badge current">Aktiv</span>` : ''}
+                      ${isSold ? `<span class="so-list-status-badge sold">✓ Verkauft</span>` : ''}
+                    </div>
+                  </div>
+                  <div class="so-list-price">
+                    <div>${priceDisplay}</div>
+                    <div style="font-size: 0.6875rem; color: #71717a; font-weight: 500;">CM Preis</div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   render() {
     if (!this.container) return;
 
@@ -318,37 +443,51 @@ export class StreamOverlay {
           <h1 style="font-size: 2.2rem; font-weight: 800; margin: 0.5rem 0; color: #ffffff;">Alle Karten verkauft!</h1>
           <div class="session-stats">
             <div class="stat-box">
-              <span class="stat-label">Gesamtverkäufe</span>
+              <span class="stat-label">Gesamtkarten</span>
               <span class="stat-val">${totalCards} Karten</span>
             </div>
-            <div class="stat-box accent">
-              <span class="stat-label">Erzielter Umsatz</span>
-              <span class="stat-val" style="color: #22c55e;">${this.totalSoldValue.toFixed(2)} €</span>
-            </div>
           </div>
-          <button class="btn btn-primary btn-lg" id="so-restart-btn" style="margin-top: 1rem;">
-            <svg style="width: 16px; height: 16px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Session neu starten
-          </button>
+          <div style="display: flex; gap: 12px; margin-top: 1rem; flex-wrap: wrap; justify-content: center;">
+            <button class="btn btn-primary btn-lg" id="so-restart-btn">
+              <svg style="width: 16px; height: 16px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Session neu starten
+            </button>
+            <button class="btn btn-secondary btn-lg" id="so-finish-list-btn">
+              📋 Karten-Liste ansehen
+            </button>
+          </div>
         </div>
+        ${this.isListOpen ? this.renderListDrawerHtml(totalCards) : ''}
       `;
 
       const restartBtn = this.container.querySelector('#so-restart-btn');
       if (restartBtn) {
         restartBtn.addEventListener('click', () => {
           this.currentIndex = 0;
-          this.totalSoldValue = 0;
           this.render();
         });
       }
+
+      const finishListBtn = this.container.querySelector('#so-finish-list-btn');
+      if (finishListBtn) {
+        finishListBtn.addEventListener('click', () => {
+          this.toggleListModal();
+        });
+      }
+
+      this.attachListDrawerEvents();
       return;
     }
 
     const currentCard = this.queue[this.currentIndex];
+    const details = getGermanCardDetails(currentCard);
     const cardCode = currentCard.detectedCode || currentCard.rawCode || 'Code k.A.';
-    const cardName = currentCard.detectedName || currentCard.rawName || 'Karte';
+    const nameDe = currentCard.nameDe || details.nameDe || 'Karte';
+    const nameEn = currentCard.nameEn || currentCard.detectedName || currentCard.rawName || '';
+    const setNameDe = currentCard.setNameDe || details.setNameDe || 'TCG Set';
+
     const hasPrice = currentCard.lastPrice !== null && currentCard.lastPrice !== undefined;
     const priceDisplay = hasPrice ? `${currentCard.lastPrice.toFixed(2)} €` : 'Keine DB-Daten';
     const checkDisplay = currentCard.lastCheckRelative || currentCard.lastCheckDate || 'Noch nicht gecheckt';
@@ -373,11 +512,11 @@ export class StreamOverlay {
             <span>Karte <strong>${this.currentIndex + 1}</strong> von <strong>${totalCards}</strong></span>
           </div>
 
-          <div style="display: flex; align-items: center; gap: 1rem;">
-            <div class="so-session-summary">
-              <span>Umsatz: <strong style="color: #22c55e;">${this.totalSoldValue.toFixed(2)} €</strong></span>
-            </div>
-            <button class="so-btn-fs-trigger" id="so-fs-trigger-btn" title="Vollbild Modus für iPad">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <button class="so-btn-list-trigger" id="so-list-trigger-btn" title="Karten-Liste öffnen (Taste L)">
+              <span>📋</span> Liste (${totalCards})
+            </button>
+            <button class="so-btn-fs-trigger" id="so-fs-trigger-btn" title="Vollbild Modus für iPad (Taste F)">
               ${this.isFullscreen ? '↙ Beenden' : '⛶ Vollbild'}
             </button>
           </div>
@@ -385,26 +524,33 @@ export class StreamOverlay {
 
         <div class="so-content-grid">
           <div class="so-image-container">
-            ${imageSrc ? `<img src="${imageSrc}" alt="${cardName}" class="so-card-img" onerror="this.onerror=null; this.src='/logo.png';" />` : `
+            ${imageSrc ? `<img src="${imageSrc}" alt="${nameDe}" class="so-card-img" onerror="this.onerror=null; this.src='/logo.png';" />` : `
               <div class="so-no-img-box">
                 <svg style="width: 44px; height: 44px; color: #71717a; margin-bottom: 8px; opacity: 0.7;" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                   <rect x="3" y="3" width="18" height="18" rx="3" />
                   <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" />
                   <path stroke-linecap="round" stroke-linejoin="round" d="M21 15l-5-5L5 21" />
                 </svg>
-                <div style="color: #a1a1aa; font-weight: 500; font-size: 0.875rem;">Kein Bild in DB</div>
+                <div style="color: #a1a1aa; font-weight: 500; font-size: 0.875rem;">Kein Scan-Bild</div>
               </div>
             `}
           </div>
 
           <div class="so-details-container">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
               <div class="so-card-badge">${cardCode}</div>
               <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
                 Check price now ↗
               </a>
             </div>
-            <h1 class="so-card-title">${cardName}</h1>
+
+            <div>
+              <h1 class="so-card-title">${nameDe}</h1>
+              ${nameEn && nameEn !== nameDe ? `<div class="so-card-subtitle-en">Original: ${nameEn}</div>` : ''}
+              <div class="so-card-set-banner">
+                <span>📁 Set: <strong>${setNameDe}</strong></span>
+              </div>
+            </div>
 
             <div class="so-price-cards">
               <div class="so-price-card primary">
@@ -435,9 +581,15 @@ export class StreamOverlay {
           </div>
         </div>
       </div>
+      ${this.isListOpen ? this.renderListDrawerHtml(totalCards) : ''}
     `;
 
     // Event Listeners
+    const listBtn = this.container.querySelector('#so-list-trigger-btn');
+    if (listBtn) {
+      listBtn.addEventListener('click', () => this.toggleListModal());
+    }
+
     const fsBtn = this.container.querySelector('#so-fs-trigger-btn');
     if (fsBtn) {
       fsBtn.addEventListener('click', () => this.toggleFullscreen());
@@ -464,6 +616,116 @@ export class StreamOverlay {
     const skipBtn = this.container.querySelector('#so-skip-btn');
     if (skipBtn) {
       skipBtn.addEventListener('click', () => this.nextCard());
+    }
+
+    this.attachListDrawerEvents();
+  }
+
+  attachListDrawerEvents() {
+    if (!this.isListOpen) return;
+
+    const backdrop = this.container.querySelector('#so-list-backdrop');
+    const closeBtn = this.container.querySelector('#so-list-close-btn');
+    const searchInp = this.container.querySelector('#so-list-search-inp');
+    const clearSearchBtn = this.container.querySelector('#so-list-clear-search');
+
+    if (backdrop) {
+      backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) {
+          this.closeListModal();
+        }
+      });
+    }
+
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => this.closeListModal());
+    }
+
+    if (searchInp) {
+      searchInp.addEventListener('input', (e) => {
+        this.searchTerm = e.target.value;
+        const scrollContainer = this.container.querySelector('.so-list-scroll');
+        if (scrollContainer) {
+          const q = (this.searchTerm || '').toLowerCase().trim();
+          const filtered = this.queue.map((card, idx) => ({ card, originalIndex: idx })).filter(({ card, originalIndex }) => {
+            if (!q) return true;
+            const details = getGermanCardDetails(card);
+            const nameDe = (card.nameDe || details.nameDe || '').toLowerCase();
+            const nameEn = (card.nameEn || card.detectedName || card.rawName || '').toLowerCase();
+            const setName = (card.setNameDe || details.setNameDe || '').toLowerCase();
+            const code = (card.detectedCode || card.rawCode || '').toLowerCase();
+            const indexStr = String(originalIndex + 1);
+            return nameDe.includes(q) || nameEn.includes(q) || setName.includes(q) || code.includes(q) || indexStr === q;
+          });
+
+          if (filtered.length === 0) {
+            scrollContainer.innerHTML = `<div style="text-align: center; padding: 48px 20px; color: #71717a;">Keine Karten für "<strong>${this.searchTerm}</strong>" gefunden.</div>`;
+          } else {
+            scrollContainer.innerHTML = filtered.map(({ card, originalIndex }) => {
+              const details = getGermanCardDetails(card);
+              const nameDe = card.nameDe || details.nameDe;
+              const nameEn = card.nameEn || card.detectedName || '';
+              const setNameDe = card.setNameDe || details.setNameDe;
+              const cardCode = card.detectedCode || card.rawCode || '';
+              const isCurrent = originalIndex === this.currentIndex;
+              const isSold = originalIndex < this.currentIndex;
+              const hasPrice = card.lastPrice !== null && card.lastPrice !== undefined;
+              const priceDisplay = hasPrice ? `${card.lastPrice.toFixed(2)} €` : '-';
+              const rawImage = card.imageUrl || card.cardDetails?.image_url || null;
+              const imageSrc = getProxiedImageUrl(rawImage);
+              const langFlag = getLanguageFlag(card.rawLanguage);
+
+              return `
+                <div class="so-list-card-item ${isCurrent ? 'is-current' : ''} ${isSold ? 'is-sold' : ''}" data-card-idx="${originalIndex}">
+                  <div class="so-list-index-badge">#${originalIndex + 1}</div>
+                  ${imageSrc ? `<img src="${imageSrc}" class="so-list-thumb" alt="Thumb" onerror="this.onerror=null; this.src='/logo.png';" />` : `
+                    <div class="so-list-thumb-placeholder">🃏</div>
+                  `}
+                  <div class="so-list-info">
+                    <div class="so-list-title-de">${nameDe}</div>
+                    ${nameEn && nameEn !== nameDe ? `<div class="so-list-title-en">${nameEn}</div>` : ''}
+                    <div class="so-list-set-code">
+                      <span>${setNameDe}</span>
+                      ${cardCode ? `<span>• <strong>${cardCode}</strong></span>` : ''}
+                    </div>
+                    <div style="display: flex; gap: 6px; margin-top: 4px; align-items: center; flex-wrap: wrap;">
+                      <span class="so-list-pill">${card.rawCondition || 'NM'}</span>
+                      <span class="so-list-pill">${langFlag} ${card.rawLanguage || 'EN'}</span>
+                      ${isCurrent ? `<span class="so-list-status-badge current">Aktiv</span>` : ''}
+                      ${isSold ? `<span class="so-list-status-badge sold">✓ Verkauft</span>` : ''}
+                    </div>
+                  </div>
+                  <div class="so-list-price">
+                    <div>${priceDisplay}</div>
+                    <div style="font-size: 0.6875rem; color: #71717a; font-weight: 500;">CM Preis</div>
+                  </div>
+                </div>
+              `;
+            }).join('');
+          }
+        }
+      });
+    }
+
+    if (clearSearchBtn) {
+      clearSearchBtn.addEventListener('click', () => {
+        this.searchTerm = '';
+        this.render();
+      });
+    }
+
+    // Card item click handler delegation
+    const scrollEl = this.container.querySelector('.so-list-scroll');
+    if (scrollEl) {
+      scrollEl.addEventListener('click', (e) => {
+        const itemEl = e.target.closest('.so-list-card-item');
+        if (itemEl) {
+          const idx = parseInt(itemEl.getAttribute('data-card-idx'), 10);
+          if (!isNaN(idx)) {
+            this.jumpToCard(idx);
+          }
+        }
+      });
     }
   }
 }

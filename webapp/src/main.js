@@ -4143,6 +4143,10 @@ function renderBulkScanTab(container) {
       const cmUrl = buildCardmarketSearchUrl(item);
       const imgMarkup = item.imageUrl ? `<img src="${getProxiedImageUrl(item.imageUrl)}" class="scan-card-thumb" style="width: 28px; height: 38px; object-fit: cover; border-radius: 4px; cursor: pointer; border: 1px solid rgba(255,255,255,0.2);" alt="Thumb" title="Klicken für Großansicht" />` : '';
 
+      const nameDe = item.nameDe || item.detectedName || item.rawName || 'Karte';
+      const nameEn = item.nameEn || item.detectedName || '';
+      const setNameDe = item.setNameDe || item.rawSet || '';
+
       tr.innerHTML = `
         <td>${index + 1}</td>
         <td>
@@ -4151,7 +4155,13 @@ function renderBulkScanTab(container) {
             <input type="text" class="form-input code-input" value="${item.detectedCode || ''}" style="width: 100px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 8px;" />
           </div>
         </td>
-        <td><strong>${item.detectedName || item.rawName || 'Karte'}</strong></td>
+        <td>
+          <div>
+            <strong>${nameDe}</strong>
+            ${nameEn && nameEn !== nameDe ? `<span style="color: #a1a1aa; font-size: 0.75rem; margin-left: 4px;">(${nameEn})</span>` : ''}
+          </div>
+          ${setNameDe ? `<div style="color: #71717a; font-size: 0.75rem; margin-top: 2px;">📁 ${setNameDe}</div>` : ''}
+        </td>
         <td style="color: ${hasPrice ? '#10b981' : '#94a3b8'}; font-weight: 700;">${priceText}</td>
         <td style="color: #94a3b8; font-size: 0.85rem;">${checkDetails}</td>
         <td>

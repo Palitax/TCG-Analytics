@@ -4,6 +4,8 @@
  * and backwards-compatible with PaperStream / OCR scan exports.
  */
 
+import { getGermanCardDetails } from './tcg-translations.js';
+
 export const WHATNOT_COLUMNS = [
   'Kategorie',
   'Unterkategorie',
@@ -553,12 +555,24 @@ export function normalizeScanData(parsedCSV) {
       bildUrl8: wBildUrl8,
     };
 
+    const germanDetails = getGermanCardDetails({
+      detectedName,
+      rawName: wTitel || detectedName,
+      rawSet: row['set'] || row['expansion'] || '',
+      detectedCode,
+      rawCode: rawLegacyCode || detectedCode || '',
+      tcg: detectedTcg,
+    });
+
     return {
       id: `scan_${Date.now()}_${index}`,
       index: index + 1,
       rawCode: rawLegacyCode || detectedCode || '',
       rawName: wTitel || detectedName,
       rawSet: row['set'] || row['expansion'] || '',
+      nameDe: germanDetails.nameDe,
+      setNameDe: germanDetails.setNameDe,
+      nameEn: detectedName,
       rawFile,
       rawCondition,
       rawLanguage,
