@@ -310,26 +310,35 @@ export function extractCardCode(text) {
   }
 
   // 3. Pokémon Japanese / Asian / New Gen alphanumeric set + number:
-  // e.g. CBB4C 2805/07, CBB4C 2805, sv2a 173, s12a 210/172, sv4a 009, CS1a 010/050, PAF 091/091, OBF 125/197, SVP 088
-  const jpSetNumMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|S-P|SVP|SWSH|MEW|CRZ|SSP|CEC|SCR|BS|MEP|DP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE)[-\s]*(\d{1,4})(?:\/\d{1,4})?\b/i);
+  // e.g. CBB4C 2805/07, CBB4C 1301/07, CBB4C 2805, sv2a 173, s12a 210/172, sv4a 009, CS1a 010/050, PAF 091/091, OBF 125/197, SVP 088
+  const jpSetNumMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|S-P|SVP|SWSH|MEW|CRZ|SSP|CEC|SCR|BS|MEP|DP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE)[-\s]*(\d{1,4})(?:\/(\d{1,4}))?\b/i);
   if (jpSetNumMatch) {
     const setCode = jpSetNumMatch[1].toUpperCase();
     const cardNum = jpSetNumMatch[2];
-    return `${setCode} ${cardNum}`;
+    const total = jpSetNumMatch[3];
+    return total ? `${setCode} ${cardNum}/${total}` : `${setCode} ${cardNum}`;
   }
 
-  // 3b. Generic New Gen pattern: [SetCode 2-6 chars] [CardNumber 1-4 digits] e.g. CBB4C 2805/07
-  const genericSetNumMatch = cleanText.match(/\b([A-Za-z]{2,5}\d{0,2}[A-Za-z]?)[-\s]+(\d{1,4})(?:\/\d{1,4})?\b/);
+  // 3b. Separated Set Code and Number (e.g. "Phione 1301/07 aus cBB4C" or "cBB4C Phione 1301/07")
+  const sepSetMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|S-P|SVP|SWSH|MEW|CRZ|SSP|CEC|SCR|BS|MEP|DP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE)\b/i);
+  const sepNumMatch = cleanText.match(/\b(\d{1,4}(?:\/\d{2,4})?)\b/);
+  if (sepSetMatch && sepNumMatch) {
+    return `${sepSetMatch[1].toUpperCase()} ${sepNumMatch[1]}`;
+  }
+
+  // 3c. Generic New Gen pattern: [SetCode 2-6 chars] [CardNumber 1-4 digits] e.g. CBB4C 2805/07
+  const genericSetNumMatch = cleanText.match(/\b([A-Za-z]{2,5}\d{0,2}[A-Za-z]?)[-\s]+(\d{1,4})(?:\/(\d{1,4}))?\b/);
   if (genericSetNumMatch) {
     const prefix = genericSetNumMatch[1];
     if (!/^(CARD|SKU|ITEM|SCAN|PROD|PAGE|HTTP|HTML|JPEG|PNG|FILE|TEST)$/i.test(prefix)) {
-      return `${prefix.toUpperCase()} ${genericSetNumMatch[2]}`;
+      const total = genericSetNumMatch[3];
+      return total ? `${prefix.toUpperCase()} ${genericSetNumMatch[2]}/${total}` : `${prefix.toUpperCase()} ${genericSetNumMatch[2]}`;
     }
   }
 
-  // 4. Standard Pokémon fraction numbers: #130/170, 002/070, 0/170, 0904/070, 2306/07, 196/165, 94/123
-  const fractionMatch = cleanText.match(/#?(\d{1,4}\/\d{2,3})\b/) ||
-                        cleanText.match(/\b\d{1,3}\/\d{1,3}\b/);
+  // 4. Standard Pokémon fraction numbers: #130/170, 002/070, 0/170, 0904/070, 2306/07, 196/165, 94/123, 1301/07
+  const fractionMatch = cleanText.match(/#?(\d{1,4}\/\d{2,4})\b/) ||
+                        cleanText.match(/\b\d{1,4}\/\d{2,4}\b/);
   if (fractionMatch) {
     return fractionMatch[1] || fractionMatch[0].replace(/^#/, '');
   }
@@ -399,11 +408,20 @@ export function extractCardName(title, description, rawCode) {
     return clean.split('(')[0].trim();
   }
 
-  // Remove trailing language tags like "(Japanese)", "(German)", "(English)"
+  // Remove "aus <Set>" or "from <Set>" phrases e.g. "aus cBB4C", "aus Obsidian-Flammen", "from Gem Pack Vol 4"
+  clean = clean.replace(/\s+(?:aus|from|de|in)\s+([A-Za-z0-9\-_]+(?:\s+[A-Za-z0-9\-_]+){0,3})/i, '').trim();
+
+  // Remove trailing language tags like "(Japanese)", "(German)", "(English)", "(Chinese)"
   clean = clean.replace(/\s*\([A-Za-z\s]+\)\s*\d*$/i, '').trim();
 
-  // Remove card number / code tags like "#130/170", "#OP05-119", "#002/070"
+  // Remove card number / code tags like "#130/170", "#OP05-119", "#002/070", "#1301/07"
   clean = clean.replace(/#[A-Za-z0-9\/-]+/g, '').trim();
+
+  // Remove bare fractions like "1301/07", "183/165", "002/070"
+  clean = clean.replace(/\b\d{1,4}\/\d{2,4}\b/g, '').trim();
+
+  // Remove set codes like "CBB4C", "CBB1C", "sv2a", "OP05", "PAF", etc.
+  clean = clean.replace(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SVP|S-P|SWSH|MEW|CRZ)\b/gi, '').trim();
 
   // Remove rarity tags and stars at the end like "C", "U", "R", "RR", "AR", "SAR", "SR", "UR", "SEC", "☆☆", "⭐", "★"
   clean = clean.replace(/\s+(C|U|R|RR|AR|SAR|SR|UR|SEC|HR|CSR|CHR|TR|Promo|[☆★⭐]+)\s*$/i, '').trim();
@@ -416,6 +434,9 @@ export function extractCardName(title, description, rawCode) {
     clean = clean.replace(regex, '').trim();
   }
 
+  // Remove trailing or leading dashes/hashes/spaces
+  clean = clean.replace(/^[-#\s]+|[-#\s]+$/g, '').trim();
+
   // If title was too bare, look into description: "Pokémon Phione (フィオネ) #130/170 [C] - Japanisch."
   if (!clean || clean.length < 2) {
     if (description) {
@@ -427,6 +448,82 @@ export function extractCardName(title, description, rawCode) {
   }
 
   return clean || title || 'Karte';
+}
+
+/**
+ * Parses card codes into individual search components
+ * Handles complex Asian variant codes (e.g. CBB4C 1301/07 -> Card #13, Variant V1, Set CBB4C)
+ */
+export function parseCardCodeComponents(codeStr, nameStr = '', setStr = '') {
+  if (!codeStr && !nameStr && !setStr) return null;
+  const combined = `${codeStr || ''} ${nameStr || ''} ${setStr || ''}`.trim();
+
+  // 1. Detect compound Asian/Chinese set variant e.g. "CBB4C 1301/07", "1301/07 aus CBB4C", "1301/07"
+  const setMatch = combined.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|PAF|OBF|SVP)\b/i);
+  const setCode = setMatch ? setMatch[1].toUpperCase() : '';
+
+  const compMatch = combined.match(/\b(\d{2})(\d{2})\/(\d{2})\b/);
+  if (compMatch) {
+    const cardNum = parseInt(compMatch[1], 10).toString(); // "13"
+    const cardNumPad = compMatch[1]; // "13"
+    const variantNum = parseInt(compMatch[2], 10).toString(); // "1"
+    const variantTag = `V${variantNum}`; // "V1"
+    const totalVariants = compMatch[3]; // "07"
+    const setCardCode = setCode ? `${setCode}${cardNumPad}` : cardNumPad; // "CBB4C13"
+    const fullVariantSlug = setCode ? `${variantTag}-${setCode}${cardNumPad}` : `${variantTag}-${cardNumPad}`; // "V1-CBB4C13"
+
+    return {
+      isCompound: true,
+      setCode,
+      cardNum,
+      cardNumPad,
+      variantTag,
+      variantNum,
+      totalVariants,
+      setCardCode,
+      fullVariantSlug,
+      searchCode: setCode ? `${setCode} ${cardNum}` : cardNum
+    };
+  }
+
+  // 2. Look for explicit V-variant slug in text e.g. "V1-CBB4C13" or "V7-CBB5C01"
+  const slugMatch = combined.match(/\b(V\d+)[-_]([A-Za-z0-9]+)\b/i);
+  if (slugMatch) {
+    return {
+      isCompound: true,
+      setCode: '',
+      cardNum: '',
+      cardNumPad: '',
+      variantTag: slugMatch[1].toUpperCase(),
+      variantNum: slugMatch[1].replace(/\D/g, ''),
+      totalVariants: '',
+      setCardCode: slugMatch[2].toUpperCase(),
+      fullVariantSlug: `${slugMatch[1].toUpperCase()}-${slugMatch[2].toUpperCase()}`,
+      searchCode: slugMatch[2].toUpperCase()
+    };
+  }
+
+  // 3. Standard code components
+  const stdMatch = (codeStr || '').trim().match(/^([A-Za-z0-9\-_]{2,10})[-\s]+(\d{1,4})(?:[\/-](\d{1,4}))?$/);
+  if (stdMatch) {
+    const sCode = stdMatch[1].toUpperCase();
+    const rawNum = stdMatch[2];
+    const cardNum = parseInt(rawNum, 10).toString();
+    return {
+      isCompound: false,
+      setCode: sCode,
+      cardNum,
+      cardNumPad: rawNum,
+      variantTag: null,
+      variantNum: null,
+      totalVariants: stdMatch[3] || null,
+      setCardCode: `${sCode}${rawNum}`,
+      fullVariantSlug: null,
+      searchCode: `${sCode} ${rawNum}`
+    };
+  }
+
+  return null;
 }
 
 /**

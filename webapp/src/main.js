@@ -3,7 +3,7 @@ import { animate } from 'motion';
 import { Chart, registerables } from 'chart.js';
 import { BulkScanner } from './bulk-scanner.js';
 import { StreamOverlay } from './stream-overlay.js';
-import { extractCardCode } from './csv-parser.js';
+import { extractCardCode, parseCardCodeComponents } from './csv-parser.js';
 Chart.register(...registerables);
 
 // WebKit / motion animation safety wrapper
@@ -4668,6 +4668,31 @@ async function loadCardDetails(cardId, tcg, pushState = true, initialImageUrl = 
             .order('scanned_at', { ascending: true });
           if (!error && data && data.length > 0) return data;
         } catch (e) {}
+      }
+
+      // 2b. Try compound variant match (e.g. CBB4C 1301/07 -> V1-CBB4C13 or CBB4C13)
+      const parsedComp = parseCardCodeComponents(extractedCode || rawId, rawId);
+      if (parsedComp && parsedComp.isCompound) {
+        if (parsedComp.variantTag && parsedComp.setCardCode) {
+          try {
+            const { data, error } = await supabase
+              .from('price_history')
+              .select('price, condition, seller_country, language, comment, scanned_at')
+              .ilike('card_id', `%${parsedComp.variantTag}%${parsedComp.setCardCode}%`)
+              .order('scanned_at', { ascending: true });
+            if (!error && data && data.length > 0) return data;
+          } catch (e) {}
+        }
+        if (parsedComp.setCardCode) {
+          try {
+            const { data, error } = await supabase
+              .from('price_history')
+              .select('price, condition, seller_country, language, comment, scanned_at')
+              .ilike('card_id', `%${parsedComp.setCardCode}%`)
+              .order('scanned_at', { ascending: true });
+            if (!error && data && data.length > 0) return data;
+          } catch (e) {}
+        }
       }
 
       // 3. Try ilike with cleanPattern (last path segment)

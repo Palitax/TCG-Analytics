@@ -1,4 +1,4 @@
-import { parseCSV, normalizeScanData, extractCardCode, WHATNOT_COLUMNS } from './csv-parser.js';
+import { parseCSV, normalizeScanData, extractCardCode, parseCardCodeComponents, WHATNOT_COLUMNS } from './csv-parser.js';
 import { getGermanCardDetails } from './tcg-translations.js';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase.js';
 
@@ -87,6 +87,34 @@ export class BulkScanner {
         } catch (e) {}
         return null;
       };
+
+      // Stage 0: Compound Asian/Chinese Variant Matching (e.g. Phione V1-CBB4C13 for CBB4C 1301/07)
+      const parsedComp = parseCardCodeComponents(code, rawFullName, setNameClean);
+      if (parsedComp && parsedComp.isCompound) {
+        // 0a. Try full variant slug e.g. %V1%CBB4C13% or %V1-CBB4C13%
+        if (parsedComp.variantTag && parsedComp.setCardCode) {
+          const encVar = encodeURIComponent(`%${parsedComp.variantTag}%${parsedComp.setCardCode}%`);
+          bestRecord = await queryPriceHistory(`card_id.ilike.${encVar}`);
+        }
+        // 0b. Try Name + Variant + SetCode
+        if (!bestRecord && cardNameClean && parsedComp.variantTag && parsedComp.setCode) {
+          const encName = encodeURIComponent(`%${cardNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-')}%`);
+          const encVar = encodeURIComponent(`%${parsedComp.variantTag}%`);
+          const encSet = encodeURIComponent(`%${parsedComp.setCode}%`);
+          bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},card_id.ilike.${encVar},card_id.ilike.${encSet})`);
+        }
+        // 0c. Try Name + SetCardCode e.g. Phione + CBB4C13
+        if (!bestRecord && cardNameClean && parsedComp.setCardCode) {
+          const encName = encodeURIComponent(`%${cardNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-')}%`);
+          const encSetCard = encodeURIComponent(`%${parsedComp.setCardCode}%`);
+          bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},card_id.ilike.${encSetCard})`);
+        }
+        // 0d. Try SetCardCode alone e.g. %CBB4C13%
+        if (!bestRecord && parsedComp.setCardCode && parsedComp.setCode) {
+          const encSetCard = encodeURIComponent(`%${parsedComp.setCardCode}%`);
+          bestRecord = await queryPriceHistory(`card_id.ilike.${encSetCard}`);
+        }
+      }
 
       // Stage 1: Combined Match (Set Name + Card Name + Code)
       if (!bestRecord && setNameClean && cardNameClean) {
@@ -362,6 +390,11 @@ async function fetchCardImageFromDB(cardId, code, cleanName) {
     const altCode = code.replace('/', '-');
     if (altCode) terms.push(altCode);
     if (safeCode && safeCode !== altCode) terms.push(safeCode);
+    const parsedComp = parseCardCodeComponents(code, cleanName);
+    if (parsedComp) {
+      if (parsedComp.fullVariantSlug) terms.push(parsedComp.fullVariantSlug);
+      if (parsedComp.setCardCode) terms.push(parsedComp.setCardCode);
+    }
   }
   if (cleanName && cleanName.length >= 3 && cleanName.toLowerCase() !== 'karte') {
     terms.push(cleanName.replace(/[\/\\%_]/g, ''));
