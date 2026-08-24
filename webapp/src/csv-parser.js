@@ -309,10 +309,22 @@ export function extractCardCode(text) {
     return galleryMatch[0].toUpperCase().replace(/\s+/g, '-');
   }
 
-  // 3. Pokémon Japanese / Asian alphanumeric set + number: e.g. sv2a173, sv2a 173, s12a 210/172, sv4a009, svG050, CBB4C 007/040, CS1a 010/050
-  const jpSetNumMatch = cleanText.match(/\b(sv\d{1,2}[a-z]?|s\d{1,2}[a-z]?|CBB\d{1,2}[A-Z]|CS\d{1,2}[a-z]?|S-P|SVP|MEW|CRZ|SSP|CEC|SCR|BS|MEP|DP|PFL)[-\s]*\d{1,3}(\/\d{1,3})?\b/i);
+  // 3. Pokémon Japanese / Asian / New Gen alphanumeric set + number:
+  // e.g. CBB4C 2805/07, CBB4C 2805, sv2a 173, s12a 210/172, sv4a 009, CS1a 010/050, PAF 091/091, OBF 125/197, SVP 088
+  const jpSetNumMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|S-P|SVP|SWSH|MEW|CRZ|SSP|CEC|SCR|BS|MEP|DP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE)[-\s]*(\d{1,4})(?:\/\d{1,4})?\b/i);
   if (jpSetNumMatch) {
-    return jpSetNumMatch[0].toUpperCase().replace(/\s+/g, '-');
+    const setCode = jpSetNumMatch[1].toUpperCase();
+    const cardNum = jpSetNumMatch[2];
+    return `${setCode} ${cardNum}`;
+  }
+
+  // 3b. Generic New Gen pattern: [SetCode 2-6 chars] [CardNumber 1-4 digits] e.g. CBB4C 2805/07
+  const genericSetNumMatch = cleanText.match(/\b([A-Za-z]{2,5}\d{0,2}[A-Za-z]?)[-\s]+(\d{1,4})(?:\/\d{1,4})?\b/);
+  if (genericSetNumMatch) {
+    const prefix = genericSetNumMatch[1];
+    if (!/^(CARD|SKU|ITEM|SCAN|PROD|PAGE|HTTP|HTML|JPEG|PNG|FILE|TEST)$/i.test(prefix)) {
+      return `${prefix.toUpperCase()} ${genericSetNumMatch[2]}`;
+    }
   }
 
   // 4. Standard Pokémon fraction numbers: #130/170, 002/070, 0/170, 0904/070, 2306/07, 196/165, 94/123
@@ -323,7 +335,7 @@ export function extractCardCode(text) {
   }
 
   // 5. Promo codes: SVP088, SVP-088, S-P325, SWSH123, SM123
-  const promoMatch = cleanText.match(/\b(SVP|S-P|SWSH|SVP|SM|XY|BW|DP|HGSS|PROMO)[-\s]*\d{1,3}\b/i);
+  const promoMatch = cleanText.match(/\b(SVP|S-P|SWSH|SM|XY|BW|DP|HGSS|PROMO)[-\s]*\d{1,3}\b/i);
   if (promoMatch) {
     return promoMatch[0].toUpperCase().replace(/\s+/g, '-');
   }

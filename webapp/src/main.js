@@ -3891,19 +3891,39 @@ function buildCardmarketSearchUrl(item) {
   }
 
   let cleanName = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
+  if (!cleanName || cleanName.toLowerCase() === 'karte') cleanName = '';
   let cleanSet = (rawSet || '').trim();
   
   if (!code) {
-    const codeMatch = rawFullName.match(/(\d+[\/\-]\d+|\b\d+\b)/);
-    if (codeMatch) code = codeMatch[1].replace('-', '/');
+    code = extractCardCode(rawFullName) || '';
   }
 
-  // Direct Cardmarket search URL with filters
-  const searchParts = [cleanName, cleanSet, code].filter(p => p && p.length > 0);
-  const searchQuery = searchParts.join(' ').trim() || code || cleanName || 'Karte';
+  let searchQuery = '';
+
+  if (code) {
+    // 1. If code contains set code + number (e.g. "CBB4C 2805", "CBB4C 2805/07", "sv2a 173", "PAF 091/091")
+    const setNumMatch = code.match(/^([A-Za-z0-9\-_]{2,10})[-\s]+(\d{1,4})(?:[\/-]\d{1,4})?$/);
+    if (setNumMatch) {
+      const setPrefix = setNumMatch[1];
+      const cardNum = setNumMatch[2];
+      if (/^(OP|ST|EB|PRB|FB|FS|BT|RA|LOB|MP)\d*/i.test(setPrefix)) {
+        searchQuery = `${setPrefix}-${cardNum}`;
+      } else {
+        searchQuery = `${setPrefix} ${cardNum}`;
+      }
+    } else if (/^[A-Za-z0-9]{2,6}[-\s]+[A-Za-z0-9\-]+$/.test(code)) {
+      searchQuery = code.replace(/\/\d+$/, '');
+    } else if (/^\d{1,4}\/\d{2,4}$/.test(code) || /^\d+$/.test(code)) {
+      searchQuery = cleanName ? `${cleanName} ${code}` : code;
+    } else {
+      searchQuery = code;
+    }
+  } else {
+    searchQuery = [cleanName, cleanSet].filter(Boolean).join(' ') || 'Karte';
+  }
 
   const cmSearchUrl = new URL('https://www.cardmarket.com/de/Search');
-  cmSearchUrl.searchParams.set('searchString', searchQuery);
+  cmSearchUrl.searchParams.set('searchString', searchQuery.trim());
   if (minConditionVal) cmSearchUrl.searchParams.set('minCondition', minConditionVal);
   if (sellerCountryVal) cmSearchUrl.searchParams.set('sellerCountry', sellerCountryVal);
   if (languageVal) cmSearchUrl.searchParams.set('language', languageVal);

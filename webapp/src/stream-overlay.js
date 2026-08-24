@@ -1,35 +1,50 @@
 import { getGermanCardDetails } from './tcg-translations.js';
+import { extractCardCode } from './csv-parser.js';
 
-function getCardmarketSearchUrl(item) {
+export function getCardmarketSearchUrl(item) {
   if (item.cardDetails?.cardmarket_url) {
     const path = item.cardDetails.cardmarket_url.startsWith('/') ? item.cardDetails.cardmarket_url : `/${item.cardDetails.cardmarket_url}`;
     return `https://www.cardmarket.com${path}`;
   }
 
-  const code = (item.detectedCode || item.rawCode || '').trim();
   const rawFullName = item.detectedName || item.rawName || '';
-
-  // Extract set name from rawSet, cardDetails or parentheses e.g. "Pikachu (Mysterious Treasures)"
-  let extractedSet = item.rawSet || item.cardDetails?.set_name || item.cardDetails?.expansion || '';
-  if (!extractedSet) {
-    const parentheticalMatch = rawFullName.match(/\(([^)]+)\)/);
-    if (parentheticalMatch && parentheticalMatch[1]) {
-      extractedSet = parentheticalMatch[1].trim();
-    }
+  let code = (item.detectedCode || item.rawCode || '').trim();
+  if (!code && rawFullName) {
+    code = extractCardCode(rawFullName) || '';
   }
 
-  // Clean main name: remove parentheses and LV.XX info if any
-  let cleanName = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
-  if (!cleanName || cleanName.toLowerCase() === 'karte') cleanName = '';
+  let searchQuery = '';
 
-  let cleanSet = extractedSet.trim();
-
-  // Direct Cardmarket search URL with clean parameters
-  const queryParts = [cleanName, cleanSet, code].filter(p => p && p.length > 0);
-  const searchQuery = queryParts.join(' ').trim() || code || cleanName || 'Karte';
+  if (code) {
+    // 1. If code contains set code + number (e.g. "CBB4C 2805", "CBB4C 2805/07", "sv2a 173", "PAF 091/091")
+    const setNumMatch = code.match(/^([A-Za-z0-9\-_]{2,10})[-\s]+(\d{1,4})(?:[\/-]\d{1,4})?$/);
+    if (setNumMatch) {
+      const setPrefix = setNumMatch[1];
+      const cardNum = setNumMatch[2];
+      if (/^(OP|ST|EB|PRB|FB|FS|BT|RA|LOB|MP)\d*/i.test(setPrefix)) {
+        searchQuery = `${setPrefix}-${cardNum}`;
+      } else {
+        searchQuery = `${setPrefix} ${cardNum}`;
+      }
+    } else if (/^[A-Za-z0-9]{2,6}[-\s]+[A-Za-z0-9\-]+$/.test(code)) {
+      searchQuery = code.replace(/\/\d+$/, '');
+    } else if (/^\d{1,4}\/\d{2,4}$/.test(code) || /^\d+$/.test(code)) {
+      // Fraction without set code e.g. "183/165" -> combine with clean card name
+      let cleanName = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
+      if (!cleanName || cleanName.toLowerCase() === 'karte') cleanName = '';
+      searchQuery = cleanName ? `${cleanName} ${code}` : code;
+    } else {
+      searchQuery = code;
+    }
+  } else {
+    let cleanName = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
+    if (!cleanName || cleanName.toLowerCase() === 'karte') cleanName = '';
+    let cleanSet = (item.rawSet || item.cardDetails?.set_name || item.cardDetails?.expansion || '').trim();
+    searchQuery = [cleanName, cleanSet].filter(Boolean).join(' ') || 'Karte';
+  }
 
   const cmSearchUrl = new URL('https://www.cardmarket.com/de/Search');
-  cmSearchUrl.searchParams.set('searchString', searchQuery);
+  cmSearchUrl.searchParams.set('searchString', searchQuery.trim());
   return cmSearchUrl.toString();
 }
 
