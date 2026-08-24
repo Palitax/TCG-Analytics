@@ -19,15 +19,34 @@ export class BulkScanner {
     this.isProcessing = false;
   }
 
-  async processCSVText(csvText) {
+  async processCSVText(csvText, onProgress = null) {
     this.isProcessing = true;
     const parsed = parseCSV(csvText);
     const items = normalizeScanData(parsed);
 
-    // Fetch prices & details for recognized items
-    for (let item of items) {
-      await this.enrichItemWithMarketData(item);
-    }
+    const total = items.length;
+    let completed = 0;
+    if (onProgress) onProgress(0, total, 'Starte Verarbeitung...');
+
+    // High performance concurrency pool (6 parallel workers)
+    const CONCURRENCY = 6;
+    let currentIndex = 0;
+
+    const worker = async () => {
+      while (currentIndex < items.length) {
+        const idx = currentIndex++;
+        const item = items[idx];
+        await this.enrichItemWithMarketData(item);
+        completed++;
+        if (onProgress) {
+          onProgress(completed, total, item.detectedName || item.rawName || `Karte #${item.index}`);
+        }
+      }
+    };
+
+    const workerCount = Math.min(CONCURRENCY, items.length);
+    const workerPromises = Array.from({ length: workerCount }, () => worker());
+    await Promise.all(workerPromises);
 
     this.scanItems = items;
     this.isProcessing = false;
@@ -67,17 +86,21 @@ export class BulkScanner {
         }
       }
 
-      // Helper to execute safe PostgREST price_history queries
+      // Helper to execute safe PostgREST price_history queries with 1.8s timeout
       const queryPriceHistory = async (filterParam) => {
         try {
-          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&${filterParam}&order=scanned_at.desc&limit=5`;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 1800);
+          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&${filterParam}&order=scanned_at.desc&limit=3`;
           const resp = await fetch(url, {
+            signal: controller.signal,
             headers: {
               'apikey': SUPABASE_ANON_KEY,
               'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
             },
             credentials: 'omit'
           });
+          clearTimeout(timeoutId);
           if (resp.ok) {
             const data = await resp.json();
             if (Array.isArray(data) && data.length > 0) {
@@ -157,24 +180,11 @@ export class BulkScanner {
         if (altCode && altCode !== code) searchTerms.push(altCode);
         if (safeCode && !searchTerms.includes(safeCode)) searchTerms.push(safeCode);
 
-        if (code.includes('/')) {
-          const parts = code.split('/');
-          if (parts[0] && parts[0].trim()) {
-            const num = parts[0].trim();
-            const total = parts[1] ? parts[1].trim() : '';
-            if (total) {
-              searchTerms.push(`${num}-${total}`);
-              searchTerms.push(`${num}%${total}`);
-            }
-          }
-        }
-
-        for (const term of searchTerms) {
+        for (const term of searchTerms.slice(0, 3)) {
           if (!term || term.length < 2) continue;
           const cleanTerm = term.replace(/[\/\\%_]/g, '');
           const encTerm = encodeURIComponent(`%${term}%`);
-          const encClean = encodeURIComponent(`%${cleanTerm}%`);
-          bestRecord = await queryPriceHistory(`or=(card_id.ilike.${encTerm},comment.ilike.${encTerm},card_id.ilike.${encClean},comment.ilike.${encClean})`);
+          bestRecord = await queryPriceHistory(`or=(card_id.ilike.${encTerm},comment.ilike.${encTerm})`);
           if (bestRecord) break;
         }
       }
@@ -197,9 +207,11 @@ export class BulkScanner {
         item.nameDe = germanDetails.nameDe;
         item.setNameDe = germanDetails.setNameDe;
 
-        // Keep existing scan image from Whatnot CSV or fetch from DB
-        const fetchedImg = await fetchCardImageFromDB(bestRecord.card_id, code, cleanName);
-        item.imageUrl = item.imageUrl || fetchedImg || parseImageUrlFromComment(bestRecord.comment) || null;
+        // Keep existing scan image from Whatnot CSV or fetch from DB if missing
+        if (!item.imageUrl) {
+          const fetchedImg = await fetchCardImageFromDB(bestRecord.card_id, code, cleanName);
+          item.imageUrl = fetchedImg || parseImageUrlFromComment(bestRecord.comment) || null;
+        }
 
         return item;
       }
@@ -213,10 +225,9 @@ export class BulkScanner {
         const fallbackImg = await fetchCardImageFromDB(null, code, cleanName);
         if (fallbackImg) item.imageUrl = fallbackImg;
       }
-
       return item;
-    } catch (e) {
-      console.warn('Database lookup warning for code:', code, e);
+    } catch (err) {
+      console.warn('Database lookup warning for code:', code, err);
       item.status = 'needs_review';
       item.lastPrice = null;
       item.lastCheckDate = null;
@@ -386,33 +397,33 @@ async function fetchCardImageFromDB(cardId, code, cleanName) {
   const terms = [];
   if (cardId) terms.push(cardId.replace(/^\/+/, ''));
   if (code) {
-    const safeCode = code.replace(/[\/\\%_]/g, '');
-    const altCode = code.replace('/', '-');
-    if (altCode) terms.push(altCode);
-    if (safeCode && safeCode !== altCode) terms.push(safeCode);
     const parsedComp = parseCardCodeComponents(code, cleanName);
-    if (parsedComp) {
-      if (parsedComp.fullVariantSlug) terms.push(parsedComp.fullVariantSlug);
-      if (parsedComp.setCardCode) terms.push(parsedComp.setCardCode);
-    }
+    if (parsedComp?.fullVariantSlug) terms.push(parsedComp.fullVariantSlug);
+    else if (parsedComp?.setCardCode) terms.push(parsedComp.setCardCode);
+    else terms.push(code.replace(/[\/\\%_]/g, ''));
   }
-  if (cleanName && cleanName.length >= 3 && cleanName.toLowerCase() !== 'karte') {
+  if (!terms.length && cleanName && cleanName.length >= 3 && cleanName.toLowerCase() !== 'karte') {
     terms.push(cleanName.replace(/[\/\\%_]/g, ''));
   }
 
-  for (const term of terms) {
+  // Max 2 primary terms to keep lookups fast
+  for (const term of terms.slice(0, 2)) {
     if (!term || term.length < 2) continue;
     const cleanTerm = term.replace(/[\/\\%_]/g, '');
     if (!cleanTerm) continue;
 
-    // 1. Check card_images table
+    // 1. Check card_images table with 1.2s timeout
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
       const enc = encodeURIComponent(`%${cleanTerm}%`);
       const url = `${SUPABASE_URL}/rest/v1/card_images?select=image_url&card_id=ilike.${enc}&limit=1`;
       const resp = await fetch(url, {
+        signal: controller.signal,
         headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
         credentials: 'omit'
       });
+      clearTimeout(timeoutId);
       if (resp.ok) {
         const data = await resp.json();
         if (data && data.length > 0 && data[0].image_url) {
@@ -421,30 +432,18 @@ async function fetchCardImageFromDB(cardId, code, cleanName) {
       }
     } catch (e) {}
 
-    // 2. Check marked_cards table
+    // 2. Check marked_cards table with 1.2s timeout
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
       const enc = encodeURIComponent(`%${cleanTerm}%`);
       const url = `${SUPABASE_URL}/rest/v1/marked_cards?select=image_url&card_id=ilike.${enc}&image_url=not.is.null&limit=1`;
       const resp = await fetch(url, {
+        signal: controller.signal,
         headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
         credentials: 'omit'
       });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data && data.length > 0 && data[0].image_url) {
-          return data[0].image_url;
-        }
-      }
-    } catch (e) {}
-
-    // 3. Check collection_cards table
-    try {
-      const enc = encodeURIComponent(`%${cleanTerm}%`);
-      const url = `${SUPABASE_URL}/rest/v1/collection_cards?select=image_url&card_id=ilike.${enc}&image_url=not.is.null&limit=1`;
-      const resp = await fetch(url, {
-        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-        credentials: 'omit'
-      });
+      clearTimeout(timeoutId);
       if (resp.ok) {
         const data = await resp.json();
         if (data && data.length > 0 && data[0].image_url) {

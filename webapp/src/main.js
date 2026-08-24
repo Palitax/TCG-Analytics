@@ -3988,9 +3988,12 @@ function renderBulkScanTab(container) {
         </button>
       </div>
 
-      <div id="bulk-processing-indicator" style="display: none; text-align: center; padding: 2rem;">
-        <div class="spinner" style="margin: 0 auto 1rem auto;"></div>
-        <p style="color: #e2e8f0; font-size: 0.95rem;">Analysiere Scans & frage Cardmarket Live-Preise ab...</p>
+      <div id="bulk-processing-indicator" style="display: none; text-align: center; padding: 2.5rem 1.5rem;">
+        <div class="spinner" style="margin: 0 auto 1.25rem auto;"></div>
+        <p id="bulk-progress-text" style="color: #e2e8f0; font-size: 1rem; font-weight: 600; margin: 0 0 0.75rem 0;">Analysiere Scans & frage Cardmarket Live-Preise ab...</p>
+        <div style="max-width: 380px; height: 8px; background: rgba(255,255,255,0.08); border-radius: 999px; margin: 0 auto; overflow: hidden; border: 1px solid rgba(255,255,255,0.1);">
+          <div id="bulk-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #3b82f6, #60a5fa); transition: width 0.1s ease; border-radius: 999px;"></div>
+        </div>
       </div>
 
       <div id="bulk-results-area" style="display: none;">
@@ -4066,9 +4069,16 @@ function renderBulkScanTab(container) {
     const origText = btnRefreshBulkDb.textContent;
     btnRefreshBulkDb.textContent = '🔄 DB wird durchsucht...';
     try {
-      for (let item of bulkScannerInstance.scanItems) {
-        await bulkScannerInstance.enrichItemWithMarketData(item);
-      }
+      const items = bulkScannerInstance.scanItems;
+      const CONCURRENCY = 6;
+      let currentIndex = 0;
+      const worker = async () => {
+        while (currentIndex < items.length) {
+          const idx = currentIndex++;
+          await bulkScannerInstance.enrichItemWithMarketData(items[idx]);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, () => worker()));
       renderResults(bulkScannerInstance.scanItems);
 
       // If Stream Overlay is currently active, sync updated queue in realtime
@@ -4131,12 +4141,25 @@ function renderBulkScanTab(container) {
     dropzone.style.display = 'none';
     processingInd.style.display = 'block';
 
+    const progressText = wrapper.querySelector('#bulk-progress-text');
+    const progressBar = wrapper.querySelector('#bulk-progress-bar');
+    if (progressBar) progressBar.style.width = '0%';
+    if (progressText) progressText.textContent = 'Analysiere Scans & CSV-Daten...';
+
+    const onProgress = (current, total, cardName) => {
+      if (progressText && progressBar) {
+        const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+        progressText.textContent = `Verarbeite ${current} von ${total} Karten (${cardName || ''})... ${pct}%`;
+        progressBar.style.width = `${pct}%`;
+      }
+    };
+
     try {
       const reader = new FileReader();
       reader.onload = async (event) => {
         try {
           const text = event.target.result;
-          const items = await bulkScannerInstance.processCSVText(text);
+          const items = await bulkScannerInstance.processCSVText(text, onProgress);
 
           processingInd.style.display = 'none';
           resultsArea.style.display = 'block';
