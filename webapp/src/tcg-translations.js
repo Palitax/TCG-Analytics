@@ -666,11 +666,36 @@ export const SET_TRANSLATIONS = {
   'evo': 'Evolution (Evolutions)',
   'evolutions': 'Evolution',
 
-  // Chinese Sets
-  'cbb1c': 'Nine Colors Gathering (CBB1C)',
-  'cbb4c': 'Nine Colors Gathering Friend (CBB4C)',
-  'cs1a': 'Crossing Shadows (CS1a)',
-  'cs2b': 'Brave Stars (CS2b)',
+  // Chinese Sets (Gem Pack, Crossing Shadows, Brave Stars, Nine Colors)
+  'cbb1c': 'Gem Pack Vol. 1 (CBB1C)',
+  'cbb2c': 'Gem Pack Vol. 2 (CBB2C)',
+  'cbb3c': 'Gem Pack Vol. 3 (CBB3C)',
+  'cbb4c': 'Gem Pack Vol. 4 (CBB4C)',
+  'cbb5c': 'Gem Pack Vol. 5 (CBB5C)',
+  'cbb6c': 'Gem Pack Vol. 6 (CBB6C)',
+  'gem pack vol 1': 'Gem Pack Vol. 1',
+  'gem pack vol 2': 'Gem Pack Vol. 2',
+  'gem pack vol 3': 'Gem Pack Vol. 3',
+  'gem pack vol 4': 'Gem Pack Vol. 4',
+  'gem pack vol 5': 'Gem Pack Vol. 5',
+  'gem pack vol 6': 'Gem Pack Vol. 6',
+  'gem-pack-vol-1': 'Gem Pack Vol. 1',
+  'gem-pack-vol-2': 'Gem Pack Vol. 2',
+  'gem-pack-vol-3': 'Gem Pack Vol. 3',
+  'gem-pack-vol-4': 'Gem Pack Vol. 4',
+  'gem-pack-vol-5': 'Gem Pack Vol. 5',
+  'gem-pack-vol5': 'Gem Pack Vol. 5',
+  'gem-pack-vol-6': 'Gem Pack Vol. 6',
+  'cs1a': 'Crossing Shadows: Origin (CS1a)',
+  'cs1b': 'Crossing Shadows: Spark (CS1b)',
+  'cs2a': 'Brave Stars: Flash (CS2a)',
+  'cs2b': 'Brave Stars: Spark (CS2b)',
+  'cs3a': 'Radiant Strike (CS3a)',
+  'cs3b': 'Radiant Guard (CS3b)',
+  'cs4a': 'Shadow of the Glory (CS4a)',
+  'cs4b': 'Shadow of the Glory (CS4b)',
+  'cs5a': 'Nine Colors Gathering: Origin (CS5a)',
+  'cs5b': 'Nine Colors Gathering: Spark (CS5b)',
 
   // One Piece Sets
   'op01': 'Romance Dawn (OP-01)',
@@ -769,15 +794,32 @@ export function translateSetName(setStr, code = '', tcg = 'Pokemon') {
   const sKey = s.toLowerCase().replace(/[-_]/g, ' ').trim();
   if (SET_TRANSLATIONS[sKey]) return SET_TRANSLATIONS[sKey];
 
-  // Try code prefix matching (e.g. OP05, TWM, MEW, sv2a, s12a, CBB4C)
+  // Try code pattern matching (e.g. CBB4C, CS1a, sv2a, s12a, OP05, TWM, MEW, PAF)
   if (c) {
     const codeClean = c.toLowerCase().replace(/[\/-]/g, '');
-    const prefixMatch = c.match(/^([A-Za-z]{2,5}\d{0,2})/);
+
+    // Look for any alphanumeric set code pattern in the string (e.g. CBB4C, sv2a, CS1a, OP05, S12a)
+    const codeMatch = c.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|S-P|SVP|SWSH|MEW|CRZ|SSP|CEC|SCR|BS|MEP|DP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2})\b/i);
+    if (codeMatch) {
+      const matchKey = codeMatch[1].toLowerCase();
+      if (SET_TRANSLATIONS[matchKey]) return SET_TRANSLATIONS[matchKey];
+    }
+
+    const prefixMatch = c.match(/^([A-Za-z]{1,5}\d{1,2}[A-Za-z]?|[A-Za-z]{2,6}\d{0,2})/i);
     const prefix = prefixMatch ? prefixMatch[1].toLowerCase() : '';
 
     if (SET_TRANSLATIONS[c.toLowerCase()]) return SET_TRANSLATIONS[c.toLowerCase()];
     if (prefix && SET_TRANSLATIONS[prefix]) return SET_TRANSLATIONS[prefix];
     if (SET_TRANSLATIONS[codeClean]) return SET_TRANSLATIONS[codeClean];
+  }
+
+  // Also check if setStr itself has a known set code (e.g. "cBB4C")
+  if (s) {
+    const setCodeMatch = s.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE)\b/i);
+    if (setCodeMatch) {
+      const matchKey = setCodeMatch[1].toLowerCase();
+      if (SET_TRANSLATIONS[matchKey]) return SET_TRANSLATIONS[matchKey];
+    }
   }
 
   return s || (tcg === 'OnePiece' ? 'One Piece Card Game' : (tcg === 'Pokemon' ? 'Pokémon TCG' : 'Sammelkartenspiel'));

@@ -203,6 +203,15 @@ export class BulkScanner {
         }
         item.cardDetails = { cardmarket_url: bestRecord.card_id };
 
+        // Extract set name from card_id path (e.g. /Pokemon/Products/Singles/Gem-Pack-Vol-4/...)
+        const pathSegments = bestRecord.card_id.split('/').filter(Boolean);
+        if (pathSegments.length >= 2) {
+          const setSegment = pathSegments[pathSegments.length - 2];
+          if (setSegment && setSegment.toLowerCase() !== 'singles' && setSegment.toLowerCase() !== 'products') {
+            item.rawSet = setSegment.replace(/[-_]/g, ' ').trim();
+          }
+        }
+
         const germanDetails = getGermanCardDetails(item);
         item.nameDe = germanDetails.nameDe;
         item.setNameDe = germanDetails.setNameDe;
