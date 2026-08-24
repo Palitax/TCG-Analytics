@@ -129,6 +129,7 @@ export class StreamOverlay {
     this.isTransitioning = false;
     this.isListOpen = false;
     this.searchTerm = '';
+    this.currentInputPrice = '';
     this.onProgress = options.onProgress || null;
     this.onChange = options.onChange || null;
     this.keyListener = null;
@@ -136,9 +137,44 @@ export class StreamOverlay {
     this.bindKeyboardShortcuts();
   }
 
+  getStats() {
+    const totalCards = this.queue.length;
+    const soldCards = this.queue.filter(c => c.isSold || (c.soldPrice !== undefined && c.soldPrice !== null && !isNaN(c.soldPrice)));
+    const soldCount = soldCards.length;
+    const totalRevenue = soldCards.reduce((acc, c) => acc + (Number(c.soldPrice) || 0), 0);
+    const avgPrice = soldCount > 0 ? (totalRevenue / soldCount) : 0;
+
+    return {
+      totalCards,
+      soldCount,
+      totalRevenue,
+      avgPrice
+    };
+  }
+
   bindKeyboardShortcuts() {
     this.keyListener = (e) => {
-      // If typing in input, only handle Escape
+      // If typing in search input, only handle Escape
+      if (document.activeElement?.id === 'so-list-search-inp') {
+        if (e.code === 'Escape') {
+          this.closeListModal();
+        }
+        return;
+      }
+
+      // If typing inside the price input, allow standard typing & Enter/Escape
+      if (document.activeElement?.id === 'so-price-input') {
+        if (e.code === 'Escape') {
+          document.activeElement.blur();
+        } else if (e.code === 'Enter') {
+          e.preventDefault();
+          const soldBtn = this.container?.querySelector('#so-sold-btn');
+          if (soldBtn) soldBtn.classList.add('sold-animated');
+          this.markAsSold();
+        }
+        return;
+      }
+
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
         if (e.code === 'Escape') {
           this.closeListModal();
@@ -157,7 +193,7 @@ export class StreamOverlay {
           e.preventDefault();
           this.toggleFullscreen();
         }
-      } else if (e.code === 'Space' || e.code === 'Enter') {
+      } else if (e.code === 'Enter' || e.code === 'Space') {
         if (!this.isListOpen) {
           e.preventDefault();
           const soldBtn = this.container?.querySelector('#so-sold-btn');
@@ -177,6 +213,17 @@ export class StreamOverlay {
       } else if (e.code === 'KeyF') {
         e.preventDefault();
         this.toggleFullscreen();
+      } else if (!this.isListOpen && this.currentIndex < this.queue.length) {
+        // Direct numeric keypad entry via physical keyboard
+        if ((e.key >= '0' && e.key <= '9') || e.key === ',' || e.key === '.') {
+          e.preventDefault();
+          this.handleKeypadInput(e.key);
+        } else if (e.key === 'Backspace') {
+          e.preventDefault();
+          this.handleKeypadInput('backspace');
+        } else if (e.key === 'c' || e.key === 'C') {
+          this.handleKeypadInput('clear');
+        }
       }
     };
     window.addEventListener('keydown', this.keyListener);
@@ -194,6 +241,8 @@ export class StreamOverlay {
     this.currentIndex = 0;
     this.isListOpen = false;
     this.searchTerm = '';
+    const firstCard = this.queue[0];
+    this.currentInputPrice = (firstCard && firstCard.soldPrice != null) ? String(firstCard.soldPrice).replace('.', ',') : '';
     this.render();
     if (this.onChange) this.onChange(this.queue, this.currentIndex);
   }
@@ -202,6 +251,8 @@ export class StreamOverlay {
     if (index < 0 || index >= this.queue.length) return;
     this.currentIndex = index;
     this.isListOpen = false;
+    const targetCard = this.queue[this.currentIndex];
+    this.currentInputPrice = (targetCard && targetCard.soldPrice != null) ? String(targetCard.soldPrice).replace('.', ',') : '';
     this.render();
     if (this.onChange) this.onChange(this.queue, this.currentIndex);
   }
@@ -214,6 +265,91 @@ export class StreamOverlay {
   closeListModal() {
     this.isListOpen = false;
     this.render();
+  }
+
+  handleKeypadInput(key) {
+    if (this.currentIndex >= this.queue.length) return;
+    let str = this.currentInputPrice || '';
+
+    if (key === 'clear' || key === 'C') {
+      str = '';
+    } else if (key === 'backspace' || key === 'Backspace' || key === 'Delete') {
+      str = str.slice(0, -1);
+    } else if (key === ',' || key === '.') {
+      if (!str.includes(',')) {
+        str = str === '' ? '0,' : str + ',';
+      }
+    } else if (/^[0-9]$/.test(key)) {
+      if (str.includes(',')) {
+        const parts = str.split(',');
+        if (parts[1].length < 2) {
+          str += key;
+        }
+      } else {
+        if (str === '0') {
+          str = key;
+        } else if (str.length < 6) {
+          str += key;
+        }
+      }
+    }
+
+    this.currentInputPrice = str;
+    this.updatePriceDisplay();
+  }
+
+  setPricePreset(val) {
+    if (typeof val === 'number') {
+      this.currentInputPrice = (Math.round(val * 100) / 100).toString().replace('.', ',');
+    } else if (typeof val === 'string') {
+      this.currentInputPrice = val;
+    }
+    this.updatePriceDisplay();
+  }
+
+  adjustPrice(delta) {
+    let currentVal = 0;
+    if (this.currentInputPrice && this.currentInputPrice.trim() !== '') {
+      currentVal = parseFloat(this.currentInputPrice.replace(',', '.')) || 0;
+    } else {
+      const currentCard = this.queue[this.currentIndex];
+      currentVal = (currentCard && typeof currentCard.lastPrice === 'number') ? currentCard.lastPrice : 0;
+    }
+    const newVal = Math.max(0, currentVal + delta);
+    this.setPricePreset(newVal);
+  }
+
+  getSoldButtonLabel(card) {
+    if (this.currentInputPrice && this.currentInputPrice.trim() !== '') {
+      const parsed = parseFloat(this.currentInputPrice.replace(',', '.'));
+      if (!isNaN(parsed)) {
+        return `Verkauft für ${parsed.toFixed(2).replace('.', ',')} €`;
+      }
+    }
+    if (card && typeof card.lastPrice === 'number') {
+      return `Verkauft für ${card.lastPrice.toFixed(2).replace('.', ',')} € (CM)`;
+    }
+    return 'Als verkauft markieren';
+  }
+
+  updatePriceDisplay() {
+    const inputEl = this.container?.querySelector('#so-price-input');
+    const soldBtnText = this.container?.querySelector('#so-sold-btn-text');
+    const clearBtn = this.container?.querySelector('#so-input-clear');
+    const currentCard = this.queue[this.currentIndex];
+
+    const val = this.currentInputPrice || '';
+    if (inputEl && inputEl.value !== val) {
+      inputEl.value = val;
+    }
+
+    if (soldBtnText) {
+      soldBtnText.textContent = this.getSoldButtonLabel(currentCard);
+    }
+
+    if (clearBtn) {
+      clearBtn.style.display = val ? 'flex' : 'none';
+    }
   }
 
   nextCard() {
@@ -229,6 +365,9 @@ export class StreamOverlay {
       } else {
         this.currentIndex = this.queue.length; // Finished
       }
+      const nextCard = this.queue[this.currentIndex];
+      this.currentInputPrice = (nextCard && nextCard.soldPrice != null) ? String(nextCard.soldPrice).replace('.', ',') : '';
+
       this.render();
       if (this.onChange) this.onChange(this.queue, this.currentIndex);
       const newGrid = this.container.querySelector('.so-content-grid');
@@ -255,6 +394,9 @@ export class StreamOverlay {
       if (this.currentIndex > 0) {
         this.currentIndex--;
       }
+      const prevCard = this.queue[this.currentIndex];
+      this.currentInputPrice = (prevCard && prevCard.soldPrice != null) ? String(prevCard.soldPrice).replace('.', ',') : '';
+
       this.render();
       if (this.onChange) this.onChange(this.queue, this.currentIndex);
       const newGrid = this.container.querySelector('.so-content-grid');
@@ -270,8 +412,28 @@ export class StreamOverlay {
     }, 200);
   }
 
-  markAsSold() {
+  markAsSold(explicitPrice) {
     if (this.isTransitioning) return;
+    if (this.currentIndex >= this.queue.length) return;
+
+    const currentCard = this.queue[this.currentIndex];
+    let finalPrice = 0;
+
+    if (explicitPrice !== undefined && explicitPrice !== null && !isNaN(explicitPrice)) {
+      finalPrice = explicitPrice;
+    } else if (this.currentInputPrice && this.currentInputPrice.trim() !== '') {
+      const parsed = parseFloat(this.currentInputPrice.replace(',', '.'));
+      finalPrice = isNaN(parsed) ? (currentCard?.lastPrice || 0) : parsed;
+    } else if (currentCard && typeof currentCard.lastPrice === 'number') {
+      finalPrice = currentCard.lastPrice;
+    } else {
+      finalPrice = 0;
+    }
+
+    currentCard.isSold = true;
+    currentCard.soldPrice = finalPrice;
+    currentCard.soldAt = new Date().toISOString();
+
     this.isTransitioning = true;
 
     const grid = this.container.querySelector('.so-content-grid');
@@ -283,6 +445,9 @@ export class StreamOverlay {
       } else {
         this.currentIndex = this.queue.length;
       }
+      const nextCard = this.queue[this.currentIndex];
+      this.currentInputPrice = (nextCard && nextCard.soldPrice != null) ? String(nextCard.soldPrice).replace('.', ',') : '';
+
       this.render();
       if (this.onChange) this.onChange(this.queue, this.currentIndex);
 
@@ -321,7 +486,7 @@ export class StreamOverlay {
     this.render();
   }
 
-  renderListDrawerHtml(totalCards) {
+  renderListDrawerHtml(totalCards, stats) {
     const q = (this.searchTerm || '').toLowerCase().trim();
     const filtered = this.queue.map((card, idx) => ({ card, originalIndex: idx })).filter(({ card, originalIndex }) => {
       if (!q) return true;
@@ -342,7 +507,9 @@ export class StreamOverlay {
               <span style="font-size: 1.25rem;">📋</span>
               <div>
                 <h2 style="font-size: 1.1rem; font-weight: 700; color: #ffffff; margin: 0;">Karten-Übersicht</h2>
-                <div style="font-size: 0.75rem; color: #a1a1aa;">${totalCards} Karten in der Queue</div>
+                <div style="font-size: 0.75rem; color: #a1a1aa;">
+                  ${stats.soldCount} von ${totalCards} verkauft • Ø ${stats.soldCount > 0 ? stats.avgPrice.toFixed(2).replace('.', ',') + ' €' : '—'}
+                </div>
               </div>
             </div>
             <button class="so-list-close-btn" id="so-list-close-btn" title="Schließen (Esc)">✕</button>
@@ -367,9 +534,10 @@ export class StreamOverlay {
               const setNameDe = card.setNameDe || details.setNameDe;
               const cardCode = card.detectedCode || card.rawCode || '';
               const isCurrent = originalIndex === this.currentIndex;
-              const isSold = originalIndex < this.currentIndex;
+              const isSold = card.isSold || originalIndex < this.currentIndex;
               const hasPrice = card.lastPrice !== null && card.lastPrice !== undefined;
-              const priceDisplay = hasPrice ? `${card.lastPrice.toFixed(2)} €` : '-';
+              const priceDisplay = hasPrice ? `${card.lastPrice.toFixed(2).replace('.', ',')} €` : '-';
+              const soldPriceDisplay = (card.soldPrice !== undefined && card.soldPrice !== null) ? `${Number(card.soldPrice).toFixed(2).replace('.', ',')} €` : null;
               const rawImage = card.imageUrl || card.cardDetails?.image_url || null;
               const imageSrc = getProxiedImageUrl(rawImage);
               const langFlag = getLanguageFlag(card.rawLanguage);
@@ -391,12 +559,12 @@ export class StreamOverlay {
                       <span class="so-list-pill">${card.rawCondition || 'NM'}</span>
                       <span class="so-list-pill">${langFlag} ${card.rawLanguage || 'EN'}</span>
                       ${isCurrent ? `<span class="so-list-status-badge current">Aktiv</span>` : ''}
-                      ${isSold ? `<span class="so-list-status-badge sold">✓ Verkauft</span>` : ''}
+                      ${isSold ? `<span class="so-list-status-badge sold">✓ Verkauft ${soldPriceDisplay ? `(${soldPriceDisplay})` : ''}</span>` : ''}
                     </div>
                   </div>
                   <div class="so-list-price">
-                    <div>${priceDisplay}</div>
-                    <div style="font-size: 0.6875rem; color: #71717a; font-weight: 500;">CM Preis</div>
+                    <div>${soldPriceDisplay || priceDisplay}</div>
+                    <div style="font-size: 0.6875rem; color: #71717a; font-weight: 500;">${soldPriceDisplay ? 'Verkaufspreis' : 'CM Preis'}</div>
                   </div>
                 </div>
               `;
@@ -430,6 +598,7 @@ export class StreamOverlay {
     }
 
     const totalCards = this.queue.length;
+    const stats = this.getStats();
 
     if (this.currentIndex >= totalCards) {
       this.container.innerHTML = `
@@ -440,11 +609,23 @@ export class StreamOverlay {
             </svg>
             <span>Session beendet!</span>
           </div>
-          <h1 style="font-size: 2.2rem; font-weight: 800; margin: 0.5rem 0; color: #ffffff;">Alle Karten verkauft!</h1>
+          <h1 style="font-size: 2.2rem; font-weight: 800; margin: 0.5rem 0; color: #ffffff;">Stream-Session abgeschlossen</h1>
           <div class="session-stats">
             <div class="stat-box">
               <span class="stat-label">Gesamtkarten</span>
-              <span class="stat-val">${totalCards} Karten</span>
+              <span class="stat-val">${stats.totalCards}</span>
+            </div>
+            <div class="stat-box accent">
+              <span class="stat-label">Verkaufte Karten</span>
+              <span class="stat-val">${stats.soldCount}</span>
+            </div>
+            <div class="stat-box accent">
+              <span class="stat-label">Ø Verkaufspreis</span>
+              <span class="stat-val">${stats.soldCount > 0 ? stats.avgPrice.toFixed(2).replace('.', ',') + ' €' : '—'}</span>
+            </div>
+            <div class="stat-box accent">
+              <span class="stat-label">Gesamtumsatz</span>
+              <span class="stat-val" style="color: #4ade80;">${stats.totalRevenue.toFixed(2).replace('.', ',')} €</span>
             </div>
           </div>
           <div style="display: flex; gap: 12px; margin-top: 1rem; flex-wrap: wrap; justify-content: center;">
@@ -459,13 +640,14 @@ export class StreamOverlay {
             </button>
           </div>
         </div>
-        ${this.isListOpen ? this.renderListDrawerHtml(totalCards) : ''}
+        ${this.isListOpen ? this.renderListDrawerHtml(totalCards, stats) : ''}
       `;
 
       const restartBtn = this.container.querySelector('#so-restart-btn');
       if (restartBtn) {
         restartBtn.addEventListener('click', () => {
           this.currentIndex = 0;
+          this.currentInputPrice = '';
           this.render();
         });
       }
@@ -489,7 +671,7 @@ export class StreamOverlay {
     const setNameDe = currentCard.setNameDe || details.setNameDe || 'TCG Set';
 
     const hasPrice = currentCard.lastPrice !== null && currentCard.lastPrice !== undefined;
-    const priceDisplay = hasPrice ? `${currentCard.lastPrice.toFixed(2)} €` : 'Keine DB-Daten';
+    const priceDisplay = hasPrice ? `${currentCard.lastPrice.toFixed(2).replace('.', ',')} €` : 'Keine DB-Daten';
     const checkDisplay = currentCard.lastCheckRelative || currentCard.lastCheckDate || 'Noch nicht gecheckt';
     const filterDisplay = currentCard.filterInfo || 'Standard Filter';
     const rawImage = currentCard.imageUrl || currentCard.cardDetails?.image_url || null;
@@ -497,6 +679,8 @@ export class StreamOverlay {
     const cmUrl = getCardmarketSearchUrl(currentCard);
 
     const filterBadgesHtml = renderFilterBadges(filterDisplay, currentCard.rawCondition, currentCard.rawLanguage);
+    const soldButtonText = this.getSoldButtonLabel(currentCard);
+    const displayVal = this.currentInputPrice || '';
 
     this.container.innerHTML = `
       <div class="stream-overlay-active glass-panel ${this.isFullscreen ? 'is-fullscreen' : ''}">
@@ -507,9 +691,16 @@ export class StreamOverlay {
         ` : ''}
 
         <div class="so-header">
-          <div class="so-progress-pill">
-            <span class="so-live-dot"></span>
-            <span>Karte <strong>${this.currentIndex + 1}</strong> von <strong>${totalCards}</strong></span>
+          <div class="so-header-stats">
+            <div class="so-stat-pill">
+              <span class="so-live-dot"></span>
+              <span>Karte <strong>${this.currentIndex + 1}</strong> von <strong>${totalCards}</strong></span>
+            </div>
+            <div class="so-stat-pill avg-price" title="Durchschnittlicher Verkaufspreis über ${stats.soldCount} verkaufte Karten">
+              <span style="color: #4ade80; font-weight: 800;">Ø</span>
+              <span>Verkaufspreis: <strong>${stats.soldCount > 0 ? stats.avgPrice.toFixed(2).replace('.', ',') + ' €' : '—'}</strong></span>
+              ${stats.soldCount > 0 ? `<span class="so-stat-badge-sub">(${stats.soldCount} verkauft • ${stats.totalRevenue.toFixed(2).replace('.', ',')} €)</span>` : ''}
+            </div>
           </div>
 
           <div style="display: flex; align-items: center; gap: 0.75rem;">
@@ -564,10 +755,52 @@ export class StreamOverlay {
               </div>
             </div>
 
-            <div class="so-action-bar">
-              <button class="so-btn-sold" id="so-sold-btn">
-                <span class="sold-text">VERKAUFT</span>
-              </button>
+            <!-- Quick-Sell Terminal with Zahlenraster -->
+            <div class="so-sell-terminal">
+              <div class="so-terminal-header">
+                <div class="so-terminal-label">Verkaufspreis eingeben</div>
+                <div class="so-quick-chips">
+                  ${hasPrice ? `<button type="button" class="so-quick-chip" id="so-chip-cm" title="Cardmarket-Preis übernehmen">CM: ${currentCard.lastPrice.toFixed(2).replace('.', ',')} €</button>` : ''}
+                  <button type="button" class="so-quick-chip" id="so-chip-plus1">+1 €</button>
+                  <button type="button" class="so-quick-chip" id="so-chip-plus5">+5 €</button>
+                  <button type="button" class="so-quick-chip" id="so-chip-plus10">+10 €</button>
+                  <button type="button" class="so-quick-chip chip-clear" id="so-chip-clear" title="Eingabe zurücksetzen">✕ Reset</button>
+                </div>
+              </div>
+
+              <div class="so-terminal-body">
+                <!-- Price Display Input -->
+                <div class="so-price-input-box">
+                  <div class="so-input-currency">€</div>
+                  <input type="text" class="so-price-display-input" id="so-price-input" 
+                         inputmode="decimal" placeholder="0,00" value="${displayVal}" autocomplete="off" />
+                  <button type="button" class="so-input-clear-btn" id="so-input-clear" title="Löschen" style="display: ${displayVal ? 'flex' : 'none'};">✕</button>
+                </div>
+
+                <!-- Touch-friendly Zahlenraster (Numpad) -->
+                <div class="so-numpad-grid">
+                  <button type="button" class="so-numpad-btn" data-key="1">1</button>
+                  <button type="button" class="so-numpad-btn" data-key="2">2</button>
+                  <button type="button" class="so-numpad-btn" data-key="3">3</button>
+                  <button type="button" class="so-numpad-btn" data-key="4">4</button>
+                  <button type="button" class="so-numpad-btn" data-key="5">5</button>
+                  <button type="button" class="so-numpad-btn" data-key="6">6</button>
+                  <button type="button" class="so-numpad-btn" data-key="7">7</button>
+                  <button type="button" class="so-numpad-btn" data-key="8">8</button>
+                  <button type="button" class="so-numpad-btn" data-key="9">9</button>
+                  <button type="button" class="so-numpad-btn" data-key=",">,</button>
+                  <button type="button" class="so-numpad-btn" data-key="0">0</button>
+                  <button type="button" class="so-numpad-btn action-backspace" data-key="backspace" title="Rücktaste">⌫</button>
+                </div>
+              </div>
+
+              <!-- High-Contrast SOLD Button -->
+              <div class="so-action-bar">
+                <button class="so-btn-sold" id="so-sold-btn">
+                  <span class="sold-icon">✓</span>
+                  <span class="sold-text" id="so-sold-btn-text">${soldButtonText}</span>
+                </button>
+              </div>
             </div>
 
             <div class="so-nav-row">
@@ -581,7 +814,7 @@ export class StreamOverlay {
           </div>
         </div>
       </div>
-      ${this.isListOpen ? this.renderListDrawerHtml(totalCards) : ''}
+      ${this.isListOpen ? this.renderListDrawerHtml(totalCards, stats) : ''}
     `;
 
     // Event Listeners
@@ -616,6 +849,79 @@ export class StreamOverlay {
     const skipBtn = this.container.querySelector('#so-skip-btn');
     if (skipBtn) {
       skipBtn.addEventListener('click', () => this.nextCard());
+    }
+
+    // Numpad button click listeners
+    const numpadBtns = this.container.querySelectorAll('.so-numpad-btn');
+    numpadBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const key = btn.getAttribute('data-key');
+        if (key) {
+          this.handleKeypadInput(key);
+        }
+      });
+    });
+
+    // Quick Chips listeners
+    const chipCm = this.container.querySelector('#so-chip-cm');
+    if (chipCm && currentCard.lastPrice != null) {
+      chipCm.addEventListener('click', () => {
+        this.setPricePreset(currentCard.lastPrice);
+      });
+    }
+
+    const chipPlus1 = this.container.querySelector('#so-chip-plus1');
+    if (chipPlus1) {
+      chipPlus1.addEventListener('click', () => this.adjustPrice(1));
+    }
+
+    const chipPlus5 = this.container.querySelector('#so-chip-plus5');
+    if (chipPlus5) {
+      chipPlus5.addEventListener('click', () => this.adjustPrice(5));
+    }
+
+    const chipPlus10 = this.container.querySelector('#so-chip-plus10');
+    if (chipPlus10) {
+      chipPlus10.addEventListener('click', () => this.adjustPrice(10));
+    }
+
+    const chipClear = this.container.querySelector('#so-chip-clear');
+    if (chipClear) {
+      chipClear.addEventListener('click', () => this.handleKeypadInput('clear'));
+    }
+
+    const inputClear = this.container.querySelector('#so-input-clear');
+    if (inputClear) {
+      inputClear.addEventListener('click', () => this.handleKeypadInput('clear'));
+    }
+
+    // Direct input on the display field
+    const priceInput = this.container.querySelector('#so-price-input');
+    if (priceInput) {
+      priceInput.addEventListener('input', (e) => {
+        let clean = e.target.value.replace(/[^0-9,\.]/g, '').replace('.', ',');
+        const commaIndex = clean.indexOf(',');
+        if (commaIndex !== -1) {
+          clean = clean.slice(0, commaIndex + 1) + clean.slice(commaIndex + 1).replace(/,/g, '');
+          const parts = clean.split(',');
+          if (parts[1].length > 2) {
+            clean = parts[0] + ',' + parts[1].slice(0, 2);
+          }
+        }
+        this.currentInputPrice = clean;
+        priceInput.value = clean;
+        this.updatePriceDisplay();
+      });
+
+      priceInput.addEventListener('keydown', (e) => {
+        if (e.code === 'Enter') {
+          e.preventDefault();
+          const btn = this.container.querySelector('#so-sold-btn');
+          if (btn) btn.classList.add('sold-animated');
+          this.markAsSold();
+        }
+      });
     }
 
     this.attachListDrawerEvents();
@@ -668,9 +974,10 @@ export class StreamOverlay {
               const setNameDe = card.setNameDe || details.setNameDe;
               const cardCode = card.detectedCode || card.rawCode || '';
               const isCurrent = originalIndex === this.currentIndex;
-              const isSold = originalIndex < this.currentIndex;
+              const isSold = card.isSold || originalIndex < this.currentIndex;
               const hasPrice = card.lastPrice !== null && card.lastPrice !== undefined;
-              const priceDisplay = hasPrice ? `${card.lastPrice.toFixed(2)} €` : '-';
+              const priceDisplay = hasPrice ? `${card.lastPrice.toFixed(2).replace('.', ',')} €` : '-';
+              const soldPriceDisplay = (card.soldPrice !== undefined && card.soldPrice !== null) ? `${Number(card.soldPrice).toFixed(2).replace('.', ',')} €` : null;
               const rawImage = card.imageUrl || card.cardDetails?.image_url || null;
               const imageSrc = getProxiedImageUrl(rawImage);
               const langFlag = getLanguageFlag(card.rawLanguage);
@@ -692,12 +999,12 @@ export class StreamOverlay {
                       <span class="so-list-pill">${card.rawCondition || 'NM'}</span>
                       <span class="so-list-pill">${langFlag} ${card.rawLanguage || 'EN'}</span>
                       ${isCurrent ? `<span class="so-list-status-badge current">Aktiv</span>` : ''}
-                      ${isSold ? `<span class="so-list-status-badge sold">✓ Verkauft</span>` : ''}
+                      ${isSold ? `<span class="so-list-status-badge sold">✓ Verkauft ${soldPriceDisplay ? `(${soldPriceDisplay})` : ''}</span>` : ''}
                     </div>
                   </div>
                   <div class="so-list-price">
-                    <div>${priceDisplay}</div>
-                    <div style="font-size: 0.6875rem; color: #71717a; font-weight: 500;">CM Preis</div>
+                    <div>${soldPriceDisplay || priceDisplay}</div>
+                    <div style="font-size: 0.6875rem; color: #71717a; font-weight: 500;">${soldPriceDisplay ? 'Verkaufspreis' : 'CM Preis'}</div>
                   </div>
                 </div>
               `;
