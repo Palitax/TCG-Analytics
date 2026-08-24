@@ -3922,7 +3922,21 @@ function buildCardmarketSearchUrl(item) {
     searchQuery = [cleanName, cleanSet].filter(Boolean).join(' ') || 'Karte';
   }
 
-  const cmSearchUrl = new URL('https://www.cardmarket.com/de/Search');
+  function getGameSlug(item, code = '') {
+    const tcg = (item.detectedTcg || item.tcg || '').toLowerCase();
+    const c = code.toUpperCase();
+    if (tcg === 'onepiece' || tcg === 'one piece' || c.startsWith('OP') || c.startsWith('ST') || c.startsWith('EB') || c.startsWith('PRB')) return 'OnePiece';
+    if (tcg === 'yugioh' || tcg === 'yu-gi-oh') return 'YuGiOh';
+    if (tcg === 'lorcana') return 'Lorcana';
+    if (tcg === 'dragonball' || tcg === 'dragon ball' || c.startsWith('FB') || c.startsWith('FS') || c.startsWith('BT')) return 'DragonBall';
+    if (tcg === 'magic' || tcg === 'mtg') return 'Magic';
+    if (tcg === 'starwarsunlimited' || tcg === 'star wars') return 'StarWarsUnlimited';
+    if (tcg === 'digimon') return 'Digimon';
+    return 'Pokemon';
+  }
+
+  const gameSlug = getGameSlug(item, code);
+  const cmSearchUrl = new URL(`https://www.cardmarket.com/de/${gameSlug}/Products/Search`);
   cmSearchUrl.searchParams.set('searchString', searchQuery.trim());
   if (minConditionVal) cmSearchUrl.searchParams.set('minCondition', minConditionVal);
   if (sellerCountryVal) cmSearchUrl.searchParams.set('sellerCountry', sellerCountryVal);

@@ -1,6 +1,19 @@
 import { getGermanCardDetails } from './tcg-translations.js';
 import { extractCardCode } from './csv-parser.js';
 
+function getGameSlug(item, code = '') {
+  const tcg = (item.detectedTcg || item.tcg || '').toLowerCase();
+  const c = code.toUpperCase();
+  if (tcg === 'onepiece' || tcg === 'one piece' || c.startsWith('OP') || c.startsWith('ST') || c.startsWith('EB') || c.startsWith('PRB')) return 'OnePiece';
+  if (tcg === 'yugioh' || tcg === 'yu-gi-oh') return 'YuGiOh';
+  if (tcg === 'lorcana') return 'Lorcana';
+  if (tcg === 'dragonball' || tcg === 'dragon ball' || c.startsWith('FB') || c.startsWith('FS') || c.startsWith('BT')) return 'DragonBall';
+  if (tcg === 'magic' || tcg === 'mtg') return 'Magic';
+  if (tcg === 'starwarsunlimited' || tcg === 'star wars') return 'StarWarsUnlimited';
+  if (tcg === 'digimon') return 'Digimon';
+  return 'Pokemon';
+}
+
 export function getCardmarketSearchUrl(item) {
   if (item.cardDetails?.cardmarket_url) {
     const path = item.cardDetails.cardmarket_url.startsWith('/') ? item.cardDetails.cardmarket_url : `/${item.cardDetails.cardmarket_url}`;
@@ -43,7 +56,8 @@ export function getCardmarketSearchUrl(item) {
     searchQuery = [cleanName, cleanSet].filter(Boolean).join(' ') || 'Karte';
   }
 
-  const cmSearchUrl = new URL('https://www.cardmarket.com/de/Search');
+  const gameSlug = getGameSlug(item, code);
+  const cmSearchUrl = new URL(`https://www.cardmarket.com/de/${gameSlug}/Products/Search`);
   cmSearchUrl.searchParams.set('searchString', searchQuery.trim());
   return cmSearchUrl.toString();
 }
