@@ -826,6 +826,108 @@ export function translateSetName(setStr, code = '', tcg = 'Pokemon') {
 }
 
 /**
+ * Universal Card Metadata Formatter
+ * Extracts clean localized name, set name, card code, and variant tag from any card representation
+ */
+export function formatCardMeta(cardId, rawName = '', rawSet = '', code = '', tcg = 'Pokemon') {
+  let cleanId = decodeURIComponent(cardId || '').trim();
+  let extractedSetSlug = '';
+  let extractedCardSlug = cleanId;
+
+  // 1. If cardId is a Cardmarket URL path (e.g. /Pokemon/Products/Singles/Gem-Pack-Vol-4/Phione-V1-CBB4C13)
+  if (cleanId.includes('/')) {
+    const segments = cleanId.split('/').filter(Boolean);
+    if (segments.length >= 2) {
+      extractedCardSlug = segments[segments.length - 1];
+      const prev = segments[segments.length - 2];
+      if (prev && prev.toLowerCase() !== 'singles' && prev.toLowerCase() !== 'products') {
+        extractedSetSlug = prev.replace(/[-_]/g, ' ').trim();
+      }
+    } else if (segments.length === 1) {
+      extractedCardSlug = segments[0];
+    }
+  }
+
+  // 2. Parse variants e.g. "V1", "V2", "V9"
+  const combined = `${code || ''} ${extractedCardSlug || ''} ${rawName || ''} ${rawSet || ''}`.trim();
+  let variantTag = null;
+
+  const compMatch = combined.match(/\b(\d{2})(\d{2})\/(\d{2})\b/);
+  if (compMatch) {
+    variantTag = `V${parseInt(compMatch[2], 10)}`;
+  } else {
+    const vMatch = combined.match(/\b(V\d+)\b/i) || combined.match(/\((V\d+)\)/i);
+    if (vMatch) {
+      variantTag = vMatch[1].toUpperCase();
+    }
+  }
+
+  const variantLabel = variantTag ? `Variante ${variantTag}` : '';
+
+  // 3. Extract clean base card name
+  let nameClean = rawName || '';
+  if (!nameClean || nameClean.toLowerCase() === 'karte') {
+    let baseSlug = extractedCardSlug.replace(/^tcgdex_/i, '').replace(/\([^)]*\)/g, '').trim();
+    if (variantTag) {
+      baseSlug = baseSlug.replace(new RegExp(`[-_]?${variantTag}[-_]?[A-Za-z0-9]*`, 'i'), '').trim();
+    }
+    baseSlug = baseSlug.replace(/[-_][A-Za-z0-9]{2,6}[-_]\d{1,4}[A-Za-z]?$/i, '')
+                       .replace(/[-_][A-Za-z]{2,5}\d{1,4}[A-Za-z]?$/i, '')
+                       .replace(/[-_](?!ex$|gx$|v$|vmax$|vstar$|tera$|prime$|star$|break$)[A-Za-z]{2,6}\d{0,4}$/i, '')
+                       .replace(/[-_]\d{1,4}[-_]\d{1,4}$/, '')
+                       .replace(/[-_]\d{1,4}$/, '');
+    nameClean = baseSlug.replace(/[-_]/g, ' ')
+                        .replace(/MonkeyDLuffy/i, 'Monkey.D.Luffy')
+                        .replace(/TrafalgarLaw/i, 'Trafalgar Law')
+                        .replace(/RoronoaZoro/i, 'Roronoa Zoro')
+                        .replace(/PortgasDAce/i, 'Portgas.D.Ace')
+                        .replace(/TonyTonyChopper/i, 'Tony Tony Chopper')
+                        .trim();
+  }
+
+  const nameDe = translateCardName(nameClean, tcg) || nameClean || 'Karte';
+  const nameEn = nameClean || nameDe;
+
+  // 4. Extract clean set name
+  const rawSetEff = rawSet || extractedSetSlug || '';
+  const setNameDe = translateSetName(rawSetEff, code, tcg);
+
+  // 5. Extract clean card code
+  let cleanCode = (code || '').trim();
+  if (!cleanCode) {
+    const fractionMatch = extractedCardSlug.match(/[-_](\d{1,4})[-_](\d{2,4})$/);
+    if (fractionMatch) {
+      cleanCode = `${fractionMatch[1]}/${fractionMatch[2]}`;
+    } else {
+      const codeMatch = extractedCardSlug.match(/\b(CBB\d{1,2}[A-Za-z]?\d{1,2}|CS\d{1,2}[a-zA-Z]?\d{1,3}|[A-Za-z]{2,5}\d{1,4}|[A-Za-z0-9]+-\d+)\b/);
+      if (codeMatch) cleanCode = codeMatch[1];
+    }
+  }
+
+  return {
+    nameDe,
+    nameEn,
+    setNameDe,
+    cardCode: cleanCode,
+    variant: variantTag,
+    variantLabel,
+    fullTitle: `${nameDe}${setNameDe ? ` (${setNameDe})` : ''}${variantTag ? ` • ${variantTag}` : ''}`,
+  };
+}
+
+/**
+ * Returns clean readable card name from cardId
+ */
+export function cleanCardName(cardId, tcg = 'Pokemon') {
+  if (!cardId) return '';
+  const meta = formatCardMeta(cardId, '', '', '', tcg);
+  if (meta.setNameDe && meta.setNameDe !== 'Pokémon TCG' && meta.setNameDe !== 'TCG Set') {
+    return `${meta.nameDe}${meta.variant ? ` (${meta.variant})` : ''} (${meta.setNameDe})`;
+  }
+  return meta.nameDe || cardId;
+}
+
+/**
  * Returns comprehensive localized details for a card item
  */
 export function getGermanCardDetails(item) {
@@ -836,14 +938,14 @@ export function getGermanCardDetails(item) {
   const code = item.detectedCode || item.rawCode || '';
   const rawSet = item.rawSet || item.set || item.cardDetails?.set_name || '';
 
-  const nameDe = translateCardName(rawName, tcg);
-  const setNameDe = translateSetName(rawSet, code, tcg);
+  const meta = formatCardMeta(item.cardDetails?.cardmarket_url || item.card_id, rawName, rawSet, code, tcg);
 
   return {
-    nameDe,
-    setNameDe,
-    nameEn: rawName,
-    code,
-    isTranslated: nameDe !== rawName,
+    nameDe: meta.nameDe,
+    setNameDe: meta.setNameDe,
+    nameEn: meta.nameEn,
+    code: meta.cardCode || code,
+    variant: meta.variant || item.variant || null,
+    isTranslated: meta.nameDe !== rawName,
   };
 }

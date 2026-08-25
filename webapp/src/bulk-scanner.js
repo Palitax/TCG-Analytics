@@ -137,6 +137,11 @@ export class BulkScanner {
           const encSetCard = encodeURIComponent(`%${parsedComp.setCardCode}%`);
           bestRecord = await queryPriceHistory(`card_id.ilike.${encSetCard}`);
         }
+        // 0e. Try Suffix variant e.g. %OP05-119-V1% or %OP05-119%V1%
+        if (!bestRecord && parsedComp.variantTag && parsedComp.setCardCode) {
+          const encVarSuffix = encodeURIComponent(`%${parsedComp.setCardCode}%${parsedComp.variantTag}%`);
+          bestRecord = await queryPriceHistory(`card_id.ilike.${encVarSuffix}`);
+        }
       }
 
       // Stage 1: Combined Match (Set Name + Card Name + Code)
@@ -215,6 +220,7 @@ export class BulkScanner {
         const germanDetails = getGermanCardDetails(item);
         item.nameDe = germanDetails.nameDe;
         item.setNameDe = germanDetails.setNameDe;
+        item.variant = germanDetails.variant || item.variant || (parsedComp?.variantTag) || null;
 
         // Keep existing scan image from Whatnot CSV or fetch from DB if missing
         if (!item.imageUrl) {

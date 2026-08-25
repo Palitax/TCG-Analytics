@@ -446,13 +446,17 @@ export function extractCardName(title, description, rawCode) {
       }
     }
   }
-
-  return clean || title || 'Karte';
+    return clean || title || 'Karte';
 }
 
 /**
- * Parses card codes into individual search components
- * Handles complex Asian variant codes (e.g. CBB4C 1301/07 -> Card #13, Variant V1, Set CBB4C)
+ * Parses card code components
+ * Handles complex variant codes across Pokémon, One Piece, Lorcana, etc.
+ * Supports:
+ * - Compound Asian variant codes (e.g. CBB4C 1301/07 -> Card #13, Variant V1, Set CBB4C)
+ * - Suffix variants (e.g. OP05-119-V1, EB02-061-V3, ST01-012-V1, 055/066-V1, Card (V1))
+ * - Prefix variants (e.g. V1-CBB4C13, V7-CBB5C01)
+ * - Standard Promo and Set codes (e.g. SVP-001, OP05-119, MEW 199/165)
  */
 export function parseCardCodeComponents(codeStr, nameStr = '', setStr = '') {
   if (!codeStr && !nameStr && !setStr) return null;
@@ -486,24 +490,44 @@ export function parseCardCodeComponents(codeStr, nameStr = '', setStr = '') {
     };
   }
 
-  // 2. Look for explicit V-variant slug in text e.g. "V1-CBB4C13" or "V7-CBB5C01"
-  const slugMatch = combined.match(/\b(V\d+)[-_]([A-Za-z0-9]+)\b/i);
-  if (slugMatch) {
+  // 2. Look for explicit V-variant prefix slug e.g. "V1-CBB4C13" or "V7-CBB5C01"
+  const prefixSlugMatch = combined.match(/\b(V\d+)[-_]([A-Za-z0-9]+)\b/i);
+  if (prefixSlugMatch) {
     return {
       isCompound: true,
       setCode: '',
       cardNum: '',
       cardNumPad: '',
-      variantTag: slugMatch[1].toUpperCase(),
-      variantNum: slugMatch[1].replace(/\D/g, ''),
+      variantTag: prefixSlugMatch[1].toUpperCase(),
+      variantNum: prefixSlugMatch[1].replace(/\D/g, ''),
       totalVariants: '',
-      setCardCode: slugMatch[2].toUpperCase(),
-      fullVariantSlug: `${slugMatch[1].toUpperCase()}-${slugMatch[2].toUpperCase()}`,
-      searchCode: slugMatch[2].toUpperCase()
+      setCardCode: prefixSlugMatch[2].toUpperCase(),
+      fullVariantSlug: `${prefixSlugMatch[1].toUpperCase()}-${prefixSlugMatch[2].toUpperCase()}`,
+      searchCode: prefixSlugMatch[2].toUpperCase()
     };
   }
 
-  // 3. Standard code components
+  // 3. Look for suffix variant (e.g. OP05-119-V1, EB02-061-V3, ST01-012-V1, 055/066-V1, (V1), (V2))
+  const suffixSlugMatch = combined.match(/\b([A-Za-z0-9\-_]{2,12})[-_\s]+(V\d+)\b/i) || combined.match(/\b([A-Za-z0-9\-_]{2,12})\s*\((V\d+)\)/i);
+  if (suffixSlugMatch) {
+    const baseCode = suffixSlugMatch[1].toUpperCase();
+    const variantTag = suffixSlugMatch[2].toUpperCase();
+    const variantNum = variantTag.replace(/\D/g, '');
+    return {
+      isCompound: true,
+      setCode: baseCode.split(/[-\s]/)[0] || '',
+      cardNum: baseCode.split(/[-\s]/)[1] || '',
+      cardNumPad: baseCode.split(/[-\s]/)[1] || '',
+      variantTag,
+      variantNum,
+      totalVariants: '',
+      setCardCode: baseCode,
+      fullVariantSlug: `${baseCode}-${variantTag}`,
+      searchCode: baseCode
+    };
+  }
+
+  // 4. Standard code components (e.g. "OP05-119", "CBB4C 13", "sv2a 173", "199/165")
   const stdMatch = (codeStr || '').trim().match(/^([A-Za-z0-9\-_]{2,10})[-\s]+(\d{1,4})(?:[\/-](\d{1,4}))?$/);
   if (stdMatch) {
     const sCode = stdMatch[1].toUpperCase();
@@ -664,6 +688,11 @@ export function normalizeScanData(parsedCSV) {
       bildUrl8: wBildUrl8,
     };
 
+    const parsedComp = parseCardCodeComponents(detectedCode, wTitel, row['set'] || row['expansion'] || '');
+    const variantTag = parsedComp?.variantTag || null;
+    const setCardCode = parsedComp?.setCardCode || null;
+    const fullVariantSlug = parsedComp?.fullVariantSlug || null;
+
     const germanDetails = getGermanCardDetails({
       detectedName,
       rawName: wTitel || detectedName,
@@ -682,6 +711,9 @@ export function normalizeScanData(parsedCSV) {
       nameDe: germanDetails.nameDe,
       setNameDe: germanDetails.setNameDe,
       nameEn: detectedName,
+      variant: variantTag,
+      setCardCode,
+      fullVariantSlug,
       rawFile,
       rawCondition,
       rawLanguage,

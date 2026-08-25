@@ -28,7 +28,10 @@ export function getCardmarketSearchUrl(item) {
 
   let searchQuery = '';
 
-  if (code) {
+  const parsedComp = parseCardCodeComponents(code, rawFullName, item.rawSet || item.set);
+  if (parsedComp && parsedComp.isCompound && parsedComp.searchCode) {
+    searchQuery = parsedComp.searchCode;
+  } else if (code) {
     // 1. If code contains set code + number (e.g. "CBB4C 2805", "CBB4C 2805/07", "sv2a 173", "PAF 091/091")
     const setNumMatch = code.match(/^([A-Za-z0-9\-_]{2,10})[-\s]+(\d{1,4})(?:[\/-]\d{1,4})?$/);
     if (setNumMatch) {
@@ -571,6 +574,8 @@ export class StreamOverlay {
               const imageSrc = getProxiedImageUrl(rawImage);
               const langFlag = getLanguageFlag(card.rawLanguage);
 
+              const variantTag = card.variant || details.variant || null;
+
               return `
                 <div class="so-list-card-item ${isCurrent ? 'is-current' : ''} ${isSold ? 'is-sold' : ''}" data-card-idx="${originalIndex}">
                   <div class="so-list-index-badge">#${originalIndex + 1}</div>
@@ -583,6 +588,7 @@ export class StreamOverlay {
                     <div class="so-list-set-code">
                       <span>${setNameDe}</span>
                       ${cardCode ? `<span>• <strong>${cardCode}</strong></span>` : ''}
+                      ${variantTag ? `<span class="so-list-pill" style="background: rgba(168,85,247,0.15); color: #d8b4fe; border-color: rgba(168,85,247,0.3); font-weight: 700;">✨ ${variantTag}</span>` : ''}
                     </div>
                     <div style="display: flex; gap: 6px; margin-top: 4px; align-items: center; flex-wrap: wrap;">
                       <span class="so-list-pill">${card.rawCondition || 'NM'}</span>
@@ -757,8 +763,15 @@ export class StreamOverlay {
           </div>
 
           <div class="so-details-container">
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-              <div class="so-card-badge">${cardCode}</div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div class="so-card-badge">${cardCode}</div>
+                ${(currentCard.variant || details.variant) ? `
+                  <div class="so-card-badge" style="background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.35); color: #d8b4fe; font-weight: 700;">
+                    ✨ Variante ${currentCard.variant || details.variant}
+                  </div>
+                ` : ''}
+              </div>
               <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
                 Check price now ↗
               </a>

@@ -4,6 +4,7 @@ import { Chart, registerables } from 'chart.js';
 import { BulkScanner } from './bulk-scanner.js';
 import { StreamOverlay } from './stream-overlay.js';
 import { extractCardCode, parseCardCodeComponents } from './csv-parser.js';
+import { formatCardMeta, translateCardName, translateSetName } from './tcg-translations.js';
 Chart.register(...registerables);
 
 // WebKit / motion animation safety wrapper
@@ -401,76 +402,25 @@ function getFlagHtml(type, code) {
 }
 
 // Clean card name from raw database path URL
-function cleanCardName(cardId) {
+function cleanCardName(cardId, tcg = 'Pokemon') {
   if (!cardId) return '';
-  let clean = decodeURIComponent(cardId);
-  if (clean.startsWith('tcgdex_')) {
-    return clean.replace('tcgdex_', '').replace(/[-_]/g, ' ').trim();
+  const meta = formatCardMeta(cardId, '', '', '', tcg);
+  if (meta.setNameDe && meta.setNameDe !== 'Pokémon TCG' && meta.setNameDe !== 'TCG Set') {
+    return `${meta.nameDe}${meta.variant ? ` (${meta.variant})` : ''} (${meta.setNameDe})`;
   }
-  if (clean.includes('(') && clean.includes(')')) {
-    return clean.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
-  }
-  if (clean.includes('/')) {
-    const parts = clean.split('/').filter(Boolean);
-    const lastPart = parts.pop() || clean;
-    let setNameClean = '';
-    if (parts.length >= 1) {
-      const setSlug = parts[parts.length - 1];
-      if (setSlug && setSlug.toLowerCase() !== 'singles' && setSlug.toLowerCase() !== 'products') {
-        setNameClean = setSlug.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
-      }
-    }
-
-    let cardNameClean = lastPart.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
-    cardNameClean = cardNameClean.replace(/(\b\d+)\s+(\d+\b)/g, '$1/$2');
-
-    if (setNameClean) {
-      return `${cardNameClean} (${setNameClean})`;
-    }
-    return cardNameClean;
-  }
-  return clean.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim();
+  return meta.nameDe || cardId;
 }
 
-// Split card name into Character Name and Card Number, replacing hyphens with spaces
-function splitCardTitle(cardId) {
-  const clean = cleanCardName(cardId);
-  const parts = clean.split('-');
-  if (parts.length <= 1) {
-    return { name: clean.replace(/-/g, ' ').trim(), number: '' };
-  }
-  
-  let numberStartIndex = parts.length;
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-    if (
-      /^[A-Za-z]+\d+$/.test(part) || 
-      /^\d+$/.test(part) ||          
-      part.toUpperCase() === 'P' ||  
-      part.toUpperCase() === 'V1' ||
-      part.toUpperCase() === 'V2' ||
-      part.toUpperCase() === 'SEC'
-    ) {
-      numberStartIndex = i;
-      break;
-    }
-  }
-  
-  if (numberStartIndex === parts.length) {
-    if (parts.length >= 3) {
-      numberStartIndex = parts.length - 2;
-    } else {
-      numberStartIndex = parts.length - 1;
-    }
-  }
-  
-  const nameParts = parts.slice(0, numberStartIndex);
-  const numberParts = parts.slice(numberStartIndex);
-  
-  const name = nameParts.join(' ').replace(/\s+/g, ' ').trim();
-  const number = numberParts.join(' ').replace(/\s+/g, ' ').trim();
-  
-  return { name, number };
+// Split card name into Character Name, Card Number, Set, and Variant
+function splitCardTitle(cardId, tcg = 'Pokemon') {
+  const meta = formatCardMeta(cardId, '', '', '', tcg);
+  return {
+    name: meta.nameDe || 'Karte',
+    number: meta.cardCode || '',
+    setName: meta.setNameDe || '',
+    variant: meta.variant || null,
+    variantLabel: meta.variantLabel || ''
+  };
 }
 
 // Local browser image cache helpers
@@ -2300,7 +2250,11 @@ function renderWatchlistTab(container) {
         <div class="watchlist-item-info">
           <span class="watchlist-item-tcg">${card.tcg}</span>
           <span class="watchlist-item-name">${titleInfo.name}</span>
-          ${titleInfo.number ? `<span class="watchlist-item-number">${titleInfo.number}</span>` : ''}
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px;">
+            ${titleInfo.setName ? `<span style="font-size: 0.72rem; color: #a1a1aa;">📁 ${titleInfo.setName}</span>` : ''}
+            ${titleInfo.number ? `<span class="watchlist-item-number" style="margin: 0;">${titleInfo.number}</span>` : ''}
+            ${titleInfo.variant ? `<span style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 6px; border-radius: 4px;">✨ ${titleInfo.variant}</span>` : ''}
+          </div>
         </div>
         <div class="watchlist-item-price-col">
           <span class="watchlist-item-price" id="price-${card.id}">${priceText}</span>
@@ -3021,7 +2975,11 @@ function renderCollectionTab(container) {
         <div class="watchlist-item-info">
           <span class="watchlist-item-tcg">${card.tcg}</span>
           <span class="watchlist-item-name">${titleInfo.name}</span>
-          ${titleInfo.number ? `<span class="watchlist-item-number">${titleInfo.number}</span>` : ''}
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px;">
+            ${titleInfo.setName ? `<span style="font-size: 0.72rem; color: #a1a1aa;">📁 ${titleInfo.setName}</span>` : ''}
+            ${titleInfo.number ? `<span class="watchlist-item-number" style="margin: 0;">${titleInfo.number}</span>` : ''}
+            ${titleInfo.variant ? `<span style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 6px; border-radius: 4px;">✨ ${titleInfo.variant}</span>` : ''}
+          </div>
           <span class="collection-item-purchase-price" style="font-size: 0.72rem; color: var(--primary); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-weight: 500; text-decoration: underline;" data-action="set-purchase-price">
             <svg style="width: 10px; height: 10px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
@@ -3522,6 +3480,13 @@ async function renderAnalyticsTab(container) {
         `comment.ilike.%${encodeURIComponent(activeSearchQuery)}%`
       ];
 
+      const parsedComp = parseCardCodeComponents(activeSearchQuery);
+      if (parsedComp) {
+        if (parsedComp.fullVariantSlug) searchFilter.push(`card_id.ilike.%${encodeURIComponent(parsedComp.fullVariantSlug)}%`);
+        if (parsedComp.setCardCode) searchFilter.push(`card_id.ilike.%${encodeURIComponent(parsedComp.setCardCode)}%`);
+        if (parsedComp.searchCode) searchFilter.push(`card_id.ilike.%${encodeURIComponent(parsedComp.searchCode)}%`);
+      }
+
       if (numOnly && numOnly.length >= 2) {
         searchFilter.push(`card_id.ilike.%${encodeURIComponent(numOnly)}%`);
       }
@@ -3727,6 +3692,8 @@ async function renderAnalyticsTab(container) {
           diffClass = 'loss';
         }
 
+        const titleInfo = splitCardTitle(card.card_id, card.tcg);
+
         const itemEl = document.createElement('div');
         itemEl.className = 'watchlist-item-wrapper';
         itemEl.innerHTML = `
@@ -3734,7 +3701,12 @@ async function renderAnalyticsTab(container) {
             <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
             <div class="watchlist-item-info">
               <span class="watchlist-item-tcg">${card.tcg}</span>
-              <span class="watchlist-item-name">${cleanCardName(card.card_id)}</span>
+              <span class="watchlist-item-name">${titleInfo.name}</span>
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px;">
+                ${titleInfo.setName ? `<span style="font-size: 0.72rem; color: #a1a1aa;">📁 ${titleInfo.setName}</span>` : ''}
+                ${titleInfo.number ? `<span class="watchlist-item-number" style="margin: 0;">${titleInfo.number}</span>` : ''}
+                ${titleInfo.variant ? `<span style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 6px; border-radius: 4px;">✨ ${titleInfo.variant}</span>` : ''}
+              </div>
             </div>
             <div class="watchlist-item-price-col">
               <span class="watchlist-item-price">${priceText}</span>
@@ -4209,7 +4181,10 @@ function renderBulkScanTab(container) {
         <td>
           <div style="display: flex; align-items: center; gap: 8px;">
             ${imgMarkup}
-            <input type="text" class="form-input code-input" value="${item.detectedCode || ''}" style="width: 100px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 8px;" />
+            <div>
+              <input type="text" class="form-input code-input" value="${item.detectedCode || ''}" style="width: 100px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 8px;" />
+              ${item.variant ? `<div style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 5px; border-radius: 4px; display: inline-block; margin-top: 3px;">✨ ${item.variant}</div>` : ''}
+            </div>
           </div>
         </td>
         <td>
@@ -5041,12 +5016,18 @@ function renderDetail(container) {
   wrapper.appendChild(detailBody);
 
   // 1. Meta Header Area
-  const cmSearchUrl = buildCardmarketSearchUrl({ cardId: details.cardId, name: cleanCardName(details.cardId) });
+  const meta = formatCardMeta(details.cardId, '', '', '', details.tcg);
+  const cmSearchUrl = buildCardmarketSearchUrl({ cardId: details.cardId, name: meta.nameDe });
   const metaHeader = document.createElement('div');
   metaHeader.className = 'detail-meta-header';
   metaHeader.innerHTML = `
     <span class="hero-tcg">${details.tcg}</span>
-    <h1 class="hero-title">${cleanCardName(details.cardId)}</h1>
+    <h1 class="hero-title">${meta.nameDe}</h1>
+    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px 0;">
+      ${meta.setNameDe ? `<span style="font-size: 0.8rem; color: #cbd5e1; background: rgba(255,255,255,0.06); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); font-weight: 500;">📁 ${meta.setNameDe}</span>` : ''}
+      ${meta.cardCode ? `<span style="font-size: 0.8rem; font-weight: 600; color: #fff; background: rgba(255,255,255,0.06); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">${meta.cardCode}</span>` : ''}
+      ${meta.variant ? `<span style="font-size: 0.78rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(168, 85, 247, 0.35);">✨ ${meta.variantLabel || `Variante ${meta.variant}`}</span>` : ''}
+    </div>
     <a href="${cmSearchUrl}" target="_blank" rel="noopener noreferrer" class="cardmarket-link" style="font-size: 0.78rem; color: #60a5fa; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 500; transition: color 0.2s;">
       Zeige Karte auf Cardmarket
       <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
