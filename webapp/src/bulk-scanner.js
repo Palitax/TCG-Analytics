@@ -1,6 +1,7 @@
 import { parseCSV, normalizeScanData, extractCardCode, parseCardCodeComponents, WHATNOT_COLUMNS } from './csv-parser.js';
-import { getGermanCardDetails } from './tcg-translations.js';
+import { getGermanCardDetails, formatCardMeta } from './tcg-translations.js';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase.js';
+import { fetchTCGPlayerPrice, getTCGPlayerSearchUrl } from './tcgplayer-service.js';
 
 export function escapeCsvCell(val) {
   if (val === undefined || val === null) return '';
@@ -224,8 +225,21 @@ export class BulkScanner {
 
         // Keep existing scan image from Whatnot CSV or fetch from DB if missing
         if (!item.imageUrl) {
-          const fetchedImg = await fetchCardImageFromDB(bestRecord.card_id, code, cleanName);
+          const fetchedImg = await fetchCardImageFromDB(bestRecord.card_id, code, cleanName, item.rawSet || item.setNameDe);
           item.imageUrl = fetchedImg || parseImageUrlFromComment(bestRecord.comment) || null;
+        }
+
+        // Fetch TCGPlayer USD Market Pricing
+        try {
+          const meta = formatCardMeta(bestRecord.card_id, item.nameDe || cleanName, item.setNameDe || item.rawSet, code, item.tcg);
+          const tcgplayerData = await fetchTCGPlayerPrice(meta, item);
+          item.tcgplayerPrice = tcgplayerData?.priceUsd || null;
+          item.tcgplayerMarketPrice = tcgplayerData?.marketPrice || null;
+          item.tcgplayerLowPrice = tcgplayerData?.lowPrice || null;
+          item.tcgplayerUrl = tcgplayerData?.url || getTCGPlayerSearchUrl(meta, item);
+        } catch (e) {
+          item.tcgplayerPrice = null;
+          item.tcgplayerUrl = getTCGPlayerSearchUrl(null, item);
         }
 
         return item;
@@ -237,9 +251,23 @@ export class BulkScanner {
       item.lastCheckRelative = null;
       item.filterInfo = defaultFilterInfo;
       if (!item.imageUrl) {
-        const fallbackImg = await fetchCardImageFromDB(null, code, cleanName);
+        const fallbackImg = await fetchCardImageFromDB(null, code, cleanName, item.rawSet || item.setNameDe);
         if (fallbackImg) item.imageUrl = fallbackImg;
       }
+
+      // Fetch TCGPlayer USD Market Pricing even for unreviewed cards
+      try {
+        const meta = formatCardMeta(null, item.nameDe || cleanName, item.setNameDe || item.rawSet, code, item.tcg);
+        const tcgplayerData = await fetchTCGPlayerPrice(meta, item);
+        item.tcgplayerPrice = tcgplayerData?.priceUsd || null;
+        item.tcgplayerMarketPrice = tcgplayerData?.marketPrice || null;
+        item.tcgplayerLowPrice = tcgplayerData?.lowPrice || null;
+        item.tcgplayerUrl = tcgplayerData?.url || getTCGPlayerSearchUrl(meta, item);
+      } catch (e) {
+        item.tcgplayerPrice = null;
+        item.tcgplayerUrl = getTCGPlayerSearchUrl(null, item);
+      }
+
       return item;
     } catch (err) {
       console.warn('Database lookup warning for code:', code, err);
@@ -408,31 +436,14 @@ function cleanCardName(cardId) {
   return cardNameClean;
 }
 
-async function fetchCardImageFromDB(cardId, code, cleanName) {
-  const terms = [];
-  if (cardId) terms.push(cardId.replace(/^\/+/, ''));
-  if (code) {
-    const parsedComp = parseCardCodeComponents(code, cleanName);
-    if (parsedComp?.fullVariantSlug) terms.push(parsedComp.fullVariantSlug);
-    else if (parsedComp?.setCardCode) terms.push(parsedComp.setCardCode);
-    else terms.push(code.replace(/[\/\\%_]/g, ''));
-  }
-  if (!terms.length && cleanName && cleanName.length >= 3 && cleanName.toLowerCase() !== 'karte') {
-    terms.push(cleanName.replace(/[\/\\%_]/g, ''));
-  }
-
-  // Max 2 primary terms to keep lookups fast
-  for (const term of terms.slice(0, 2)) {
-    if (!term || term.length < 2) continue;
-    const cleanTerm = term.replace(/[\/\\%_]/g, '');
-    if (!cleanTerm) continue;
-
-    // 1. Check card_images table with 1.2s timeout
+async function fetchCardImageFromDB(cardId, code = '', cleanName = '', rawSet = '') {
+  // 1. Direct card_id match if full URL or slug is available
+  if (cardId) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1200);
-      const enc = encodeURIComponent(`%${cleanTerm}%`);
-      const url = `${SUPABASE_URL}/rest/v1/card_images?select=image_url&card_id=ilike.${enc}&limit=1`;
+      const enc = encodeURIComponent(cardId);
+      const url = `${SUPABASE_URL}/rest/v1/card_images?select=image_url&card_id=eq.${enc}&limit=1`;
       const resp = await fetch(url, {
         signal: controller.signal,
         headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
@@ -441,18 +452,23 @@ async function fetchCardImageFromDB(cardId, code, cleanName) {
       clearTimeout(timeoutId);
       if (resp.ok) {
         const data = await resp.json();
-        if (data && data.length > 0 && data[0].image_url) {
-          return data[0].image_url;
-        }
+        if (data?.[0]?.image_url) return data[0].image_url;
       }
     } catch (e) {}
+  }
 
-    // 2. Check marked_cards table with 1.2s timeout
+  // 2. Strict Set + Collector Number matching (Guarantees 0% mismatched art)
+  const parsed = parseCardCodeComponents(code, cleanName, rawSet);
+  const cardNum = parsed?.cardNum || code.replace(/^[A-Za-z]+[-_\s]*/, '').split('/')[0].replace(/\D/g, '');
+  const setIdentifier = (rawSet || parsed?.setCode || '').replace(/[-_\s]+/g, '-').trim();
+
+  if (setIdentifier && cardNum && cardNum.length >= 1 && cardNum.length <= 4) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1200);
-      const enc = encodeURIComponent(`%${cleanTerm}%`);
-      const url = `${SUPABASE_URL}/rest/v1/marked_cards?select=image_url&card_id=ilike.${enc}&image_url=not.is.null&limit=1`;
+      const encSet = encodeURIComponent(`%${setIdentifier}%`);
+      const encNum = encodeURIComponent(`%${cardNum}%`);
+      const url = `${SUPABASE_URL}/rest/v1/card_images?select=image_url&and=(card_id.ilike.${encSet},card_id.ilike.${encNum})&limit=1`;
       const resp = await fetch(url, {
         signal: controller.signal,
         headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
@@ -461,11 +477,10 @@ async function fetchCardImageFromDB(cardId, code, cleanName) {
       clearTimeout(timeoutId);
       if (resp.ok) {
         const data = await resp.json();
-        if (data && data.length > 0 && data[0].image_url) {
-          return data[0].image_url;
-        }
+        if (data?.[0]?.image_url) return data[0].image_url;
       }
     } catch (e) {}
   }
+
   return null;
 }

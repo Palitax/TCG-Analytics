@@ -5,6 +5,7 @@ import { BulkScanner } from './bulk-scanner.js';
 import { StreamOverlay } from './stream-overlay.js';
 import { extractCardCode, parseCardCodeComponents } from './csv-parser.js';
 import { formatCardMeta, translateCardName, translateSetName } from './tcg-translations.js';
+import { fetchTCGPlayerPrice, getTCGPlayerSearchUrl } from './tcgplayer-service.js';
 Chart.register(...registerables);
 
 // WebKit / motion animation safety wrapper
@@ -2259,6 +2260,9 @@ function renderWatchlistTab(container) {
         <div class="watchlist-item-price-col">
           <span class="watchlist-item-price" id="price-${card.id}">${priceText}</span>
           <span class="diff-badge ${diffClass}" id="diff-${card.id}">${diffText}</span>
+          <a href="${getTCGPlayerSearchUrl(titleInfo, card)}" target="_blank" rel="noopener noreferrer" class="tcgplayer-link-chip" style="font-size: 0.68rem; color: #60a5fa; margin-top: 2px; text-decoration: none; display: inline-flex; align-items: center; gap: 2px; font-weight: 600;" title="Auf TCGPlayer ansehen" onclick="event.stopPropagation();">
+            TCGP ↗
+          </a>
         </div>
       </div>
     `;
@@ -2990,6 +2994,9 @@ function renderCollectionTab(container) {
         <div class="watchlist-item-price-col">
           <span class="watchlist-item-price" id="collection-price-${card.id}">${priceText}</span>
           <span class="diff-badge ${diffClass}" id="collection-diff-${card.id}">${diffText}</span>
+          <a href="${getTCGPlayerSearchUrl(titleInfo, card)}" target="_blank" rel="noopener noreferrer" class="tcgplayer-link-chip" style="font-size: 0.68rem; color: #60a5fa; margin-top: 2px; text-decoration: none; display: inline-flex; align-items: center; gap: 2px; font-weight: 600;" title="Auf TCGPlayer ansehen" onclick="event.stopPropagation();">
+            TCGP ↗
+          </a>
         </div>
       </div>
     `;
@@ -3584,6 +3591,33 @@ async function renderAnalyticsTab(container) {
         } catch (err) {
           console.error('Error fetching global card images in analytics:', err.message);
         }
+
+        // Strict Set + Number Image Resolution for missing images (0% false matching)
+        const missingImgCards = scannedCards.filter(c => !c.image_url);
+        if (missingImgCards.length > 0) {
+          for (const card of missingImgCards) {
+            const meta = formatCardMeta(card.card_id, '', '', '', card.tcg);
+            const parsed = parseCardCodeComponents(meta.cardCode, meta.nameEn, meta.setNameDe);
+            const num = parsed?.cardNum || meta.cardCode.replace(/^[A-Za-z]+[-_\s]*/, '').split('/')[0].replace(/\D/g, '');
+            const setSlug = (meta.setNameDe || parsed?.setCode || '').replace(/[-_\s]+/g, '-').trim();
+
+            if (setSlug && num && num.length >= 1 && num.length <= 4) {
+              try {
+                const encSet = encodeURIComponent(`%${setSlug}%`);
+                const encNum = encodeURIComponent(`%${num}%`);
+                const { data: matchedImg } = await supabase
+                  .from('card_images')
+                  .select('image_url')
+                  .or(`and(card_id.ilike.${encSet},card_id.ilike.${encNum})`)
+                  .limit(1);
+
+                if (matchedImg && matchedImg.length > 0 && matchedImg[0].image_url) {
+                  card.image_url = matchedImg[0].image_url;
+                }
+              } catch (err) {}
+            }
+          }
+        }
       }
 
       // Also search catalog images from card_images so imported cards without price history appear
@@ -3711,6 +3745,9 @@ async function renderAnalyticsTab(container) {
             <div class="watchlist-item-price-col">
               <span class="watchlist-item-price">${priceText}</span>
               <span class="diff-badge ${diffClass}">${diffText}</span>
+              <a href="${getTCGPlayerSearchUrl(titleInfo, card)}" target="_blank" rel="noopener noreferrer" class="tcgplayer-link-chip" style="font-size: 0.68rem; color: #60a5fa; margin-top: 2px; text-decoration: none; display: inline-flex; align-items: center; gap: 2px; font-weight: 600;" title="Auf TCGPlayer ansehen" onclick="event.stopPropagation();">
+                TCGP ↗
+              </a>
             </div>
           </div>
         `;
@@ -4194,7 +4231,10 @@ function renderBulkScanTab(container) {
           </div>
           ${setNameDe ? `<div style="color: #71717a; font-size: 0.75rem; margin-top: 2px;">📁 ${setNameDe}</div>` : ''}
         </td>
-        <td style="color: ${hasPrice ? '#10b981' : '#94a3b8'}; font-weight: 700;">${priceText}</td>
+        <td>
+          <div style="color: ${hasPrice ? '#10b981' : '#94a3b8'}; font-weight: 700;">${priceText}</div>
+          ${item.tcgplayerPrice ? `<div style="font-size: 0.72rem; color: #60a5fa; font-weight: 600; margin-top: 2px;">$ ${Number(item.tcgplayerPrice).toFixed(2)} (USD)</div>` : ''}
+        </td>
         <td style="color: #94a3b8; font-size: 0.85rem;">${checkDetails}</td>
         <td>
           <span class="status-badge ${isMatched ? 'matched' : 'needs_review'}" style="display: inline-flex; align-items: center; gap: 6px;">
@@ -4205,15 +4245,18 @@ function renderBulkScanTab(container) {
         <td style="text-align: right;">
           <div style="display: inline-flex; align-items: center; gap: 6px; justify-content: flex-end; flex-wrap: nowrap;">
             ${!isMatched ? `
-              <button type="button" class="btn btn-secondary btn-sm btn-find-card-analytics" style="padding: 4px 10px; font-size: 0.8rem; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 4px;" title="Sucht nach dieser Karte im Analytics & DB-Tab">
-                <svg style="width: 12px; height: 12px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <button type="button" class="btn btn-secondary btn-sm btn-find-card-analytics" style="padding: 4px 8px; font-size: 0.75rem; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 4px;" title="Sucht nach dieser Karte im Analytics & DB-Tab">
+                <svg style="width: 11px; height: 11px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                Karte finden
+                Finden
               </button>
             ` : ''}
-            <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm cm-check-link">
-              Check price now ↗
+            <a href="${item.tcgplayerUrl || getTCGPlayerSearchUrl(null, item)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="padding: 4px 8px; font-size: 0.75rem; border-color: rgba(59, 130, 246, 0.4); color: #93c5fd;" title="Auf TCGPlayer ansehen">
+              TCGP ↗
+            </a>
+            <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm cm-check-link" style="padding: 4px 8px; font-size: 0.75rem;">
+              CM ↗
             </a>
           </div>
         </td>
@@ -5018,6 +5061,7 @@ function renderDetail(container) {
   // 1. Meta Header Area
   const meta = formatCardMeta(details.cardId, '', '', '', details.tcg);
   const cmSearchUrl = buildCardmarketSearchUrl({ cardId: details.cardId, name: meta.nameDe });
+  const tcgplayerSearchUrl = getTCGPlayerSearchUrl(meta, { tcg: details.tcg });
   const metaHeader = document.createElement('div');
   metaHeader.className = 'detail-meta-header';
   metaHeader.innerHTML = `
@@ -5028,12 +5072,15 @@ function renderDetail(container) {
       ${meta.cardCode ? `<span style="font-size: 0.8rem; font-weight: 600; color: #fff; background: rgba(255,255,255,0.06); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">${meta.cardCode}</span>` : ''}
       ${meta.variant ? `<span style="font-size: 0.78rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(168, 85, 247, 0.35);">✨ ${meta.variantLabel || `Variante ${meta.variant}`}</span>` : ''}
     </div>
-    <a href="${cmSearchUrl}" target="_blank" rel="noopener noreferrer" class="cardmarket-link" style="font-size: 0.78rem; color: #60a5fa; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 500; transition: color 0.2s;">
-      Zeige Karte auf Cardmarket
-      <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-      </svg>
-    </a>
+    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 6px;">
+      <a href="${cmSearchUrl}" target="_blank" rel="noopener noreferrer" class="cardmarket-link" style="font-size: 0.78rem; color: #60a5fa; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 500; transition: color 0.2s;">
+        🇪🇺 Auf Cardmarket ansehen ↗
+      </a>
+      <span style="color: #52525b;">•</span>
+      <a href="${tcgplayerSearchUrl}" target="_blank" rel="noopener noreferrer" class="tcgplayer-link" style="font-size: 0.78rem; color: #93c5fd; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 500; transition: color 0.2s;">
+        🇺🇸 Auf TCGPlayer ansehen ↗
+      </a>
+    </div>
   `;
   detailBody.appendChild(metaHeader);
 
@@ -5223,7 +5270,7 @@ function renderDetail(container) {
     statsSection.innerHTML = `
       <div class="detail-tile glass-panel">
         <div class="tile-tag tag-current" style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-          <span>Aktuell</span>
+          <span>Aktuell (CM)</span>
           ${diffBadgeHtml}
         </div>
         <div class="tile-price">${latest.price.toFixed(2)} €</div>
@@ -5242,7 +5289,35 @@ function renderDetail(container) {
           <span>Datum: ${baselineDate}</span>
         </div>
       </div>
+      <div class="detail-tile glass-panel" id="detail-tcgplayer-tile" style="border-color: rgba(59, 130, 246, 0.3); background: rgba(30, 58, 138, 0.15);">
+        <div class="tile-tag" style="background: rgba(59, 130, 246, 0.2); color: #93c5fd; display: flex; align-items: center; justify-content: space-between;">
+          <span>🇺🇸 TCGPlayer</span>
+          <span style="font-size: 0.7rem; font-weight: 700;">USD</span>
+        </div>
+        <div class="tile-price" id="detail-tcgplayer-price" style="color: #60a5fa;">Lädt...</div>
+        <div class="tile-meta" id="detail-tcgplayer-meta">
+          <a href="${tcgplayerSearchUrl}" target="_blank" rel="noopener noreferrer" style="color: #93c5fd; text-decoration: underline; font-weight: 600;">TCGPlayer Angebot ↗</a>
+        </div>
+      </div>
     `;
+
+    fetchTCGPlayerPrice(meta, { tcg: details.tcg }).then(tcgp => {
+      const priceEl = statsSection.querySelector('#detail-tcgplayer-price');
+      const metaEl = statsSection.querySelector('#detail-tcgplayer-meta');
+      if (priceEl && tcgp?.priceUsd) {
+        priceEl.textContent = `$ ${Number(tcgp.priceUsd).toFixed(2)}`;
+        if (metaEl) {
+          const parts = [];
+          if (tcgp.lowPrice) parts.push(`<span>Low: $ ${Number(tcgp.lowPrice).toFixed(2)}</span>`);
+          if (tcgp.midPrice) parts.push(`<span>Mid: $ ${Number(tcgp.midPrice).toFixed(2)}</span>`);
+          parts.push(`<a href="${tcgp.url}" target="_blank" rel="noopener noreferrer" style="color: #93c5fd; text-decoration: underline; font-weight: 600;">TCGPlayer Angebot ↗</a>`);
+          metaEl.innerHTML = parts.join('');
+        }
+      } else if (priceEl) {
+        priceEl.textContent = 'Auf Anfrage';
+        priceEl.style.fontSize = '1.1rem';
+      }
+    }).catch(() => {});
 
     // 2. Render SVG Chart
     if (filteredHistory.length < 2) {

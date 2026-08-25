@@ -1,5 +1,6 @@
-import { getGermanCardDetails } from './tcg-translations.js';
-import { extractCardCode } from './csv-parser.js';
+import { getGermanCardDetails, formatCardMeta } from './tcg-translations.js';
+import { extractCardCode, parseCardCodeComponents } from './csv-parser.js';
+import { fetchTCGPlayerPrice, getTCGPlayerSearchUrl } from './tcgplayer-service.js';
 
 function getGameSlug(item, code = '') {
   const tcg = (item.detectedTcg || item.tcg || '').toLowerCase();
@@ -574,7 +575,8 @@ export class StreamOverlay {
               const imageSrc = getProxiedImageUrl(rawImage);
               const langFlag = getLanguageFlag(card.rawLanguage);
 
-              const variantTag = card.variant || details.variant || null;
+              const hasTcgplayerPrice = card.tcgplayerPrice !== null && card.tcgplayerPrice !== undefined;
+              const tcgplayerDisplay = hasTcgplayerPrice ? `$ ${Number(card.tcgplayerPrice).toFixed(2)}` : null;
 
               return `
                 <div class="so-list-card-item ${isCurrent ? 'is-current' : ''} ${isSold ? 'is-sold' : ''}" data-card-idx="${originalIndex}">
@@ -599,7 +601,8 @@ export class StreamOverlay {
                   </div>
                   <div class="so-list-price">
                     <div>${soldPriceDisplay || priceDisplay}</div>
-                    <div style="font-size: 0.6875rem; color: #71717a; font-weight: 500;">${soldPriceDisplay ? 'Verkaufspreis' : 'CM Preis'}</div>
+                    ${tcgplayerDisplay ? `<div style="font-size: 0.72rem; color: #60a5fa; font-weight: 600; margin-top: 1px;">${tcgplayerDisplay}</div>` : ''}
+                    <div style="font-size: 0.6875rem; color: #71717a; font-weight: 500;">${soldPriceDisplay ? 'Verkaufspreis' : (tcgplayerDisplay ? 'CM / TCGP' : 'CM Preis')}</div>
                   </div>
                 </div>
               `;
@@ -717,6 +720,26 @@ export class StreamOverlay {
     const soldButtonText = this.getSoldButtonLabel(currentCard);
     const displayVal = this.currentInputPrice || '';
 
+    const meta = formatCardMeta(currentCard.cardDetails?.cardmarket_url || currentCard.card_id, nameDe, setNameDe, cardCode, currentCard.tcg);
+    const tcgplayerUrl = currentCard.tcgplayerUrl || getTCGPlayerSearchUrl(meta, currentCard);
+    const hasTcgplayerPrice = currentCard.tcgplayerPrice !== null && currentCard.tcgplayerPrice !== undefined;
+    const tcgplayerDisplay = hasTcgplayerPrice ? `$ ${Number(currentCard.tcgplayerPrice).toFixed(2)}` : 'Auf TCGPlayer suchen';
+
+    if (currentCard.tcgplayerPrice === undefined) {
+      fetchTCGPlayerPrice(meta, currentCard).then(res => {
+        if (res?.priceUsd) {
+          currentCard.tcgplayerPrice = res.priceUsd;
+          currentCard.tcgplayerUrl = res.url;
+          const el = document.querySelector('#so-tcgplayer-val');
+          if (el) {
+            el.textContent = `$ ${Number(res.priceUsd).toFixed(2)}`;
+            el.style.color = '#60a5fa';
+            el.style.fontSize = '1.35rem';
+          }
+        }
+      }).catch(() => {});
+    }
+
     this.container.innerHTML = `
       <div class="stream-overlay-active glass-panel ${this.isFullscreen ? 'is-fullscreen' : ''}">
         ${this.isFullscreen ? `
@@ -772,9 +795,14 @@ export class StreamOverlay {
                   </div>
                 ` : ''}
               </div>
-              <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
-                Check price now ↗
-              </a>
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <a href="${tcgplayerUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="border-color: rgba(59, 130, 246, 0.4); color: #93c5fd;" title="Auf TCGPlayer öffnen">
+                  TCGPlayer ↗
+                </a>
+                <a href="${cmUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
+                  Cardmarket ↗
+                </a>
+              </div>
             </div>
 
             <div>
@@ -785,10 +813,14 @@ export class StreamOverlay {
               </div>
             </div>
 
-            <div class="so-price-cards">
+            <div class="so-price-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px;">
               <div class="so-price-card primary">
-                <span class="price-label">Letzter CM Preis</span>
+                <span class="price-label">🇪🇺 Cardmarket (EUR)</span>
                 <span class="price-value" style="color: ${hasPrice ? '#10b981' : '#a1a1aa'};">${priceDisplay}</span>
+              </div>
+              <div class="so-price-card primary" style="background: rgba(30, 58, 138, 0.25); border-color: rgba(59, 130, 246, 0.35);">
+                <span class="price-label" style="color: #93c5fd;">🇺🇸 TCGPlayer (USD)</span>
+                <span class="price-value" id="so-tcgplayer-val" style="color: ${hasTcgplayerPrice ? '#60a5fa' : '#94a3b8'}; font-size: ${hasTcgplayerPrice ? '1.35rem' : '0.9rem'};">${tcgplayerDisplay}</span>
               </div>
               <div class="so-price-card trend">
                 <span class="price-label">Letzter Check & Filter</span>
