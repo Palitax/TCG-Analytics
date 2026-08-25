@@ -89,10 +89,13 @@ export class BulkScanner {
 
       // Helper to execute safe PostgREST price_history queries with 1.8s timeout
       const queryPriceHistory = async (filterParam) => {
+        if (!filterParam || typeof filterParam !== 'string') return null;
+        // Ensure filterParam has '=' or is a valid PostgREST expression
+        const safeFilter = filterParam.includes('=') ? filterParam : `card_id=ilike.${filterParam}`;
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 1800);
-          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&${filterParam}&order=scanned_at.desc&limit=3`;
+          const url = `${SUPABASE_URL}/rest/v1/price_history?select=price,scanned_at,comment,card_id&${safeFilter}&order=scanned_at.desc&limit=3`;
           const resp = await fetch(url, {
             signal: controller.signal,
             headers: {
@@ -112,41 +115,43 @@ export class BulkScanner {
         return null;
       };
 
-      // Stage 0: Compound Asian/Chinese Variant Matching (e.g. Phione V1-CBB4C13 for CBB4C 1301/07)
+      // Stage 0: Compound Asian/Chinese & Variant Matching (e.g. Phione V1-CBB4C13 for CBB4C 1301/07)
       const parsedComp = parseCardCodeComponents(code, rawFullName, setNameClean);
       if (parsedComp && parsedComp.isCompound) {
-        // 0a. Try full variant slug e.g. %V1%CBB4C13% or %V1-CBB4C13%
+        // 0a. Try full variant slug e.g. %V1%CBB4C13% or %CBB4C13%V1%
         if (parsedComp.variantTag && parsedComp.setCardCode) {
           const encVar = encodeURIComponent(`%${parsedComp.variantTag}%${parsedComp.setCardCode}%`);
-          bestRecord = await queryPriceHistory(`card_id.ilike.${encVar}`);
+          bestRecord = await queryPriceHistory(`card_id=ilike.${encVar}`);
+          if (!bestRecord) {
+            const encVarRev = encodeURIComponent(`%${parsedComp.setCardCode}%${parsedComp.variantTag}%`);
+            bestRecord = await queryPriceHistory(`card_id=ilike.${encVarRev}`);
+          }
         }
-        // 0b. Try Name + Variant + SetCode
+        // 0b. Try Name + Variant + SetCode e.g. Phione + V1 + CBB4C
         if (!bestRecord && cardNameClean && parsedComp.variantTag && parsedComp.setCode) {
           const encName = encodeURIComponent(`%${cardNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-')}%`);
           const encVar = encodeURIComponent(`%${parsedComp.variantTag}%`);
           const encSet = encodeURIComponent(`%${parsedComp.setCode}%`);
           bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},card_id.ilike.${encVar},card_id.ilike.${encSet})`);
         }
-        // 0c. Try Name + SetCardCode e.g. Phione + CBB4C13
-        if (!bestRecord && cardNameClean && parsedComp.setCardCode) {
+        // 0c. Try Name + SetCardCode ONLY if no specific variant was parsed
+        if (!bestRecord && !parsedComp.variantTag && cardNameClean && parsedComp.setCardCode) {
           const encName = encodeURIComponent(`%${cardNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-')}%`);
           const encSetCard = encodeURIComponent(`%${parsedComp.setCardCode}%`);
           bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},card_id.ilike.${encSetCard})`);
         }
-        // 0d. Try SetCardCode alone e.g. %CBB4C13%
-        if (!bestRecord && parsedComp.setCardCode && parsedComp.setCode) {
+        // 0d. Try SetCardCode alone ONLY if no specific variant was parsed
+        if (!bestRecord && !parsedComp.variantTag && parsedComp.setCardCode && parsedComp.setCode) {
           const encSetCard = encodeURIComponent(`%${parsedComp.setCardCode}%`);
-          bestRecord = await queryPriceHistory(`card_id.ilike.${encSetCard}`);
-        }
-        // 0e. Try Suffix variant e.g. %OP05-119-V1% or %OP05-119%V1%
-        if (!bestRecord && parsedComp.variantTag && parsedComp.setCardCode) {
-          const encVarSuffix = encodeURIComponent(`%${parsedComp.setCardCode}%${parsedComp.variantTag}%`);
-          bestRecord = await queryPriceHistory(`card_id.ilike.${encVarSuffix}`);
+          bestRecord = await queryPriceHistory(`card_id=ilike.${encSetCard}`);
         }
       }
 
+      // If a specific variant was requested but not found in DB, DO NOT match generic non-variant cards
+      const hasStrictVariant = parsedComp && parsedComp.variantTag;
+
       // Stage 1: Combined Match (Set Name + Card Name + Code)
-      if (!bestRecord && setNameClean && cardNameClean) {
+      if (!bestRecord && !hasStrictVariant && setNameClean && cardNameClean) {
         const setSlug = setNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
         const nameSlug = cardNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
         const codeNum = code ? (code.split('/')[0] || code).replace(/[\/\\%_]/g, '') : '';
@@ -164,7 +169,7 @@ export class BulkScanner {
       }
 
       // Stage 2: Card Name + Code Match
-      if (!bestRecord && cardNameClean && code) {
+      if (!bestRecord && !hasStrictVariant && cardNameClean && code) {
         const nameSlug = cardNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
         const altCode = code.replace('/', '-');
         const encName = encodeURIComponent(`%${nameSlug}%`);
@@ -174,14 +179,14 @@ export class BulkScanner {
       }
 
       // Stage 3: Exact Code in Comment or card_id Match
-      if (!bestRecord && code) {
+      if (!bestRecord && !hasStrictVariant && code) {
         const encCodeComment = encodeURIComponent(`%Code:${code}%`);
         const encCodeExact = encodeURIComponent(`%${code}%`);
         bestRecord = await queryPriceHistory(`or=(comment.ilike.${encCodeComment},card_id.ilike.${encCodeExact})`);
       }
 
       // Stage 4: Search by exact full code search terms
-      if (!bestRecord && code) {
+      if (!bestRecord && !hasStrictVariant && code) {
         const searchTerms = [code];
         if (altCode && altCode !== code) searchTerms.push(altCode);
         if (safeCode && !searchTerms.includes(safeCode)) searchTerms.push(safeCode);
@@ -244,6 +249,11 @@ export class BulkScanner {
 
         return item;
       }
+
+      const germanDetails = getGermanCardDetails(item);
+      item.nameDe = germanDetails.nameDe || cleanName;
+      item.setNameDe = germanDetails.setNameDe || item.rawSet || '';
+      item.variant = germanDetails.variant || item.variant || (parsedComp?.variantTag) || null;
 
       item.status = 'needs_review';
       item.lastPrice = null;

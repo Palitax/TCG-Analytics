@@ -466,13 +466,13 @@ export function parseCardCodeComponents(codeStr, nameStr = '', setStr = '') {
   const setMatch = combined.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|PAF|OBF|SVP)\b/i);
   const setCode = setMatch ? setMatch[1].toUpperCase() : '';
 
-  const compMatch = combined.match(/\b(\d{2})(\d{2})\/(\d{2})\b/);
+  const compMatch = combined.match(/\b(\d{2})(\d{2})(?:\/(\d{2}))?\b/);
   if (compMatch) {
-    const cardNum = parseInt(compMatch[1], 10).toString(); // "13"
-    const cardNumPad = compMatch[1]; // "13"
-    const variantNum = parseInt(compMatch[2], 10).toString(); // "1"
-    const variantTag = `V${variantNum}`; // "V1"
-    const totalVariants = compMatch[3]; // "07"
+    const cardNum = parseInt(compMatch[1], 10).toString(); // "13" or "23"
+    const cardNumPad = compMatch[1]; // "13" or "23"
+    const variantNum = parseInt(compMatch[2], 10).toString(); // "1" or "6"
+    const variantTag = `V${variantNum}`; // "V1" or "V6"
+    const totalVariants = compMatch[3] || '07'; // "07"
     const setCardCode = setCode ? `${setCode}${cardNumPad}` : cardNumPad; // "CBB4C13"
     const fullVariantSlug = setCode ? `${variantTag}-${setCode}${cardNumPad}` : `${variantTag}-${cardNumPad}`; // "V1-CBB4C13"
 

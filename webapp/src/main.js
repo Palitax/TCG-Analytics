@@ -4219,7 +4219,7 @@ function renderBulkScanTab(container) {
           <div style="display: flex; align-items: center; gap: 8px;">
             ${imgMarkup}
             <div>
-              <input type="text" class="form-input code-input" value="${item.detectedCode || ''}" style="width: 100px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 8px;" />
+              <input type="text" class="form-input code-input" value="${item.detectedCode || ''}" style="min-width: 125px; max-width: 145px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 8px;" />
               ${item.variant ? `<div style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 5px; border-radius: 4px; display: inline-block; margin-top: 3px;">✨ ${item.variant}</div>` : ''}
             </div>
           </div>
