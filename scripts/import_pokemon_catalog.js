@@ -66,7 +66,7 @@ async function bulkUpsertCardImages(records) {
   return totalUploaded;
 }
 
-async function processLanguageSets(lang) {
+async function processLanguageSets(lang, enImagesMap = new Map()) {
   console.log(`📦 Fetching ${lang.toUpperCase()} sets from TCGdex...`);
   let setsList = [];
   try {
@@ -74,10 +74,11 @@ async function processLanguageSets(lang) {
     console.log(`✅ Found ${setsList.length} ${lang.toUpperCase()} sets.`);
   } catch (err) {
     console.warn(`Could not fetch set list for ${lang}:`, err.message);
-    return [];
+    return { records: [], imagesMap: new Map() };
   }
 
   const recordsMap = new Map();
+  const collectedImagesMap = new Map();
 
   for (let sIdx = 0; sIdx < setsList.length; sIdx++) {
     const setSummary = setsList[sIdx];
@@ -95,9 +96,18 @@ async function processLanguageSets(lang) {
         const cardNameSlug = slugify(cardName);
         const fullNumber = officialCount ? `${localId}/${officialCount}` : localId;
 
-        const imageUrl = card.image
-          ? (card.image.endsWith('.png') || card.image.endsWith('.webp') || card.image.endsWith('.jpg') ? card.image : `${card.image}/high.webp`)
-          : `https://assets.tcgdex.net/${lang}/${setId}/${localId}/high.webp`;
+        let imageUrl = null;
+        if (card.image) {
+          imageUrl = card.image.endsWith('.png') || card.image.endsWith('.webp') || card.image.endsWith('.jpg')
+            ? card.image
+            : `${card.image}/high.webp`;
+          collectedImagesMap.set(card.id, imageUrl);
+          collectedImagesMap.set(`${setId.toLowerCase()}-${localId.toLowerCase()}`, imageUrl);
+        } else if (enImagesMap.has(card.id)) {
+          imageUrl = enImagesMap.get(card.id);
+        } else if (enImagesMap.has(`${setId.toLowerCase()}-${localId.toLowerCase()}`)) {
+          imageUrl = enImagesMap.get(`${setId.toLowerCase()}-${localId.toLowerCase()}`);
+        }
 
         // Keys for card matching:
         // 1. Primary Cardmarket Singles path
@@ -114,11 +124,13 @@ async function processLanguageSets(lang) {
         // 4. Compact Fraction key
         const keyFrac = `/Pokemon/Products/Singles/${cardNameSlug}-${localId}-${officialCount}`;
 
-        recordsMap.set(keyFullTitle, { card_id: keyFullTitle, image_url: imageUrl, tcg: 'Pokemon' });
-        recordsMap.set(keyReadable, { card_id: keyReadable, image_url: imageUrl, tcg: 'Pokemon' });
-        recordsMap.set(keySetNum, { card_id: keySetNum, image_url: imageUrl, tcg: 'Pokemon' });
-        if (officialCount) {
-          recordsMap.set(keyFrac, { card_id: keyFrac, image_url: imageUrl, tcg: 'Pokemon' });
+        if (imageUrl) {
+          recordsMap.set(keyFullTitle, { card_id: keyFullTitle, image_url: imageUrl, tcg: 'Pokemon' });
+          recordsMap.set(keyReadable, { card_id: keyReadable, image_url: imageUrl, tcg: 'Pokemon' });
+          recordsMap.set(keySetNum, { card_id: keySetNum, image_url: imageUrl, tcg: 'Pokemon' });
+          if (officialCount) {
+            recordsMap.set(keyFrac, { card_id: keyFrac, image_url: imageUrl, tcg: 'Pokemon' });
+          }
         }
       }
 
@@ -130,7 +142,7 @@ async function processLanguageSets(lang) {
     }
   }
 
-  return Array.from(recordsMap.values());
+  return { records: Array.from(recordsMap.values()), imagesMap: collectedImagesMap };
 }
 
 function getChineseSetRecords() {
@@ -197,13 +209,16 @@ async function runImport() {
   console.log(`📍 Supabase Endpoint: ${SUPABASE_URL}`);
 
   try {
-    const deRecords = await processLanguageSets('de');
+    // 1. Process English first to collect universal high-res card scans
+    const { records: enRecords, imagesMap: enImagesMap } = await processLanguageSets('en');
+    console.log(`📊 Prepared ${enRecords.length} English records with ${enImagesMap.size} unique scans.`);
+
+    // 2. Process German sets, falling back to English scans when German scan is unavailable
+    const { records: deRecords } = await processLanguageSets('de', enImagesMap);
     console.log(`📊 Prepared ${deRecords.length} German records.`);
 
-    const enRecords = await processLanguageSets('en');
-    console.log(`📊 Prepared ${enRecords.length} English records.`);
-
-    const jaRecords = await processLanguageSets('ja');
+    // 3. Process Japanese sets
+    const { records: jaRecords } = await processLanguageSets('ja');
     console.log(`📊 Prepared ${jaRecords.length} Japanese records.`);
 
     const zhRecords = getChineseSetRecords();

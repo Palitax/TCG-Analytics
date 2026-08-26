@@ -796,6 +796,17 @@ function getProxiedImageUrl(url) {
 
 
 
+// Robust global fallback for card images (e.g. falls back from German to English scans if German scan is missing)
+window.handleCardImageError = function(img) {
+  if (!img) return;
+  const currentSrc = img.getAttribute('src') || img.src || '';
+  if (currentSrc.includes('assets.tcgdex.net/de/')) {
+    img.src = currentSrc.replace('/assets.tcgdex.net/de/', '/assets.tcgdex.net/en/');
+    return;
+  }
+  img.src = '/logo.png';
+};
+
 // Fullscreen Lightbox Modal for zooming card images
 function showLightbox(imgSrc) {
   const existing = document.getElementById('app-lightbox');
@@ -815,7 +826,7 @@ function showLightbox(imgSrc) {
   lightbox.className = 'lightbox-overlay';
   lightbox.innerHTML = `
     <div class="lightbox-content">
-      <img src="${imgSrc}" class="lightbox-img" onerror="this.src='/logo.png'">
+      <img src="${imgSrc}" class="lightbox-img" onerror="handleCardImageError(this)">
       ${closeBtnHtml}
     </div>
   `;
@@ -2261,7 +2272,7 @@ function renderWatchlistTab(container) {
       </div>
       <div class="watchlist-item glass-panel" data-card-id="${card.id}" data-card-uuid="${card.card_id}">
         <div class="watchlist-item-img-container">
-          <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+          <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="handleCardImageError(this)">
           ${desktopCollectBtnHtml}
           ${desktopDeleteBtnHtml}
         </div>
@@ -2990,7 +3001,7 @@ function renderCollectionTab(container) {
       </div>
       <div class="watchlist-item glass-panel" data-card-id="${card.id}" data-card-uuid="${card.card_id}">
         <div class="watchlist-item-img-container">
-          <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+          <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="handleCardImageError(this)">
           ${desktopDeleteBtnHtml}
         </div>
         <div class="watchlist-item-info">
@@ -3769,7 +3780,7 @@ async function renderAnalyticsTab(container) {
         itemEl.innerHTML = `
           <div class="watchlist-item glass-panel" data-card-id="${card.card_id}">
             <div class="watchlist-item-img-container">
-              <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+              <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="handleCardImageError(this)">
             </div>
             <div class="watchlist-item-info">
               <span class="watchlist-item-tcg">${card.tcg}</span>
@@ -5175,7 +5186,7 @@ function renderDetail(container) {
   imageBox.className = 'detail-image-box';
   imageBox.innerHTML = `
     <div class="hero-img-wrapper" style="position: relative; display: block;">
-      <img class="hero-img" src="${getProxiedImageUrl(details.imageUrl)}" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+      <img class="hero-img" src="${getProxiedImageUrl(details.imageUrl)}" referrerpolicy="no-referrer" onerror="handleCardImageError(this)">
       <input type="file" id="input-card-file" accept="image/*" style="display: none;">
       <button id="btn-upload-image" class="app-btn-edit-image">
         <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12">
