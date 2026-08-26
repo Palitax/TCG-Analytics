@@ -862,7 +862,8 @@ export function formatCardMeta(cardId, rawName = '', rawSet = '', code = '', tcg
     }
   }
 
-  const variantLabel = variantTag ? `Variante ${variantTag}` : '';
+  const verNum = variantTag ? variantTag.replace(/\D/g, '') : '';
+  const variantLabel = verNum ? `Version ${verNum}` : (variantTag ? `Version ${variantTag}` : '');
 
   // 3. Extract clean base card name
   let nameClean = rawName || '';

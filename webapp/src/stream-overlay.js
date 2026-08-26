@@ -593,6 +593,10 @@ export class StreamOverlay {
               const hasTcgplayerPrice = card.tcgplayerPrice !== null && card.tcgplayerPrice !== undefined;
               const tcgplayerDisplay = hasTcgplayerPrice ? `$ ${Number(card.tcgplayerPrice).toFixed(2)}` : null;
 
+              const rawVar = card.variant || details.variant || null;
+              const verNum = rawVar ? rawVar.replace(/\D/g, '') : '';
+              const variantTag = verNum ? `Version ${verNum}` : rawVar;
+
               return `
                 <div class="so-list-card-item ${isCurrent ? 'is-current' : ''} ${isSold ? 'is-sold' : ''}" data-card-idx="${originalIndex}">
                   <div class="so-list-index-badge">#${originalIndex + 1}</div>
@@ -806,7 +810,7 @@ export class StreamOverlay {
                 <div class="so-card-badge">${cardCode}</div>
                 ${(currentCard.variant || details.variant) ? `
                   <div class="so-card-badge" style="background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.35); color: #d8b4fe; font-weight: 700;">
-                    ✨ Variante ${currentCard.variant || details.variant}
+                    ✨ ${(details.variantLabel || `Version ${(currentCard.variant || details.variant).replace(/\D/g, '')}` || currentCard.variant)}
                   </div>
                 ` : ''}
               </div>
