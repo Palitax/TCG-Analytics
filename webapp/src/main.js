@@ -3909,14 +3909,31 @@ function buildCardmarketSearchUrl(item) {
 
   let searchQuery = '';
 
-  if (code) {
-    // 1. If code contains set code + number (e.g. "CBB4C 2805", "CBB4C 2805/07", "sv2a 173", "PAF 091/091")
+  const parsedComp = parseCardCodeComponents(code, rawFullName, cleanSet);
+  if (parsedComp) {
+    // 1. Asian Compound Codes (e.g. CBB4C 2306/07 or CBB4C 2306 -> CBB4C23)
+    if (parsedComp.isCompound && parsedComp.setCardCode) {
+      searchQuery = parsedComp.setCardCode; // e.g. 'CBB4C23', 'CBB1C07'
+    } else if (parsedComp.setCode && parsedComp.cardNum) {
+      if (/^(OP|ST|EB|PRB|FB|FS|BT|RA|LOB|MP)\d*/i.test(parsedComp.setCode)) {
+        searchQuery = `${parsedComp.setCode}-${parsedComp.cardNum}`;
+      } else if (/^(s\d+|sv\d+|sm\d+|xy\d+|bw\d+|CBB\d+|CS\d+)/i.test(parsedComp.setCode)) {
+        searchQuery = parsedComp.setCardCode; // e.g. 'S12A212', 'SV2A173'
+      } else {
+        searchQuery = `${parsedComp.setCode} ${parsedComp.cardNum}`;
+      }
+    }
+  }
+
+  if (!searchQuery && code) {
     const setNumMatch = code.match(/^([A-Za-z0-9\-_]{2,10})[-\s]+(\d{1,4})(?:[\/-]\d{1,4})?$/);
     if (setNumMatch) {
       const setPrefix = setNumMatch[1];
       const cardNum = setNumMatch[2];
       if (/^(OP|ST|EB|PRB|FB|FS|BT|RA|LOB|MP)\d*/i.test(setPrefix)) {
         searchQuery = `${setPrefix}-${cardNum}`;
+      } else if (/^(s\d+|sv\d+|sm\d+|xy\d+|bw\d+|CBB\d+|CS\d+)/i.test(setPrefix)) {
+        searchQuery = `${setPrefix}${cardNum}`;
       } else {
         searchQuery = `${setPrefix} ${cardNum}`;
       }
@@ -3927,7 +3944,7 @@ function buildCardmarketSearchUrl(item) {
     } else {
       searchQuery = code;
     }
-  } else {
+  } else if (!searchQuery) {
     searchQuery = [cleanName, cleanSet].filter(Boolean).join(' ') || 'Karte';
   }
 
@@ -4266,13 +4283,19 @@ function renderBulkScanTab(container) {
       if (btnFindCard) {
         btnFindCard.addEventListener('click', async (e) => {
           e.stopPropagation();
-          let searchTerm = (item.detectedCode || item.rawCode || '').trim();
-          if (item.detectedName && item.detectedName.toLowerCase() !== 'karte') {
-            searchTerm = `${item.detectedName} ${searchTerm}`.trim();
-          } else if (item.cardDetails?.cardmarket_url) {
-            searchTerm = cleanCardName(item.cardDetails.cardmarket_url);
+          let rawCode = (item.detectedCode || item.rawCode || '').trim();
+          let rawName = item.nameDe || item.detectedName || item.rawName || '';
+          if (rawName.toLowerCase() === 'karte') rawName = '';
+
+          const parsed = parseCardCodeComponents(rawCode, rawName, item.setNameDe || item.rawSet);
+          let searchTerm = '';
+          if (parsed?.setCardCode) {
+            searchTerm = parsed.setCardCode;
+          } else if (rawName && rawCode) {
+            searchTerm = `${rawName} ${rawCode}`.trim();
+          } else {
+            searchTerm = rawCode || rawName || '';
           }
-          if (!searchTerm) searchTerm = item.rawName || '';
 
           activeSearchQuery = searchTerm;
           const inpSearch = document.querySelector('#inp-search');

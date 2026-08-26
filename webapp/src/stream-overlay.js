@@ -29,10 +29,23 @@ export function getCardmarketSearchUrl(item) {
 
   let searchQuery = '';
 
-  const parsedComp = parseCardCodeComponents(code, rawFullName, item.rawSet || item.set);
-  if (parsedComp && parsedComp.isCompound && parsedComp.searchCode) {
-    searchQuery = parsedComp.searchCode;
-  } else if (code) {
+  const parsedComp = parseCardCodeComponents(code, rawFullName, item.rawSet || item.setNameDe || item.set);
+  if (parsedComp) {
+    // 1. Asian Compound Codes (e.g. CBB4C 2306/07 or CBB4C 2306 -> CBB4C23)
+    if (parsedComp.isCompound && parsedComp.setCardCode) {
+      searchQuery = parsedComp.setCardCode; // e.g. 'CBB4C23', 'CBB1C07'
+    } else if (parsedComp.setCode && parsedComp.cardNum) {
+      if (/^(OP|ST|EB|PRB|FB|FS|BT|RA|LOB|MP)\d*/i.test(parsedComp.setCode)) {
+        searchQuery = `${parsedComp.setCode}-${parsedComp.cardNum}`;
+      } else if (/^(s\d+|sv\d+|sm\d+|xy\d+|bw\d+|CBB\d+|CS\d+)/i.test(parsedComp.setCode)) {
+        searchQuery = parsedComp.setCardCode; // e.g. 'S12A212', 'SV2A173'
+      } else {
+        searchQuery = `${parsedComp.setCode} ${parsedComp.cardNum}`;
+      }
+    }
+  }
+
+  if (!searchQuery && code) {
     // 1. If code contains set code + number (e.g. "CBB4C 2805", "CBB4C 2805/07", "sv2a 173", "PAF 091/091")
     const setNumMatch = code.match(/^([A-Za-z0-9\-_]{2,10})[-\s]+(\d{1,4})(?:[\/-]\d{1,4})?$/);
     if (setNumMatch) {
@@ -40,6 +53,8 @@ export function getCardmarketSearchUrl(item) {
       const cardNum = setNumMatch[2];
       if (/^(OP|ST|EB|PRB|FB|FS|BT|RA|LOB|MP)\d*/i.test(setPrefix)) {
         searchQuery = `${setPrefix}-${cardNum}`;
+      } else if (/^(s\d+|sv\d+|sm\d+|xy\d+|bw\d+|CBB\d+|CS\d+)/i.test(setPrefix)) {
+        searchQuery = `${setPrefix}${cardNum}`;
       } else {
         searchQuery = `${setPrefix} ${cardNum}`;
       }
@@ -53,10 +68,10 @@ export function getCardmarketSearchUrl(item) {
     } else {
       searchQuery = code;
     }
-  } else {
+  } else if (!searchQuery) {
     let cleanName = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
     if (!cleanName || cleanName.toLowerCase() === 'karte') cleanName = '';
-    let cleanSet = (item.rawSet || item.cardDetails?.set_name || item.cardDetails?.expansion || '').trim();
+    let cleanSet = (item.rawSet || item.setNameDe || item.cardDetails?.set_name || item.cardDetails?.expansion || '').trim();
     searchQuery = [cleanName, cleanSet].filter(Boolean).join(' ') || 'Karte';
   }
 
