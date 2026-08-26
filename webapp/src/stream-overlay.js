@@ -824,12 +824,14 @@ export class StreamOverlay {
               </div>
             </div>
 
-            <div>
+            <div class="so-card-header-block">
+              <div class="so-card-set-banner">
+                <span class="so-set-icon">📁</span>
+                <span class="so-set-label">Set:</span>
+                <strong class="so-set-name">${setNameDe}</strong>
+              </div>
               <h1 class="so-card-title">${nameDe}</h1>
               ${nameEn && nameEn !== nameDe ? `<div class="so-card-subtitle-en">Original: ${nameEn}</div>` : ''}
-              <div class="so-card-set-banner">
-                <span>📁 Set: <strong>${setNameDe}</strong></span>
-              </div>
             </div>
 
             <div class="so-price-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px;">
@@ -852,13 +854,6 @@ export class StreamOverlay {
             <div class="so-sell-terminal">
               <div class="so-terminal-header">
                 <div class="so-terminal-label">Verkaufspreis eingeben</div>
-                <div class="so-quick-chips">
-                  ${hasPrice ? `<button type="button" class="so-quick-chip" id="so-chip-cm" title="Cardmarket-Preis übernehmen">CM: ${currentCard.lastPrice.toFixed(2).replace('.', ',')} €</button>` : ''}
-                  <button type="button" class="so-quick-chip" id="so-chip-plus1">+1 €</button>
-                  <button type="button" class="so-quick-chip" id="so-chip-plus5">+5 €</button>
-                  <button type="button" class="so-quick-chip" id="so-chip-plus10">+10 €</button>
-                  <button type="button" class="so-quick-chip chip-clear" id="so-chip-clear" title="Eingabe zurücksetzen">✕ Reset</button>
-                </div>
               </div>
 
               <div class="so-terminal-body">
@@ -955,34 +950,6 @@ export class StreamOverlay {
         }
       });
     });
-
-    // Quick Chips listeners
-    const chipCm = this.container.querySelector('#so-chip-cm');
-    if (chipCm && currentCard.lastPrice != null) {
-      chipCm.addEventListener('click', () => {
-        this.setPricePreset(currentCard.lastPrice);
-      });
-    }
-
-    const chipPlus1 = this.container.querySelector('#so-chip-plus1');
-    if (chipPlus1) {
-      chipPlus1.addEventListener('click', () => this.adjustPrice(1));
-    }
-
-    const chipPlus5 = this.container.querySelector('#so-chip-plus5');
-    if (chipPlus5) {
-      chipPlus5.addEventListener('click', () => this.adjustPrice(5));
-    }
-
-    const chipPlus10 = this.container.querySelector('#so-chip-plus10');
-    if (chipPlus10) {
-      chipPlus10.addEventListener('click', () => this.adjustPrice(10));
-    }
-
-    const chipClear = this.container.querySelector('#so-chip-clear');
-    if (chipClear) {
-      chipClear.addEventListener('click', () => this.handleKeypadInput('clear'));
-    }
 
     const inputClear = this.container.querySelector('#so-input-clear');
     if (inputClear) {
