@@ -424,11 +424,28 @@ function splitCardTitle(cardId, tcg = 'Pokemon') {
   };
 }
 
+// Helper to detect if an image URL is a placeholder or missing
+function isPlaceholderImage(url) {
+  if (!url || typeof url !== 'string') return true;
+  const lower = url.toLowerCase();
+  return (
+    lower === '/logo.png' ||
+    lower.includes('placeholder') ||
+    lower.includes('no-image') ||
+    lower.includes('no_image') ||
+    lower.includes('default-card') ||
+    lower.includes('/items/1/') ||
+    lower.includes('static.cardmarket.com/img/046e7f12e1324838ae62691656eb28ea')
+  );
+}
+
 // Local browser image cache helpers
 function getCachedCardImage(cardId) {
   if (!cardId) return null;
   try {
-    return localStorage.getItem(`img_cache_${cardId}`);
+    const val = localStorage.getItem(`img_cache_${cardId}`);
+    if (val && !isPlaceholderImage(val)) return val;
+    return null;
   } catch (e) {
     return null;
   }
@@ -3549,7 +3566,7 @@ async function renderAnalyticsTab(container) {
         const baseline = history[0];
         let img = null;
         for (let i = history.length - 1; i >= 0; i--) {
-          if (history[i].imageUrl) {
+          if (history[i].imageUrl && !isPlaceholderImage(history[i].imageUrl)) {
             img = history[i].imageUrl;
             break;
           }
@@ -3569,18 +3586,36 @@ async function renderAnalyticsTab(container) {
       }
 
       // Enrich with global custom images
-      const cardIds = scannedCards.map(c => c.card_id);
-      if (cardIds.length > 0) {
+      const cardIdsToLookup = new Set();
+      for (const c of scannedCards) {
+        if (c.card_id) {
+          cardIdsToLookup.add(c.card_id);
+          if (c.card_id.startsWith('/')) {
+            cardIdsToLookup.add(c.card_id.slice(1));
+          } else {
+            cardIdsToLookup.add('/' + c.card_id);
+          }
+        }
+      }
+
+      if (cardIdsToLookup.size > 0) {
         try {
           const { data: globalImages, error: globalImagesErr } = await supabase
             .from('card_images')
             .select('card_id, image_url')
-            .in('card_id', cardIds);
+            .in('card_id', Array.from(cardIdsToLookup));
 
           if (!globalImagesErr && globalImages) {
             const imageMap = {};
             for (const img of globalImages) {
-              imageMap[img.card_id] = img.image_url;
+              if (img.image_url && !isPlaceholderImage(img.image_url)) {
+                imageMap[img.card_id] = img.image_url;
+                if (img.card_id.startsWith('/')) {
+                  imageMap[img.card_id.slice(1)] = img.image_url;
+                } else {
+                  imageMap['/' + img.card_id] = img.image_url;
+                }
+              }
             }
             for (const c of scannedCards) {
               if (imageMap[c.card_id]) {
@@ -3592,8 +3627,8 @@ async function renderAnalyticsTab(container) {
           console.error('Error fetching global card images in analytics:', err.message);
         }
 
-        // Strict Set + Number Image Resolution for missing images (0% false matching)
-        const missingImgCards = scannedCards.filter(c => !c.image_url);
+        // Strict Set + Number Image Resolution for missing or placeholder images (0% false matching)
+        const missingImgCards = scannedCards.filter(c => isPlaceholderImage(c.image_url));
         if (missingImgCards.length > 0) {
           for (const card of missingImgCards) {
             const meta = formatCardMeta(card.card_id, '', '', '', card.tcg);
@@ -3603,16 +3638,16 @@ async function renderAnalyticsTab(container) {
 
             if (setSlug && num && num.length >= 1 && num.length <= 4) {
               try {
-                const encSet = encodeURIComponent(`%${setSlug}%`);
-                const encNum = encodeURIComponent(`%${num}%`);
                 const { data: matchedImg } = await supabase
                   .from('card_images')
                   .select('image_url')
-                  .or(`and(card_id.ilike.${encSet},card_id.ilike.${encNum})`)
-                  .limit(1);
+                  .ilike('card_id', `%${setSlug}%`)
+                  .ilike('card_id', `%${num}%`)
+                  .limit(5);
 
-                if (matchedImg && matchedImg.length > 0 && matchedImg[0].image_url) {
-                  card.image_url = matchedImg[0].image_url;
+                const validMatch = matchedImg?.find(m => m.image_url && !isPlaceholderImage(m.image_url));
+                if (validMatch) {
+                  card.image_url = validMatch.image_url;
                 }
               } catch (err) {}
             }
@@ -3634,7 +3669,8 @@ async function renderAnalyticsTab(container) {
           let filteredCatalog = catalogImages.filter(item => 
             !item.image_url.includes('/tcgp/') && 
             !item.card_id.includes('/tcgp/') && 
-            !item.card_id.includes('PROMO-A')
+            !item.card_id.includes('PROMO-A') &&
+            !isPlaceholderImage(item.image_url)
           );
 
           if (analyticsSelectedTCGs.length > 0 && !analyticsSelectedTCGs.includes('ALL')) {
@@ -3732,7 +3768,9 @@ async function renderAnalyticsTab(container) {
         itemEl.className = 'watchlist-item-wrapper';
         itemEl.innerHTML = `
           <div class="watchlist-item glass-panel" data-card-id="${card.card_id}">
-            <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+            <div class="watchlist-item-img-container">
+              <img class="watchlist-item-img" src="${getProxiedImageUrl(card.image_url)}" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="this.src='/logo.png'">
+            </div>
             <div class="watchlist-item-info">
               <span class="watchlist-item-tcg">${card.tcg}</span>
               <span class="watchlist-item-name">${titleInfo.name}</span>
@@ -4775,15 +4813,16 @@ async function loadCardDetails(cardId, tcg, pushState = true, initialImageUrl = 
     })();
 
     const imagePromise = (async () => {
-      if (initialImageUrl) return initialImageUrl;
+      if (initialImageUrl && !isPlaceholderImage(initialImageUrl)) return initialImageUrl;
       try {
         // 1. Try exact card_id match in card_images
         const { data: d1 } = await supabase
           .from('card_images')
           .select('image_url')
-          .eq('card_id', rawId)
-          .limit(1);
-        if (d1 && d1.length > 0 && d1[0].image_url) return d1[0].image_url;
+          .in('card_id', [rawId, rawId.startsWith('/') ? rawId.slice(1) : '/' + rawId])
+          .limit(2);
+        const validD1 = d1?.find(d => d.image_url && !isPlaceholderImage(d.image_url));
+        if (validD1) return validD1.image_url;
 
         // 2. Try ilike with extractedCode / pattern
         const pattern = extractedCode || cleanPattern;
@@ -4792,8 +4831,25 @@ async function loadCardDetails(cardId, tcg, pushState = true, initialImageUrl = 
             .from('card_images')
             .select('image_url')
             .ilike('card_id', `%${pattern}%`)
-            .limit(1);
-          if (d2 && d2.length > 0 && d2[0].image_url) return d2[0].image_url;
+            .limit(5);
+          const validD2 = d2?.find(d => d.image_url && !isPlaceholderImage(d.image_url));
+          if (validD2) return validD2.image_url;
+        }
+
+        // 3. Try set name + number matching in card_images
+        const meta = formatCardMeta(rawId, '', '', '', tcg);
+        const parsed = parseCardCodeComponents(meta.cardCode, meta.nameEn, meta.setNameDe);
+        const num = parsed?.cardNum || meta.cardCode.replace(/^[A-Za-z]+[-_\s]*/, '').split('/')[0].replace(/\D/g, '');
+        const setSlug = (meta.setNameDe || parsed?.setCode || '').replace(/[-_\s]+/g, '-').trim();
+        if (setSlug && num && num.length >= 1 && num.length <= 4) {
+          const { data: d3 } = await supabase
+            .from('card_images')
+            .select('image_url')
+            .ilike('card_id', `%${setSlug}%`)
+            .ilike('card_id', `%${num}%`)
+            .limit(5);
+          const validD3 = d3?.find(d => d.image_url && !isPlaceholderImage(d.image_url));
+          if (validD3) return validD3.image_url;
         }
       } catch (e) {}
       return null;
@@ -4849,7 +4905,14 @@ async function loadCardDetails(cardId, tcg, pushState = true, initialImageUrl = 
     if (initLocation !== 'ALL' && !locations.includes(initLocation)) locations.push(initLocation);
     if (initLanguage !== 'ALL' && !languages.includes(initLanguage)) languages.push(initLanguage);
 
-    const finalImageUrl = initialImageUrl || globalImageUrl || bookmarkImageUrl || collectionImageUrl || (parsedHistory.length > 0 ? parsedHistory[0].imageUrl : getCachedCardImage(cardId));
+    const historyImg = parsedHistory.find(h => h.imageUrl && !isPlaceholderImage(h.imageUrl))?.imageUrl;
+    const finalImageUrl = (!isPlaceholderImage(initialImageUrl) ? initialImageUrl : null) ||
+                          (!isPlaceholderImage(globalImageUrl) ? globalImageUrl : null) ||
+                          (!isPlaceholderImage(bookmarkImageUrl) ? bookmarkImageUrl : null) ||
+                          (!isPlaceholderImage(collectionImageUrl) ? collectionImageUrl : null) ||
+                          historyImg ||
+                          getCachedCardImage(cardId) ||
+                          null;
     if (finalImageUrl) {
       try {
         localStorage.setItem(`img_cache_${cardId}`, finalImageUrl);
