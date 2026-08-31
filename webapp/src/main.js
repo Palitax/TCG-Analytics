@@ -3966,8 +3966,6 @@ function buildCardmarketSearchUrl(item) {
     } else if (parsedComp.setCode && parsedComp.cardNum) {
       if (/^(OP|ST|EB|PRB|FB|FS|BT|RA|LOB|MP)\d*/i.test(parsedComp.setCode)) {
         searchQuery = `${parsedComp.setCode}-${parsedComp.cardNum}`;
-      } else if (/^(s\d+|sv\d+|sm\d+|xy\d+|bw\d+|CBB\d+|CS\d+)/i.test(parsedComp.setCode)) {
-        searchQuery = parsedComp.setCardCode; // e.g. 'S12A212', 'SV2A173'
       } else {
         searchQuery = `${parsedComp.setCode} ${parsedComp.cardNum}`;
       }
@@ -3977,12 +3975,10 @@ function buildCardmarketSearchUrl(item) {
   if (!searchQuery && code) {
     const setNumMatch = code.match(/^([A-Za-z0-9\-_]{2,10})[-\s]+(\d{1,4})(?:[\/-]\d{1,4})?$/);
     if (setNumMatch) {
-      const setPrefix = setNumMatch[1];
+      const setPrefix = setNumMatch[1].toUpperCase();
       const cardNum = setNumMatch[2];
       if (/^(OP|ST|EB|PRB|FB|FS|BT|RA|LOB|MP)\d*/i.test(setPrefix)) {
         searchQuery = `${setPrefix}-${cardNum}`;
-      } else if (/^(s\d+|sv\d+|sm\d+|xy\d+|bw\d+|CBB\d+|CS\d+)/i.test(setPrefix)) {
-        searchQuery = `${setPrefix}${cardNum}`;
       } else {
         searchQuery = `${setPrefix} ${cardNum}`;
       }

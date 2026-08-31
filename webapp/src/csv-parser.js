@@ -293,6 +293,18 @@ export function extractCardCode(text) {
   // Exclude internal inventory SKUs like CARD-0008, SKU-123, ITEM-999
   if (/^(CARD|SKU|ITEM|SCAN|PROD)[-_]\d+/i.test(cleanText)) return null;
 
+  // 0. Description Explicit: <SetCode> #<CardNum>/<Denom> or Title Explicit: #<SetCode> <CardNum>/<Denom>
+  // e.g. "M2 #088/080", "M2a #195/193", "sv1V #087/078", "sv6 #109/101", "M1L #074/063", "#M2 088/080"
+  const descExplicit = cleanText.match(/\b([A-Za-z0-9]{2,6})\s*#(\d{1,4})(?:\/(\d{1,4}))?\b/i);
+  if (descExplicit && !/^(CARD|PAGE|HTTP|JPEG|PNG|FILE|PROD|AR|CHR|CSR|SAR|SR|UR|HR|RR|C|U|R|SEC)$/i.test(descExplicit[1])) {
+    return `${descExplicit[1].toUpperCase()} ${descExplicit[2]}`;
+  }
+
+  const titleExplicit = cleanText.match(/#([A-Za-z0-9]{2,6})\s+(\d{1,4})(?:\/(\d{1,4}))?\b/i);
+  if (titleExplicit && !/^(CARD|PAGE|HTTP|JPEG|PNG|FILE|PROD|AR|CHR|CSR|SAR|SR|UR|HR|RR|C|U|R|SEC)$/i.test(titleExplicit[1])) {
+    return `${titleExplicit[1].toUpperCase()} ${titleExplicit[2]}`;
+  }
+
   // 1. One Piece TCG formats: OP05-119, OP01-001, ST01-001, EB01-001, PRB01-001, P-001, OP05 119
   const opMatch = cleanText.match(/\b(OP|ST|EB|PRB)[\s-]*\d{1,2}[\s-]+[A-Z0-9]{3,4}\b/i) ||
                   cleanText.match(/\b(OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|P)[-\s]*\d{3}\b/i) ||
@@ -635,10 +647,10 @@ export function normalizeScanData(parsedCSV) {
     const rawLegacyLang = row['language'] || row['lang'] || row['sprache'] || '';
 
     // 2. Intelligent Code Extraction
-    // Priority: Explicit Code -> Title -> Description -> Image File/Filename -> Article/SKU
-    const extractedCode = extractCardCode(rawLegacyCode) ||
+    // Priority: Description -> Title -> Legacy Code -> Image File -> Article/SKU
+    const extractedCode = extractCardCode(wBeschreibung) ||
                           extractCardCode(wTitel) ||
-                          extractCardCode(wBeschreibung) ||
+                          extractCardCode(rawLegacyCode) ||
                           extractCardCode(wBildUrl1) ||
                           extractCardCode(rawLegacyFile) ||
                           extractCardCode(wArtikelnummer) ||
