@@ -2498,14 +2498,62 @@ export const SET_TRANSLATIONS = {
   "sv-black-star-promos": "Scarlet & Violet Promos",
   "scarlet-violet-promos": "Scarlet & Violet Promos",
   "m1": "Mega Brave (JP)",
-  "m1l": "Mega Brave / Latios (JP)",
-  "m1s": "Mega Brave / Latias (JP)",
+  "m1l": "Mega Brave (JP)",
+  "m1s": "Mega Symphonia (JP)",
+  "mega-brave": "Mega Brave (JP)",
+  "mega brave": "Mega Brave (JP)",
+  "メガブレイブ": "Mega Brave (JP)",
+  "超级英勇": "Mega Brave (JP)",
+  "mega symphonia": "Mega Symphonia (JP)",
+  "mega-symphonia": "Mega Symphonia (JP)",
+  "メガシンフォニア": "Mega Symphonia (JP)",
+  "超级交响曲": "Mega Symphonia (JP)",
   "m2": "Inferno-X (JP)",
-  "m2a": "Mega Brave (JP)",
-  "m3": "Mega Symphonia (JP)",
-  "m4": "Mega Gengar (JP)",
-  "m5": "Mega Diancie (JP)",
-  "m6": "Mega Lucario (JP)",
+  "inferno-x": "Inferno-X (JP)",
+  "inferno x": "Inferno-X (JP)",
+  "mega inferno x": "Inferno-X (JP)",
+  "mega-inferno-x": "Inferno-X (JP)",
+  "インフェルノx": "Inferno-X (JP)",
+  "メガインフェルノx": "Inferno-X (JP)",
+  "地狱之火x": "Inferno-X (JP)",
+  "m2a": "Mega Dream ex (JP)",
+  "mega-dream-ex": "Mega Dream ex (JP)",
+  "mega dream ex": "Mega Dream ex (JP)",
+  "mega dream": "Mega Dream ex (JP)",
+  "メガドリームex": "Mega Dream ex (JP)",
+  "超级梦想ex": "Mega Dream ex (JP)",
+  "m3": "Munikis Zero (JP)",
+  "munikis zero": "Munikis Zero (JP)",
+  "munikis-zero": "Munikis Zero (JP)",
+  "ムニキスゼロ": "Munikis Zero (JP)",
+  "慕尼克斯零": "Munikis Zero (JP)",
+  "m4": "Ninja Spinner (JP)",
+  "ninja spinner": "Ninja Spinner (JP)",
+  "ninja-spinner": "Ninja Spinner (JP)",
+  "ニンジャスピナー": "Ninja Spinner (JP)",
+  "忍者陀螺": "Ninja Spinner (JP)",
+  "m5": "Abyss Eye (JP)",
+  "abyss eye": "Abyss Eye (JP)",
+  "abyss-eye": "Abyss Eye (JP)",
+  "abysseye": "Abyss Eye (JP)",
+  "abyssal eye": "Abyss Eye (JP)",
+  "pitch black": "Pitch Black (Abyss Eye)",
+  "pitch-black": "Pitch Black (Abyss Eye)",
+  "pitchblack": "Pitch Black (Abyss Eye)",
+  "アビスアイ": "Abyss Eye (JP)",
+  "深渊之眼": "Abyss Eye (JP)",
+  "深淵の眼": "Abyss Eye (JP)",
+  "abyss eye (jp)": "Abyss Eye (JP)",
+  "abyss eye [jp]": "Abyss Eye (JP)",
+  "m6": "Storm Emeralda (JP)",
+  "storm emeralda": "Storm Emeralda (JP)",
+  "storm-emeralda": "Storm Emeralda (JP)",
+  "ストームエメラルダ": "Storm Emeralda (JP)",
+  "风暴翡翠": "Storm Emeralda (JP)",
+  "m6a": "30th Celebration (JP)",
+  "30th celebration": "30th Celebration (JP)",
+  "30th-celebration": "30th Celebration (JP)",
+  "30th anniversary": "30th Celebration (JP)",
   "sv1v": "Violet ex (JP)",
   "sv1s": "Scarlet ex (JP)",
   "sv2d": "Clay Burst (JP)",
@@ -2521,17 +2569,9 @@ export const SET_TRANSLATIONS = {
   "s10b": "Pokémon GO",
   "s11a": "Incandescent Arcana (JP)",
   "s12a": "Zenit der Könige (VSTAR Universe)",
-  "mega-brave": "Mega Brave (JP)",
-  "mega brave": "Mega Brave (JP)",
-  "inferno-x": "Inferno-X (JP)",
-  "inferno x": "Inferno-X (JP)",
-  "mega-symphonia": "Mega Symphonia (JP)",
-  "mega symphonia": "Mega Symphonia (JP)",
   "me01": "Mega Dream ex (JP)",
   "me02": "Mega Dream ex (JP)",
   "me02.5": "Mega Dream ex (JP)",
-  "mega-dream-ex": "Mega Dream ex (JP)",
-  "mega dream ex": "Mega Dream ex (JP)",
   "battle partners": "Battle Partners (JP)",
   "battle-partners": "Battle Partners (JP)",
   "heat wave arena": "Heat Wave Arena (JP)",
@@ -3322,7 +3362,8 @@ export function translateSetName(setStr, code = '', tcg = 'Pokemon', cardName = 
     const sSlug = s.toLowerCase().replace(/\s+/g, '-');
     if (SET_TRANSLATIONS[sSlug]) return SET_TRANSLATIONS[sSlug];
 
-    const setCodeMatch = s.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|m\d+|me\d+|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP)\b/i);
+    const setCodeMatch = s.match(/^(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d[a-zA-Z]?|me\d{1,2}(?:\.\d+)?[a-zA-Z]?|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP)/i) ||
+                         s.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|m\d+|me\d+|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP)\b/i);
     if (setCodeMatch) {
       const matchKey = setCodeMatch[1].toLowerCase();
       if (SET_TRANSLATIONS[matchKey]) return SET_TRANSLATIONS[matchKey];
@@ -3410,8 +3451,6 @@ export function formatCardMeta(cardId, rawName = '', rawSet = '', code = '', tcg
       const codeMatch = extractedCardSlug.match(/\b(CBB\d{1,2}[A-Za-z]?\d{1,2}|CS\d{1,2}[a-zA-Z]?\d{1,3}|[A-Za-z]{2,5}\d{1,4}|[A-Za-z0-9]+-\d+)\b/);
       if (codeMatch) cleanCode = codeMatch[1];
     }
-  } else {
-    cleanCode = cleanCode.replace(/^([A-Za-z0-9]{2,6})\s+(\d{1,4})/i, '$1$2');
   }
 
   return {
@@ -3445,8 +3484,7 @@ export function getGermanCardDetails(item) {
 
   const rawName = item.detectedName || item.rawName || 'Karte';
   const tcg = item.tcg || 'Pokemon';
-  const rawCode = (item.detectedCode || item.rawCode || '').trim();
-  const code = rawCode.replace(/^([A-Za-z0-9]{2,6})\s+(\d{1,4})/i, '$1$2');
+  const code = item.detectedCode || item.rawCode || '';
   const rawSet = item.rawSet || item.set || item.cardDetails?.set_name || '';
 
   const meta = formatCardMeta(item.cardDetails?.cardmarket_url || item.card_id, rawName, rawSet, code, tcg);
