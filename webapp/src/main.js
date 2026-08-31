@@ -3960,14 +3960,15 @@ function buildCardmarketSearchUrl(item) {
 
   const parsedComp = parseCardCodeComponents(code, rawFullName, cleanSet);
   if (parsedComp) {
+    const cardNum = parsedComp.cardNumPad || parsedComp.cardNum;
     // 1. Asian Compound Codes (e.g. CBB4C 2306/07 or CBB4C 2306 -> CBB4C23)
     if (parsedComp.isCompound && parsedComp.setCardCode) {
       searchQuery = parsedComp.setCardCode; // e.g. 'CBB4C23', 'CBB1C07'
-    } else if (parsedComp.setCode && parsedComp.cardNum) {
+    } else if (parsedComp.setCode && cardNum) {
       if (/^(OP|ST|EB|PRB|FB|FS|BT|RA|LOB|MP)\d*/i.test(parsedComp.setCode)) {
-        searchQuery = `${parsedComp.setCode}-${parsedComp.cardNum}`;
+        searchQuery = `${parsedComp.setCode}-${cardNum}`;
       } else {
-        searchQuery = `${parsedComp.setCode}${parsedComp.cardNum}`;
+        searchQuery = `${parsedComp.setCode}${cardNum}`;
       }
     }
   }
