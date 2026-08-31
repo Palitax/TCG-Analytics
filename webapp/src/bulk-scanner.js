@@ -177,52 +177,65 @@ export class BulkScanner {
       // If a specific variant was requested but not found in DB, DO NOT match generic non-variant cards
       const hasStrictVariant = parsedComp && parsedComp.variantTag;
 
-      // Stage 1: Combined Match (Set Name + Card Name + Code)
+      // Code variants for matching across various Cardmarket URL slug conventions (e.g. M5085, M585, m5-85, 085, 85)
+      const codeVariants = Array.from(new Set([
+        code,
+        parsedComp?.setCode && parsedComp?.cardNum ? `${parsedComp.setCode}${parsedComp.cardNum}` : null,
+        parsedComp?.setCode && parsedComp?.cardNum ? `${parsedComp.setCode}-${parsedComp.cardNum}` : null,
+        parsedComp?.setCode && parsedComp?.cardNumPad ? `${parsedComp.setCode}${parsedComp.cardNumPad}` : null,
+        parsedComp?.setCode && parsedComp?.cardNumPad ? `${parsedComp.setCode}-${parsedComp.cardNumPad}` : null,
+        parsedComp?.cardNumPad,
+        parsedComp?.cardNum,
+        altCode,
+        safeCode
+      ].filter(Boolean)));
+
+      // Stage 1: Combined Match (Set Name + Card Name + Code Variants)
       if (!bestRecord && !hasStrictVariant && setNameClean) {
         const setSlug = setNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
-        const codeNum = code ? (code.split('/')[0] || code).replace(/[\/\\%_]/g, '') : '';
         const encSet = encodeURIComponent(`%${setSlug}%`);
         
         for (const cand of candidateNames) {
           const nameSlug = cand.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
           const encName = encodeURIComponent(`%${nameSlug}%`);
           
-          if (codeNum) {
-            const encCodeNum = encodeURIComponent(`%${codeNum}%`);
-            const encCode = encodeURIComponent(`%${code}%`);
-            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encSet},card_id.ilike.${encName},or(card_id.ilike.${encCodeNum},comment.ilike.${encCode}))`);
-          } else {
-            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encSet},card_id.ilike.${encName})`);
+          for (const cv of codeVariants) {
+            const encCv = encodeURIComponent(`%${cv}%`);
+            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encSet},card_id.ilike.${encName},or(card_id.ilike.${encCv},comment.ilike.${encCv}))`);
+            if (bestRecord) break;
           }
           if (bestRecord) break;
+
+          // If set is a specific recognized expansion (e.g. Abyss-Eye, Inferno-X, Mega-Brave), try set + name match
+          if (!bestRecord && setSlug && !['Pokemon', 'OnePiece', 'Sammelkartenspiel', 'Pokemon-TCG'].includes(setSlug)) {
+            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encSet},card_id.ilike.${encName})`);
+            if (bestRecord) break;
+          }
         }
       }
 
-      // Stage 2: Card Name + Code Match (bilingual)
-      if (!bestRecord && !hasStrictVariant && code) {
-        const altCode = code.replace('/', '-');
-        const encAltCode = encodeURIComponent(`%${altCode}%`);
-        const encCode = encodeURIComponent(`%${code}%`);
-        const numOnly = code.replace(/^[A-Za-z]+[-_\s]*/, '').split('/')[0].replace(/\D/g, '');
-        const encNumOnly = numOnly ? encodeURIComponent(`%${numOnly}%`) : '';
-
+      // Stage 2: Card Name + Code Match (bilingual across code variants)
+      if (!bestRecord && !hasStrictVariant && codeVariants.length > 0) {
         for (const cand of candidateNames) {
           const nameSlug = cand.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
           const encName = encodeURIComponent(`%${nameSlug}%`);
-          if (encNumOnly && numOnly.length >= 2) {
-            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},or(card_id.ilike.${encAltCode},comment.ilike.${encCode},card_id.ilike.${encNumOnly}))`);
-          } else {
-            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},or(card_id.ilike.${encAltCode},comment.ilike.${encCode}))`);
+          for (const cv of codeVariants) {
+            const encCv = encodeURIComponent(`%${cv}%`);
+            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},or(card_id.ilike.${encCv},comment.ilike.${encCv}))`);
+            if (bestRecord) break;
           }
           if (bestRecord) break;
         }
       }
 
       // Stage 3: Exact Code in Comment or card_id Match
-      if (!bestRecord && !hasStrictVariant && code) {
-        const encCodeComment = encodeURIComponent(`%Code:${code}%`);
-        const encCodeExact = encodeURIComponent(`%${code}%`);
-        bestRecord = await queryPriceHistory(`or=(comment.ilike.${encCodeComment},card_id.ilike.${encCodeExact})`);
+      if (!bestRecord && !hasStrictVariant && codeVariants.length > 0) {
+        for (const cv of codeVariants) {
+          const encCodeComment = encodeURIComponent(`%Code:${cv}%`);
+          const encCodeExact = encodeURIComponent(`%${cv}%`);
+          bestRecord = await queryPriceHistory(`or=(comment.ilike.${encCodeComment},card_id.ilike.${encCodeExact})`);
+          if (bestRecord) break;
+        }
       }
 
       // Stage 4: Search by exact full code search terms
@@ -510,41 +523,18 @@ async function fetchCardImageFromDB(cardId, code = '', cleanName = '', rawSet = 
   // 2. Strict Set + Collector Number matching (Guarantees 0% mismatched art)
   const parsed = parseCardCodeComponents(code, cleanName, rawSet);
   const cardNum = parsed?.cardNum || code.replace(/^[A-Za-z]+[-_\s]*/, '').split('/')[0].replace(/\D/g, '');
+  const cardNumPad = parsed?.cardNumPad || '';
+  const numList = Array.from(new Set([cardNum, cardNumPad].filter(Boolean)));
   const setIdentifier = (rawSet || parsed?.setCode || '').replace(/[-_\s]+/g, '-').trim();
 
-  if (setIdentifier && cardNum && cardNum.length >= 1 && cardNum.length <= 4) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1200);
-      const encSet = encodeURIComponent(`%${setIdentifier}%`);
-      const encNum = encodeURIComponent(`%${cardNum}%`);
-      const url = `${SUPABASE_URL}/rest/v1/card_images?select=image_url&and=(card_id.ilike.${encSet},card_id.ilike.${encNum})&limit=1`;
-      const resp = await fetch(url, {
-        signal: controller.signal,
-        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-        credentials: 'omit'
-      });
-      clearTimeout(timeoutId);
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data?.[0]?.image_url) return data[0].image_url;
-      }
-    } catch (e) {}
-  }
-
-  // 3. Name (DE / EN) + Card Number matching fallback
-  if (cleanName && cardNum && cardNum.length >= 1 && cardNum.length <= 4) {
-    const deName = translateCardName(cleanName) || cleanName;
-    const enName = getEnglishPokemonName(cleanName) || cleanName;
-    const nameList = Array.from(new Set([cleanName, deName, enName].filter(Boolean)));
-
-    for (const n of nameList) {
+  if (setIdentifier && numList.length > 0) {
+    for (const num of numList) {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 1200);
-        const encName = encodeURIComponent(`%${n.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-')}%`);
-        const encNum = encodeURIComponent(`%${cardNum}%`);
-        const url = `${SUPABASE_URL}/rest/v1/card_images?select=image_url&and=(card_id.ilike.${encName},card_id.ilike.${encNum})&limit=1`;
+        const encSet = encodeURIComponent(`%${setIdentifier}%`);
+        const encNum = encodeURIComponent(`%${num}%`);
+        const url = `${SUPABASE_URL}/rest/v1/card_images?select=image_url&and=(card_id.ilike.${encSet},card_id.ilike.${encNum})&limit=1`;
         const resp = await fetch(url, {
           signal: controller.signal,
           headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
@@ -556,6 +546,35 @@ async function fetchCardImageFromDB(cardId, code = '', cleanName = '', rawSet = 
           if (data?.[0]?.image_url) return data[0].image_url;
         }
       } catch (e) {}
+    }
+  }
+
+  // 3. Name (DE / EN) + Card Number matching fallback
+  if (cleanName && numList.length > 0) {
+    const deName = translateCardName(cleanName) || cleanName;
+    const enName = getEnglishPokemonName(cleanName) || cleanName;
+    const nameList = Array.from(new Set([cleanName, deName, enName].filter(Boolean)));
+
+    for (const n of nameList) {
+      for (const num of numList) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 1200);
+          const encName = encodeURIComponent(`%${n.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-')}%`);
+          const encNum = encodeURIComponent(`%${num}%`);
+          const url = `${SUPABASE_URL}/rest/v1/card_images?select=image_url&and=(card_id.ilike.${encName},card_id.ilike.${encNum})&limit=1`;
+          const resp = await fetch(url, {
+            signal: controller.signal,
+            headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+            credentials: 'omit'
+          });
+          clearTimeout(timeoutId);
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data?.[0]?.image_url) return data[0].image_url;
+          }
+        } catch (e) {}
+      }
     }
   }
 
