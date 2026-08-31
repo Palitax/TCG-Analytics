@@ -310,8 +310,8 @@ export function extractCardCode(text) {
   }
 
   // 3. Pokémon Japanese / Asian / New Gen alphanumeric set + number:
-  // e.g. CBB4C 2805/07, CBB4C 1301/07, CBB4C 2805, sv2a 173, s12a 210/172, sv4a 009, CS1a 010/050, PAF 091/091, OBF 125/197, SVP 088
-  const jpSetNumMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|S-P|SVP|SWSH|MEW|CRZ|SSP|CEC|SCR|BS|MEP|DP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE)[-\s]*(\d{1,4})(?:\/(\d{1,4}))?\b/i);
+  // e.g. CBB4C 2805/07, CBB4C 1301/07, CBB4C 2805, sv2a 173, s12a 210/172, sv4a 009, CS1a 010/050, PAF 091/091, OBF 125/197, SVP 088, DAA 089/189, m2 088
+  const jpSetNumMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d+|me\d+(?:\.\d+)?|S-P|SVP|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS)[-\s]*(\d{1,4})(?:\/(\d{1,4}))?\b/i);
   if (jpSetNumMatch) {
     const setCode = jpSetNumMatch[1].toUpperCase();
     const cardNum = jpSetNumMatch[2];
@@ -320,7 +320,7 @@ export function extractCardCode(text) {
   }
 
   // 3b. Separated Set Code and Number (e.g. "Phione 1301/07 aus cBB4C" or "cBB4C Phione 1301/07")
-  const sepSetMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|S-P|SVP|SWSH|MEW|CRZ|SSP|CEC|SCR|BS|MEP|DP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE)\b/i);
+  const sepSetMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d+|me\d+(?:\.\d+)?|S-P|SVP|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS)\b/i);
   const sepNumMatch = cleanText.match(/\b(\d{1,4}(?:\/\d{2,4})?)\b/);
   if (sepSetMatch && sepNumMatch) {
     return `${sepSetMatch[1].toUpperCase()} ${sepNumMatch[1]}`;
@@ -414,14 +414,14 @@ export function extractCardName(title, description, rawCode) {
   // Remove trailing language tags like "(Japanese)", "(German)", "(English)", "(Chinese)"
   clean = clean.replace(/\s*\([A-Za-z\s]+\)\s*\d*$/i, '').trim();
 
-  // Remove card number / code tags like "#130/170", "#OP05-119", "#002/070", "#1301/07"
-  clean = clean.replace(/#[A-Za-z0-9\/-]+/g, '').trim();
+  // Remove card number / code tags like "#130/170", "#OP05-119", "#002/070", "#1301/07", "#me02.5-220"
+  clean = clean.replace(/#[A-Za-z0-9\/\.\-_]+/g, '').trim();
 
   // Remove bare fractions like "1301/07", "183/165", "002/070"
   clean = clean.replace(/\b\d{1,4}\/\d{2,4}\b/g, '').trim();
 
-  // Remove set codes like "CBB4C", "CBB1C", "sv2a", "OP05", "PAF", etc.
-  clean = clean.replace(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SVP|S-P|SWSH|MEW|CRZ)\b/gi, '').trim();
+  // Remove set codes like "CBB4C", "CBB1C", "sv2a", "OP05", "PAF", "DAA", "m2", etc.
+  clean = clean.replace(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d+|me\d+(?:\.\d+)?|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|SVP|S-P|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEW|CRZ|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS)\b/gi, '').trim();
 
   // Remove rarity tags and stars at the end like "C", "U", "R", "RR", "AR", "SAR", "SR", "UR", "SEC", "☆☆", "⭐", "★"
   clean = clean.replace(/\s+(C|U|R|RR|AR|SAR|SR|UR|SEC|HR|CSR|CHR|TR|Promo|[☆★⭐]+)\s*$/i, '').trim();
@@ -463,7 +463,7 @@ export function parseCardCodeComponents(codeStr, nameStr = '', setStr = '') {
   const combined = `${codeStr || ''} ${nameStr || ''} ${setStr || ''}`.trim();
 
   // 1. Detect compound Asian/Chinese set variant e.g. "CBB4C 1301/07", "1301/07 aus CBB4C", "1301/07"
-  const setMatch = combined.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|PAF|OBF|SVP)\b/i);
+  const setMatch = combined.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|m\d+|me\d+|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|SVP)\b/i);
   const setCode = setMatch ? setMatch[1].toUpperCase() : '';
 
   const compMatch = combined.match(/\b(\d{2})(\d{2})(?:\/(\d{2}))?\b/);

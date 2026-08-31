@@ -1,5 +1,5 @@
 import { parseCSV, normalizeScanData, extractCardCode, parseCardCodeComponents, WHATNOT_COLUMNS } from './csv-parser.js';
-import { getGermanCardDetails, formatCardMeta } from './tcg-translations.js';
+import { getGermanCardDetails, formatCardMeta, translateCardName, getEnglishPokemonName, translateSetName, detectSetFromFraction } from './tcg-translations.js';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase.js';
 import { fetchTCGPlayerPrice, getTCGPlayerSearchUrl } from './tcgplayer-service.js';
 
@@ -79,11 +79,29 @@ export class BulkScanner {
       let cardNameClean = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
       if (cardNameClean.toLowerCase() === 'karte') cardNameClean = '';
 
+      const nameDe = translateCardName(cardNameClean, item.tcg) || cardNameClean;
+      const nameEn = getEnglishPokemonName(cardNameClean) || cardNameClean;
+
       let setNameClean = item.rawSet || item.set || item.cardDetails?.set_name || '';
       if (!setNameClean && rawFullName.includes('(')) {
         const parentheticalMatch = rawFullName.match(/\(([^)]+)\)/);
         if (parentheticalMatch && parentheticalMatch[1]) {
           setNameClean = parentheticalMatch[1].trim();
+        }
+      }
+      if (!setNameClean && code) {
+        const fractionMatch = code.match(/(\d{1,4})\/(\d{2,4})/);
+        if (fractionMatch) {
+          const fracSet = detectSetFromFraction(fractionMatch[1], fractionMatch[2], cardNameClean);
+          if (fracSet) {
+            setNameClean = fracSet.de;
+          }
+        }
+        if (!setNameClean) {
+          const transSet = translateSetName('', code, item.tcg, cardNameClean);
+          if (transSet && transSet !== 'Pokémon TCG' && transSet !== 'Sammelkartenspiel' && transSet !== 'One Piece Card Game') {
+            setNameClean = transSet;
+          }
         }
       }
 
@@ -115,6 +133,9 @@ export class BulkScanner {
         return null;
       };
 
+      // Candidate names for bilingual searching
+      const candidateNames = Array.from(new Set([cardNameClean, nameDe, nameEn].filter(Boolean)));
+
       // Stage 0: Compound Asian/Chinese & Variant Matching (e.g. Phione V1-CBB4C13 for CBB4C 1301/07)
       const parsedComp = parseCardCodeComponents(code, rawFullName, setNameClean);
       if (parsedComp && parsedComp.isCompound) {
@@ -128,17 +149,23 @@ export class BulkScanner {
           }
         }
         // 0b. Try Name + Variant + SetCode e.g. Phione + V1 + CBB4C
-        if (!bestRecord && cardNameClean && parsedComp.variantTag && parsedComp.setCode) {
-          const encName = encodeURIComponent(`%${cardNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-')}%`);
-          const encVar = encodeURIComponent(`%${parsedComp.variantTag}%`);
-          const encSet = encodeURIComponent(`%${parsedComp.setCode}%`);
-          bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},card_id.ilike.${encVar},card_id.ilike.${encSet})`);
+        if (!bestRecord && parsedComp.variantTag && parsedComp.setCode) {
+          for (const cand of candidateNames) {
+            const encName = encodeURIComponent(`%${cand.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-')}%`);
+            const encVar = encodeURIComponent(`%${parsedComp.variantTag}%`);
+            const encSet = encodeURIComponent(`%${parsedComp.setCode}%`);
+            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},card_id.ilike.${encVar},card_id.ilike.${encSet})`);
+            if (bestRecord) break;
+          }
         }
         // 0c. Try Name + SetCardCode ONLY if no specific variant was parsed
-        if (!bestRecord && !parsedComp.variantTag && cardNameClean && parsedComp.setCardCode) {
-          const encName = encodeURIComponent(`%${cardNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-')}%`);
-          const encSetCard = encodeURIComponent(`%${parsedComp.setCardCode}%`);
-          bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},card_id.ilike.${encSetCard})`);
+        if (!bestRecord && !parsedComp.variantTag && parsedComp.setCardCode) {
+          for (const cand of candidateNames) {
+            const encName = encodeURIComponent(`%${cand.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-')}%`);
+            const encSetCard = encodeURIComponent(`%${parsedComp.setCardCode}%`);
+            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},card_id.ilike.${encSetCard})`);
+            if (bestRecord) break;
+          }
         }
         // 0d. Try SetCardCode alone ONLY if no specific variant was parsed
         if (!bestRecord && !parsedComp.variantTag && parsedComp.setCardCode && parsedComp.setCode) {
@@ -151,31 +178,44 @@ export class BulkScanner {
       const hasStrictVariant = parsedComp && parsedComp.variantTag;
 
       // Stage 1: Combined Match (Set Name + Card Name + Code)
-      if (!bestRecord && !hasStrictVariant && setNameClean && cardNameClean) {
+      if (!bestRecord && !hasStrictVariant && setNameClean) {
         const setSlug = setNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
-        const nameSlug = cardNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
         const codeNum = code ? (code.split('/')[0] || code).replace(/[\/\\%_]/g, '') : '';
-        
         const encSet = encodeURIComponent(`%${setSlug}%`);
-        const encName = encodeURIComponent(`%${nameSlug}%`);
         
-        if (codeNum) {
-          const encCodeNum = encodeURIComponent(`%${codeNum}%`);
-          const encCode = encodeURIComponent(`%${code}%`);
-          bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encSet},card_id.ilike.${encName},or(card_id.ilike.${encCodeNum},comment.ilike.${encCode}))`);
-        } else {
-          bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encSet},card_id.ilike.${encName})`);
+        for (const cand of candidateNames) {
+          const nameSlug = cand.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
+          const encName = encodeURIComponent(`%${nameSlug}%`);
+          
+          if (codeNum) {
+            const encCodeNum = encodeURIComponent(`%${codeNum}%`);
+            const encCode = encodeURIComponent(`%${code}%`);
+            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encSet},card_id.ilike.${encName},or(card_id.ilike.${encCodeNum},comment.ilike.${encCode}))`);
+          } else {
+            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encSet},card_id.ilike.${encName})`);
+          }
+          if (bestRecord) break;
         }
       }
 
-      // Stage 2: Card Name + Code Match
-      if (!bestRecord && !hasStrictVariant && cardNameClean && code) {
-        const nameSlug = cardNameClean.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
+      // Stage 2: Card Name + Code Match (bilingual)
+      if (!bestRecord && !hasStrictVariant && code) {
         const altCode = code.replace('/', '-');
-        const encName = encodeURIComponent(`%${nameSlug}%`);
         const encAltCode = encodeURIComponent(`%${altCode}%`);
         const encCode = encodeURIComponent(`%${code}%`);
-        bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},or(card_id.ilike.${encAltCode},comment.ilike.${encCode}))`);
+        const numOnly = code.replace(/^[A-Za-z]+[-_\s]*/, '').split('/')[0].replace(/\D/g, '');
+        const encNumOnly = numOnly ? encodeURIComponent(`%${numOnly}%`) : '';
+
+        for (const cand of candidateNames) {
+          const nameSlug = cand.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
+          const encName = encodeURIComponent(`%${nameSlug}%`);
+          if (encNumOnly && numOnly.length >= 2) {
+            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},or(card_id.ilike.${encAltCode},comment.ilike.${encCode},card_id.ilike.${encNumOnly}))`);
+          } else {
+            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},or(card_id.ilike.${encAltCode},comment.ilike.${encCode}))`);
+          }
+          if (bestRecord) break;
+        }
       }
 
       // Stage 3: Exact Code in Comment or card_id Match
@@ -490,6 +530,33 @@ async function fetchCardImageFromDB(cardId, code = '', cleanName = '', rawSet = 
         if (data?.[0]?.image_url) return data[0].image_url;
       }
     } catch (e) {}
+  }
+
+  // 3. Name (DE / EN) + Card Number matching fallback
+  if (cleanName && cardNum && cardNum.length >= 1 && cardNum.length <= 4) {
+    const deName = translateCardName(cleanName) || cleanName;
+    const enName = getEnglishPokemonName(cleanName) || cleanName;
+    const nameList = Array.from(new Set([cleanName, deName, enName].filter(Boolean)));
+
+    for (const n of nameList) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1200);
+        const encName = encodeURIComponent(`%${n.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-')}%`);
+        const encNum = encodeURIComponent(`%${cardNum}%`);
+        const url = `${SUPABASE_URL}/rest/v1/card_images?select=image_url&and=(card_id.ilike.${encName},card_id.ilike.${encNum})&limit=1`;
+        const resp = await fetch(url, {
+          signal: controller.signal,
+          headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+          credentials: 'omit'
+        });
+        clearTimeout(timeoutId);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data?.[0]?.image_url) return data[0].image_url;
+        }
+      } catch (e) {}
+    }
   }
 
   return null;
