@@ -4264,8 +4264,9 @@ function renderBulkScanTab(container) {
 
     items.forEach((item, index) => {
       const tr = document.createElement('tr');
-      const hasPrice = item.lastPrice !== null && item.lastPrice !== undefined;
-      const priceText = hasPrice ? `${item.lastPrice.toFixed(2)} €` : '-';
+      const hasFoundPrice = item.lastPrice !== null && item.lastPrice !== undefined && !item.isManualPrice;
+      const isManualPrice = item.isManualPrice === true;
+      const priceVal = item.lastPrice !== null && item.lastPrice !== undefined ? item.lastPrice : '';
       const checkRelative = item.lastCheckRelative || item.lastCheckDate;
       const checkDetails = checkRelative ? `${checkRelative} • ${item.filterInfo || 'Standard'}` : 'Keine DB-Daten';
       const isMatched = item.status === 'matched';
@@ -4275,6 +4276,15 @@ function renderBulkScanTab(container) {
       const nameDe = item.nameDe || item.detectedName || item.rawName || 'Karte';
       const nameEn = item.nameEn || item.detectedName || '';
       const setNameDe = item.setNameDe || item.rawSet || '';
+
+      const priceCellHtml = hasFoundPrice
+        ? `<div style="color: #10b981; font-weight: 700;">${item.lastPrice.toFixed(2)} €</div>`
+        : `
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <input type="number" step="0.01" min="0" class="form-input manual-price-input" placeholder="0.00" value="${priceVal !== '' ? priceVal : ''}" style="width: 70px; padding: 4px 6px; font-size: 0.8rem; background: rgba(0,0,0,0.35); border: 1px solid ${isManualPrice ? 'rgba(34, 197, 94, 0.6)' : 'rgba(255,255,255,0.18)'}; color: #10b981; font-weight: 700; border-radius: 6px;" title="Manueller Cardmarket Preis" />
+            <span style="color: #94a3b8; font-size: 0.8rem; font-weight: 600;">€</span>
+          </div>
+        `;
 
       tr.innerHTML = `
         <td>${index + 1}</td>
@@ -4295,7 +4305,7 @@ function renderBulkScanTab(container) {
           ${setNameDe ? `<div style="color: #71717a; font-size: 0.75rem; margin-top: 2px;">📁 ${setNameDe}</div>` : ''}
         </td>
         <td>
-          <div style="color: ${hasPrice ? '#10b981' : '#94a3b8'}; font-weight: 700;">${priceText}</div>
+          ${priceCellHtml}
           ${item.tcgplayerPrice ? `<div style="font-size: 0.72rem; color: #60a5fa; font-weight: 600; margin-top: 2px;">$ ${Number(item.tcgplayerPrice).toFixed(2)} (USD)</div>` : ''}
         </td>
         <td style="color: #94a3b8; font-size: 0.85rem;">${checkDetails}</td>
@@ -4390,11 +4400,44 @@ function renderBulkScanTab(container) {
       }
 
       const codeInput = tr.querySelector('.code-input');
-      codeInput.addEventListener('change', async (e) => {
-        item.detectedCode = e.target.value;
-        await bulkScannerInstance.enrichItemWithMarketData(item);
-        renderResults(bulkScannerInstance.scanItems);
-      });
+      if (codeInput) {
+        codeInput.addEventListener('change', async (e) => {
+          item.detectedCode = e.target.value;
+          await bulkScannerInstance.enrichItemWithMarketData(item);
+          renderResults(bulkScannerInstance.scanItems);
+        });
+      }
+
+      const manualPriceInput = tr.querySelector('.manual-price-input');
+      if (manualPriceInput) {
+        manualPriceInput.addEventListener('input', (e) => {
+          const raw = e.target.value.trim().replace(',', '.');
+          if (raw === '') {
+            item.lastPrice = null;
+            item.isManualPrice = false;
+            manualPriceInput.style.borderColor = 'rgba(255,255,255,0.18)';
+          } else {
+            const parsedPrice = parseFloat(raw);
+            if (!isNaN(parsedPrice) && parsedPrice >= 0) {
+              item.lastPrice = parsedPrice;
+              item.isManualPrice = true;
+              manualPriceInput.style.borderColor = 'rgba(34, 197, 94, 0.6)';
+            }
+          }
+        });
+
+        manualPriceInput.addEventListener('change', (e) => {
+          const raw = e.target.value.trim().replace(',', '.');
+          if (raw !== '') {
+            const parsedPrice = parseFloat(raw);
+            if (!isNaN(parsedPrice) && parsedPrice >= 0) {
+              item.lastPrice = parsedPrice;
+              item.isManualPrice = true;
+              manualPriceInput.value = parsedPrice.toFixed(2);
+            }
+          }
+        });
+      }
 
       tbody.appendChild(tr);
     });
