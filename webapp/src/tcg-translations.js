@@ -3294,8 +3294,9 @@ export function translateSetName(setStr, code = '', tcg = 'Pokemon', cardName = 
   if (c) {
     const codeClean = c.toLowerCase().replace(/[\/-]/g, '');
 
-    // Look for any alphanumeric set code pattern in the string
-    const codeMatch = c.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d+|me\d+(?:\.\d+)?|S-P|SVP|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2})\b/i);
+    // Look for any alphanumeric set code pattern in the string (unspaced or spaced)
+    const codeMatch = c.match(/^(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d[a-zA-Z]?|me\d{1,2}(?:\.\d+)?[a-zA-Z]?|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS)/i) ||
+                      c.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d[a-zA-Z]?|me\d{1,2}(?:\.\d+)?[a-zA-Z]?|S-P|SVP|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2})\b/i);
     if (codeMatch) {
       const matchKey = codeMatch[1].toLowerCase();
       if (SET_TRANSLATIONS[matchKey]) return SET_TRANSLATIONS[matchKey];
@@ -3409,6 +3410,8 @@ export function formatCardMeta(cardId, rawName = '', rawSet = '', code = '', tcg
       const codeMatch = extractedCardSlug.match(/\b(CBB\d{1,2}[A-Za-z]?\d{1,2}|CS\d{1,2}[a-zA-Z]?\d{1,3}|[A-Za-z]{2,5}\d{1,4}|[A-Za-z0-9]+-\d+)\b/);
       if (codeMatch) cleanCode = codeMatch[1];
     }
+  } else {
+    cleanCode = cleanCode.replace(/^([A-Za-z0-9]{2,6})\s+(\d{1,4})/i, '$1$2');
   }
 
   return {
@@ -3442,7 +3445,8 @@ export function getGermanCardDetails(item) {
 
   const rawName = item.detectedName || item.rawName || 'Karte';
   const tcg = item.tcg || 'Pokemon';
-  const code = item.detectedCode || item.rawCode || '';
+  const rawCode = (item.detectedCode || item.rawCode || '').trim();
+  const code = rawCode.replace(/^([A-Za-z0-9]{2,6})\s+(\d{1,4})/i, '$1$2');
   const rawSet = item.rawSet || item.set || item.cardDetails?.set_name || '';
 
   const meta = formatCardMeta(item.cardDetails?.cardmarket_url || item.card_id, rawName, rawSet, code, tcg);

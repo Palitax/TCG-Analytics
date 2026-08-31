@@ -3967,7 +3967,7 @@ function buildCardmarketSearchUrl(item) {
       if (/^(OP|ST|EB|PRB|FB|FS|BT|RA|LOB|MP)\d*/i.test(parsedComp.setCode)) {
         searchQuery = `${parsedComp.setCode}-${parsedComp.cardNum}`;
       } else {
-        searchQuery = `${parsedComp.setCode} ${parsedComp.cardNum}`;
+        searchQuery = `${parsedComp.setCode}${parsedComp.cardNum}`;
       }
     }
   }
@@ -3980,14 +3980,14 @@ function buildCardmarketSearchUrl(item) {
       if (/^(OP|ST|EB|PRB|FB|FS|BT|RA|LOB|MP)\d*/i.test(setPrefix)) {
         searchQuery = `${setPrefix}-${cardNum}`;
       } else {
-        searchQuery = `${setPrefix} ${cardNum}`;
+        searchQuery = `${setPrefix}${cardNum}`;
       }
     } else if (/^[A-Za-z0-9]{2,6}[-\s]+[A-Za-z0-9\-]+$/.test(code)) {
       searchQuery = code.replace(/\/\d+$/, '');
     } else if (/^\d{1,4}\/\d{2,4}$/.test(code) || /^\d+$/.test(code)) {
       searchQuery = cleanName ? `${cleanName} ${code}` : code;
     } else {
-      searchQuery = code;
+      searchQuery = code.replace(/^([A-Za-z0-9]{2,6})\s+(\d{1,4})/i, '$1$2');
     }
   } else if (!searchQuery) {
     searchQuery = [cleanName, cleanSet].filter(Boolean).join(' ') || 'Karte';
@@ -4281,7 +4281,7 @@ function renderBulkScanTab(container) {
           <div style="display: flex; align-items: center; gap: 8px;">
             ${imgMarkup}
             <div>
-              <input type="text" class="form-input code-input" value="${item.detectedCode || ''}" style="min-width: 125px; max-width: 145px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 8px;" />
+              <input type="text" class="form-input code-input" value="${item.detectedCode ? item.detectedCode.replace(/^([A-Za-z0-9]{2,6})\s+(\d{1,4})/i, '$1$2') : ''}" style="min-width: 125px; max-width: 145px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 8px;" />
               ${item.variant ? `<div style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 5px; border-radius: 4px; display: inline-block; margin-top: 3px;">✨ ${item.variant.replace(/\D/g, '') ? `Version ${item.variant.replace(/\D/g, '')}` : item.variant}</div>` : ''}
             </div>
           </div>

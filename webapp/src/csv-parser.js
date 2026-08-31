@@ -294,15 +294,15 @@ export function extractCardCode(text) {
   if (/^(CARD|SKU|ITEM|SCAN|PROD)[-_]\d+/i.test(cleanText)) return null;
 
   // 0. Description Explicit: <SetCode> #<CardNum>/<Denom> or Title Explicit: #<SetCode> <CardNum>/<Denom>
-  // e.g. "M2 #088/080", "M2a #195/193", "sv1V #087/078", "sv6 #109/101", "M1L #074/063", "#M2 088/080"
+  // e.g. "M2 #088/080" -> "M2088", "M2a #195/193" -> "M2A195", "sv1V #087/078" -> "SV1V087", "sv6 #109/101" -> "SV6109", "M1L #074/063" -> "M1L074"
   const descExplicit = cleanText.match(/\b([A-Za-z0-9]{2,6})\s*#(\d{1,4})(?:\/(\d{1,4}))?\b/i);
   if (descExplicit && !/^(CARD|PAGE|HTTP|JPEG|PNG|FILE|PROD|AR|CHR|CSR|SAR|SR|UR|HR|RR|C|U|R|SEC)$/i.test(descExplicit[1])) {
-    return `${descExplicit[1].toUpperCase()} ${descExplicit[2]}`;
+    return `${descExplicit[1].toUpperCase()}${descExplicit[2]}`;
   }
 
   const titleExplicit = cleanText.match(/#([A-Za-z0-9]{2,6})\s+(\d{1,4})(?:\/(\d{1,4}))?\b/i);
   if (titleExplicit && !/^(CARD|PAGE|HTTP|JPEG|PNG|FILE|PROD|AR|CHR|CSR|SAR|SR|UR|HR|RR|C|U|R|SEC)$/i.test(titleExplicit[1])) {
-    return `${titleExplicit[1].toUpperCase()} ${titleExplicit[2]}`;
+    return `${titleExplicit[1].toUpperCase()}${titleExplicit[2]}`;
   }
 
   // 1. One Piece TCG formats: OP05-119, OP01-001, ST01-001, EB01-001, PRB01-001, P-001, OP05 119
@@ -322,29 +322,29 @@ export function extractCardCode(text) {
   }
 
   // 3. Pokémon Japanese / Asian / New Gen alphanumeric set + number:
-  // e.g. CBB4C 2805/07, CBB4C 1301/07, CBB4C 2805, sv2a 173, s12a 210/172, sv4a 009, CS1a 010/050, PAF 091/091, OBF 125/197, SVP 088, DAA 089/189, m2 088
-  const jpSetNumMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d+|me\d+(?:\.\d+)?|S-P|SVP|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS)[-\s]*(\d{1,4})(?:\/(\d{1,4}))?\b/i);
+  // e.g. CBB4C2805, sv2a173, s12a210, sv4a009, CS1a010, PAF091, OBF125, SVP088, DAA089, M2088, SV6109
+  const jpSetNumMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d[a-zA-Z]?|me\d{1,2}(?:\.\d+)?[a-zA-Z]?|S-P|SVP|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS)[-\s]*(\d{1,4})(?:\/(\d{1,4}))?\b/i);
   if (jpSetNumMatch) {
     const setCode = jpSetNumMatch[1].toUpperCase();
     const cardNum = jpSetNumMatch[2];
     const total = jpSetNumMatch[3];
-    return total ? `${setCode} ${cardNum}/${total}` : `${setCode} ${cardNum}`;
+    return total ? `${setCode}${cardNum}/${total}` : `${setCode}${cardNum}`;
   }
 
   // 3b. Separated Set Code and Number (e.g. "Phione 1301/07 aus cBB4C" or "cBB4C Phione 1301/07")
-  const sepSetMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d+|me\d+(?:\.\d+)?|S-P|SVP|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS)\b/i);
+  const sepSetMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d[a-zA-Z]?|me\d{1,2}(?:\.\d+)?[a-zA-Z]?|S-P|SVP|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS)\b/i);
   const sepNumMatch = cleanText.match(/\b(\d{1,4}(?:\/\d{2,4})?)\b/);
   if (sepSetMatch && sepNumMatch) {
-    return `${sepSetMatch[1].toUpperCase()} ${sepNumMatch[1]}`;
+    return `${sepSetMatch[1].toUpperCase()}${sepNumMatch[1]}`;
   }
 
-  // 3c. Generic New Gen pattern: [SetCode 2-6 chars] [CardNumber 1-4 digits] e.g. CBB4C 2805/07
+  // 3c. Generic New Gen pattern: [SetCode 2-6 chars] [CardNumber 1-4 digits] e.g. CBB4C2805
   const genericSetNumMatch = cleanText.match(/\b([A-Za-z]{2,5}\d{0,2}[A-Za-z]?)[-\s]+(\d{1,4})(?:\/(\d{1,4}))?\b/);
   if (genericSetNumMatch) {
     const prefix = genericSetNumMatch[1];
     if (!/^(CARD|SKU|ITEM|SCAN|PROD|PAGE|HTTP|HTML|JPEG|PNG|FILE|TEST)$/i.test(prefix)) {
       const total = genericSetNumMatch[3];
-      return total ? `${prefix.toUpperCase()} ${genericSetNumMatch[2]}/${total}` : `${prefix.toUpperCase()} ${genericSetNumMatch[2]}`;
+      return total ? `${prefix.toUpperCase()}${genericSetNumMatch[2]}/${total}` : `${prefix.toUpperCase()}${genericSetNumMatch[2]}`;
     }
   }
 
@@ -539,7 +539,33 @@ export function parseCardCodeComponents(codeStr, nameStr = '', setStr = '') {
     };
   }
 
-  // 4. Standard code components (e.g. "OP05-119", "CBB4C 13", "sv2a 173", "199/165")
+  // 4. Standard code components (e.g. "OP05-119", "CBB4C13", "CBB4C 13", "sv2a 173", "SV6109", "M2088", "199/165")
+  const ALL_SET_REGEX = /^(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d[a-zA-Z]?|me\d{1,2}(?:\.\d+)?[a-zA-Z]?|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|SVP|S-P|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEW|CRZ|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS)/i;
+  
+  const cleanCode = (codeStr || '').trim();
+  const cleanSetMatch = cleanCode.match(ALL_SET_REGEX);
+  if (cleanSetMatch) {
+    const sCode = cleanSetMatch[1].toUpperCase();
+    const rest = cleanCode.slice(cleanSetMatch[0].length).replace(/^[\s\-_#]+/, '');
+    const numMatch = rest.match(/^(\d{1,4})(?:[\/-](\d{1,4}))?$/);
+    if (numMatch) {
+      const rawNum = numMatch[1];
+      const cardNum = parseInt(rawNum, 10).toString();
+      return {
+        isCompound: false,
+        setCode: sCode,
+        cardNum,
+        cardNumPad: rawNum,
+        variantTag: null,
+        variantNum: null,
+        totalVariants: numMatch[2] || null,
+        setCardCode: `${sCode}${rawNum}`,
+        fullVariantSlug: null,
+        searchCode: `${sCode}${rawNum}`
+      };
+    }
+  }
+
   const stdMatch = (codeStr || '').trim().match(/^([A-Za-z0-9\-_]{2,10})[-\s]+(\d{1,4})(?:[\/-](\d{1,4}))?$/);
   if (stdMatch) {
     const sCode = stdMatch[1].toUpperCase();
@@ -555,7 +581,7 @@ export function parseCardCodeComponents(codeStr, nameStr = '', setStr = '') {
       totalVariants: stdMatch[3] || null,
       setCardCode: `${sCode}${rawNum}`,
       fullVariantSlug: null,
-      searchCode: `${sCode} ${rawNum}`
+      searchCode: `${sCode}${rawNum}`
     };
   }
 
