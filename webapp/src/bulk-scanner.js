@@ -177,17 +177,21 @@ export class BulkScanner {
       // If a specific variant was requested but not found in DB, DO NOT match generic non-variant cards
       const hasStrictVariant = parsedComp && parsedComp.variantTag;
 
-      // Code variants for matching across various Cardmarket URL slug conventions (e.g. M5085, M585, m5-85, 085, 85)
-      const codeVariants = Array.from(new Set([
+      // Code variants for matching across various Cardmarket URL slug conventions (e.g. M5085, M585, m5-85)
+      const fullCodeVariants = Array.from(new Set([
         code,
         parsedComp?.setCode && parsedComp?.cardNum ? `${parsedComp.setCode}${parsedComp.cardNum}` : null,
         parsedComp?.setCode && parsedComp?.cardNum ? `${parsedComp.setCode}-${parsedComp.cardNum}` : null,
         parsedComp?.setCode && parsedComp?.cardNumPad ? `${parsedComp.setCode}${parsedComp.cardNumPad}` : null,
         parsedComp?.setCode && parsedComp?.cardNumPad ? `${parsedComp.setCode}-${parsedComp.cardNumPad}` : null,
-        parsedComp?.cardNumPad,
-        parsedComp?.cardNum,
         altCode,
         safeCode
+      ].filter(c => c && /[A-Za-z]/.test(c) && /\d/.test(c))));
+
+      const numVariants = Array.from(new Set([
+        parsedComp?.cardNumPad,
+        parsedComp?.cardNum,
+        code.replace(/^[A-Za-z]+[-_\s]*/, '').split('/')[0].replace(/\D/g, '')
       ].filter(Boolean)));
 
       // Stage 1: Combined Match (Set Name + Card Name + Code Variants)
@@ -199,7 +203,7 @@ export class BulkScanner {
           const nameSlug = cand.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
           const encName = encodeURIComponent(`%${nameSlug}%`);
           
-          for (const cv of codeVariants) {
+          for (const cv of fullCodeVariants) {
             const encCv = encodeURIComponent(`%${cv}%`);
             bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encSet},card_id.ilike.${encName},or(card_id.ilike.${encCv},comment.ilike.${encCv}))`);
             if (bestRecord) break;
@@ -214,12 +218,12 @@ export class BulkScanner {
         }
       }
 
-      // Stage 2: Card Name + Code Match (bilingual across code variants)
-      if (!bestRecord && !hasStrictVariant && codeVariants.length > 0) {
+      // Stage 2: Card Name + Full Code Match (ALWAYS requires card name)
+      if (!bestRecord && !hasStrictVariant && fullCodeVariants.length > 0) {
         for (const cand of candidateNames) {
           const nameSlug = cand.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
           const encName = encodeURIComponent(`%${nameSlug}%`);
-          for (const cv of codeVariants) {
+          for (const cv of fullCodeVariants) {
             const encCv = encodeURIComponent(`%${cv}%`);
             bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},or(card_id.ilike.${encCv},comment.ilike.${encCv}))`);
             if (bestRecord) break;
@@ -228,27 +232,26 @@ export class BulkScanner {
         }
       }
 
-      // Stage 3: Exact Code in Comment or card_id Match
-      if (!bestRecord && !hasStrictVariant && codeVariants.length > 0) {
-        for (const cv of codeVariants) {
-          const encCodeComment = encodeURIComponent(`%Code:${cv}%`);
-          const encCodeExact = encodeURIComponent(`%${cv}%`);
-          bestRecord = await queryPriceHistory(`or=(comment.ilike.${encCodeComment},card_id.ilike.${encCodeExact})`);
+      // Stage 3: Card Name + Collector Number Match (ALWAYS requires card name)
+      if (!bestRecord && !hasStrictVariant && numVariants.length > 0) {
+        for (const cand of candidateNames) {
+          const nameSlug = cand.replace(/[-_]/g, ' ').trim().replace(/\s+/g, '-');
+          const encName = encodeURIComponent(`%${nameSlug}%`);
+          for (const num of numVariants) {
+            const encNum = encodeURIComponent(`%${num}%`);
+            bestRecord = await queryPriceHistory(`and=(card_id.ilike.${encName},or(card_id.ilike.${encNum},comment.ilike.${encNum}))`);
+            if (bestRecord) break;
+          }
           if (bestRecord) break;
         }
       }
 
-      // Stage 4: Search by exact full code search terms
-      if (!bestRecord && !hasStrictVariant && code) {
-        const searchTerms = [code];
-        if (altCode && altCode !== code) searchTerms.push(altCode);
-        if (safeCode && !searchTerms.includes(safeCode)) searchTerms.push(safeCode);
-
-        for (const term of searchTerms.slice(0, 3)) {
-          if (!term || term.length < 2) continue;
-          const cleanTerm = term.replace(/[\/\\%_]/g, '');
-          const encTerm = encodeURIComponent(`%${term}%`);
-          bestRecord = await queryPriceHistory(`or=(card_id.ilike.${encTerm},comment.ilike.${encTerm})`);
+      // Stage 4: Unique Full Alphanumeric Code ONLY (e.g. OP05-119, CBB4C13, M5082 - must have letters AND digits)
+      if (!bestRecord && !hasStrictVariant) {
+        const strictFullCodes = fullCodeVariants.filter(c => /[A-Za-z]/.test(c) && /\d/.test(c) && c.length >= 4);
+        for (const fullCode of strictFullCodes) {
+          const encCode = encodeURIComponent(`%${fullCode}%`);
+          bestRecord = await queryPriceHistory(`or=(comment.ilike.%Code:${fullCode}%,card_id.ilike.${encCode})`);
           if (bestRecord) break;
         }
       }
@@ -267,12 +270,14 @@ export class BulkScanner {
         }
         item.cardDetails = { cardmarket_url: bestRecord.card_id };
 
-        // Extract set name from card_id path (e.g. /Pokemon/Products/Singles/Gem-Pack-Vol-4/...)
-        const pathSegments = bestRecord.card_id.split('/').filter(Boolean);
-        if (pathSegments.length >= 2) {
-          const setSegment = pathSegments[pathSegments.length - 2];
-          if (setSegment && setSegment.toLowerCase() !== 'singles' && setSegment.toLowerCase() !== 'products') {
-            item.rawSet = setSegment.replace(/[-_]/g, ' ').trim();
+        // Extract set name from card_id path ONLY if not already known
+        if (!item.rawSet) {
+          const pathSegments = bestRecord.card_id.split('/').filter(Boolean);
+          if (pathSegments.length >= 2) {
+            const setSegment = pathSegments[pathSegments.length - 2];
+            if (setSegment && setSegment.toLowerCase() !== 'singles' && setSegment.toLowerCase() !== 'products') {
+              item.rawSet = setSegment.replace(/[-_]/g, ' ').trim();
+            }
           }
         }
 
