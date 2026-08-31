@@ -6,6 +6,7 @@ import { StreamOverlay } from './stream-overlay.js';
 import { extractCardCode, parseCardCodeComponents } from './csv-parser.js';
 import { formatCardMeta, translateCardName, translateSetName } from './tcg-translations.js';
 import { fetchTCGPlayerPrice, getTCGPlayerSearchUrl } from './tcgplayer-service.js';
+import { saveManualPrice, removeManualPrice } from './manual-prices.js';
 Chart.register(...registerables);
 
 // WebKit / motion animation safety wrapper
@@ -4412,28 +4413,53 @@ function renderBulkScanTab(container) {
       if (manualPriceInput) {
         manualPriceInput.addEventListener('input', (e) => {
           const raw = e.target.value.trim().replace(',', '.');
+          const codeKey = (item.detectedCode || item.rawCode || '').trim();
           if (raw === '') {
             item.lastPrice = null;
             item.isManualPrice = false;
+            item.lastCheckRelative = null;
+            item.filterInfo = null;
             manualPriceInput.style.borderColor = 'rgba(255,255,255,0.18)';
+            if (codeKey) removeManualPrice(codeKey);
           } else {
             const parsedPrice = parseFloat(raw);
             if (!isNaN(parsedPrice) && parsedPrice >= 0) {
               item.lastPrice = parsedPrice;
               item.isManualPrice = true;
+              item.status = 'matched';
+              item.lastCheckRelative = 'Manuell';
+              item.filterInfo = 'Manuell hinterlegt';
               manualPriceInput.style.borderColor = 'rgba(34, 197, 94, 0.6)';
+              if (codeKey) {
+                saveManualPrice(codeKey, parsedPrice, {
+                  name: item.detectedName || item.rawName,
+                  set: item.setNameDe || item.rawSet,
+                  cardmarket_url: item.cardDetails?.cardmarket_url
+                });
+              }
             }
           }
         });
 
         manualPriceInput.addEventListener('change', (e) => {
           const raw = e.target.value.trim().replace(',', '.');
+          const codeKey = (item.detectedCode || item.rawCode || '').trim();
           if (raw !== '') {
             const parsedPrice = parseFloat(raw);
             if (!isNaN(parsedPrice) && parsedPrice >= 0) {
               item.lastPrice = parsedPrice;
               item.isManualPrice = true;
+              item.status = 'matched';
+              item.lastCheckRelative = 'Manuell';
+              item.filterInfo = 'Manuell hinterlegt';
               manualPriceInput.value = parsedPrice.toFixed(2);
+              if (codeKey) {
+                saveManualPrice(codeKey, parsedPrice, {
+                  name: item.detectedName || item.rawName,
+                  set: item.setNameDe || item.rawSet,
+                  cardmarket_url: item.cardDetails?.cardmarket_url
+                });
+              }
             }
           }
         });

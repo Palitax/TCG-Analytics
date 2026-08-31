@@ -2,6 +2,7 @@ import { parseCSV, normalizeScanData, extractCardCode, parseCardCodeComponents, 
 import { getGermanCardDetails, formatCardMeta, translateCardName, getEnglishPokemonName, translateSetName, detectSetFromFraction } from './tcg-translations.js';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase.js';
 import { fetchTCGPlayerPrice, getTCGPlayerSearchUrl } from './tcgplayer-service.js';
+import { getManualPriceForCard } from './manual-prices.js';
 
 export function escapeCsvCell(val) {
   if (val === undefined || val === null) return '';
@@ -136,6 +137,19 @@ export class BulkScanner {
       // Candidate names for bilingual searching
       const candidateNames = Array.from(new Set([cardNameClean, nameDe, nameEn].filter(Boolean)));
 
+      // Check for previously saved manual price by card code (e.g. M5082, SV6109)
+      const manualEntry = getManualPriceForCard(code, candidateNames);
+      if (manualEntry && typeof manualEntry.price === 'number') {
+        item.status = 'matched';
+        item.lastPrice = manualEntry.price;
+        item.isManualPrice = true;
+        item.lastCheckRelative = 'Manuell';
+        item.filterInfo = 'Manuell hinterlegt';
+        if (manualEntry.cardmarket_url && !item.cardDetails?.cardmarket_url) {
+          item.cardDetails = { cardmarket_url: manualEntry.cardmarket_url };
+        }
+      }
+
       // Stage 0: Compound Asian/Chinese & Variant Matching (e.g. Phione V1-CBB4C13 for CBB4C 1301/07)
       const parsedComp = parseCardCodeComponents(code, rawFullName, setNameClean);
       if (parsedComp && parsedComp.isCompound) {
@@ -260,10 +274,12 @@ export class BulkScanner {
 
       if (bestRecord) {
         item.status = 'matched';
-        item.lastPrice = parseFloat(bestRecord.price) || null;
-        item.lastCheckDate = formatTimestamp(bestRecord.scanned_at);
-        item.lastCheckRelative = formatRelativeDate(bestRecord.scanned_at);
-        item.filterInfo = formatFilterInfo(bestRecord.comment) || defaultFilterInfo;
+        if (!item.isManualPrice) {
+          item.lastPrice = parseFloat(bestRecord.price) || null;
+          item.lastCheckDate = formatTimestamp(bestRecord.scanned_at);
+          item.lastCheckRelative = formatRelativeDate(bestRecord.scanned_at);
+          item.filterInfo = formatFilterInfo(bestRecord.comment) || defaultFilterInfo;
+        }
         const extractedName = cleanCardName(bestRecord.card_id);
         if (!item.detectedName || item.detectedName.toLowerCase() === 'karte') {
           item.detectedName = extractedName || item.rawName || 'Karte';
