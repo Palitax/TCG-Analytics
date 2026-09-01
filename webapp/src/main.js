@@ -4961,13 +4961,9 @@ function renderBulkScanTab(container) {
         let maxSets = 0;
         if (useHitRule && hitsPerSet > 0) {
           const maxByHits = Math.floor(hitCount / hitsPerSet);
-          if (useBaseRange) {
-            const neededBase = selectedPackSize - hitsPerSet;
-            const maxByBase = neededBase > 0 ? Math.floor(baseCardsCount / neededBase) : maxByHits;
-            maxSets = Math.min(maxByHits, maxByBase);
-          } else {
-            maxSets = Math.min(maxByHits, Math.floor(availablePool.length / selectedPackSize));
-          }
+          const neededBase = selectedPackSize - hitsPerSet;
+          const maxByBase = neededBase > 0 ? Math.floor(baseCardsCount / neededBase) : maxByHits;
+          maxSets = Math.min(maxByHits, maxByBase);
         } else {
           maxSets = Math.floor(availablePool.length / selectedPackSize);
         }

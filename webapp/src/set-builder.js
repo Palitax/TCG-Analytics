@@ -291,16 +291,9 @@ export class SetBuilder {
     let totalPossibleSets = 0;
     if (useHitRule && hitsPerSet > 0) {
       const maxSetsByHits = Math.floor(hitCandidates.length / hitsPerSet);
-      if (useBaseRange) {
-        const remainingNeededPerSet = packSize - hitsPerSet;
-        const maxSetsByBase = remainingNeededPerSet > 0 ? Math.floor(baseCandidates.length / remainingNeededPerSet) : maxSetsByHits;
-        totalPossibleSets = Math.min(maxSetsByHits, maxSetsByBase);
-      } else {
-        // Excess hits can also fill remaining regular slots
-        const totalEligibleCards = hitCandidates.length + baseCandidates.length;
-        const maxSetsByTotal = Math.floor(totalEligibleCards / packSize);
-        totalPossibleSets = Math.min(maxSetsByHits, maxSetsByTotal);
-      }
+      const remainingNeededPerSet = packSize - hitsPerSet;
+      const maxSetsByBase = remainingNeededPerSet > 0 ? Math.floor(baseCandidates.length / remainingNeededPerSet) : maxSetsByHits;
+      totalPossibleSets = Math.min(maxSetsByHits, maxSetsByBase);
     } else {
       totalPossibleSets = Math.floor((hitCandidates.length + baseCandidates.length) / packSize);
     }
@@ -349,7 +342,7 @@ export class SetBuilder {
 
     const assignedCardIds = new Set();
 
-    // 1. Distribute Guaranteed Hits
+    // 1. Distribute EXACTLY hitsPerSet Guaranteed Hits per set
     if (useHitRule && hitsPerSet > 0) {
       for (let h = 0; h < hitsPerSet; h++) {
         for (let s = 0; s < createdSets.length; s++) {
@@ -365,15 +358,16 @@ export class SetBuilder {
       }
     }
 
-    // Combine remaining hit candidates into base pool if any were left over
-    const generalFillPool = [...hitCandidates, ...baseCandidates];
+    // 2. Fill remaining regular slots strictly from baseCandidates (so hits count is EXACT)
+    const generalFillPool = [...baseCandidates];
     if (strategy === 'balanced') {
       generalFillPool.sort((a, b) => (b.lastPrice || 0) - (a.lastPrice || 0));
     } else if (strategy === 'sequential') {
       generalFillPool.sort((a, b) => (a.originalIndex || 0) - (b.originalIndex || 0));
+    } else if (strategy === 'random') {
+      generalFillPool.sort(() => Math.random() - 0.5);
     }
 
-    // 2. Fill remaining slots per set up to packSize
     for (let slot = 0; slot < packSize; slot++) {
       for (let s = 0; s < createdSets.length; s++) {
         const set = createdSets[s];
