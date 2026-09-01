@@ -324,6 +324,70 @@ export class SetBuilder {
   }
 
   /**
+   * Rearranges cards in a set so that duplicate cards (same name & card number) are not directly behind each other
+   */
+  separateDuplicates(setId) {
+    const set = this.getSet(setId);
+    if (!set || !Array.isArray(set.cards) || set.cards.length <= 1) return false;
+
+    const cards = [...set.cards];
+    const groups = new Map(); // key -> card[]
+    cards.forEach((card) => {
+      const k = getCardIdentityKey(card);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(card);
+    });
+
+    // Buckets sorted by remaining card count descending
+    const buckets = Array.from(groups.values()).sort((a, b) => b.length - a.length);
+
+    const result = [];
+    let lastKey = null;
+
+    while (result.length < cards.length) {
+      // Find the largest available bucket whose key !== lastKey
+      let bestBucketIdx = -1;
+      for (let i = 0; i < buckets.length; i++) {
+        if (buckets[i].length > 0) {
+          const bucketKey = getCardIdentityKey(buckets[i][0]);
+          if (bucketKey !== lastKey) {
+            bestBucketIdx = i;
+            break;
+          }
+        }
+      }
+
+      // If no different bucket is available, pick the first available non-empty bucket
+      if (bestBucketIdx === -1) {
+        bestBucketIdx = buckets.findIndex((b) => b.length > 0);
+      }
+
+      if (bestBucketIdx === -1) break;
+
+      const card = buckets[bestBucketIdx].shift();
+      result.push(card);
+      lastKey = getCardIdentityKey(card);
+
+      // Re-sort buckets by remaining size descending
+      buckets.sort((a, b) => b.length - a.length);
+    }
+
+    set.cards = result;
+    return true;
+  }
+
+  /**
+   * Separates duplicates across all sets
+   */
+  separateDuplicatesInAllSets() {
+    let count = 0;
+    this.sets.forEach((s) => {
+      if (this.separateDuplicates(s.id)) count++;
+    });
+    return count;
+  }
+
+  /**
    * Automatic Set Generator based on configurable criteria
    */
   generateSets(cards, config = {}) {

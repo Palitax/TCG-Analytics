@@ -5158,6 +5158,9 @@ function renderBulkScanTab(container) {
             <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-overview-create-set" style="padding: 6px 12px; font-size: 0.8125rem;">
               ➕ Neues Set
             </button>
+            <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-overview-separate-duplicates-all" style="padding: 6px 12px; font-size: 0.8125rem; border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;" ${sets.length === 0 ? 'disabled' : ''} title="Ordnet alle Sets so an, dass keine Duplikate direkt hintereinander liegen">
+              🔀 Duplikate entzerren (Alle)
+            </button>
             <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-overview-export-whatnot" style="padding: 6px 12px; font-size: 0.8125rem;" ${sets.length === 0 ? 'disabled' : ''}>
               📥 Whatnot CSV Export
             </button>
@@ -5179,7 +5182,7 @@ function renderBulkScanTab(container) {
         gridContainer.innerHTML = `
           <div style="text-align: center; padding: 48px 16px; background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.12); border-radius: 12px;">
             <p style="font-size: 1.1rem; color: #e2e8f0; font-weight: 600; margin: 0 0 8px 0;">Noch keine Sets angelegt</p>
-            <p style="color: #94a3b8; font-size: 0.875rem; margin: 0 0 16px 0;">Wechsle zum Tab "Automatisch generieren", um deine ${allCards.length} Karten in gleichmäßige Sets aufzuteilen.</p>
+            <p style="color: #94a3b8; font-size: 0.875rem; margin: 0 0 16px 0;">Wechsle zum Tab "Pipeline Generator", um deine ${allCards.length} Karten in gleichmäßige Sets aufzuteilen.</p>
             <button type="button" class="shadcn-btn shadcn-btn-primary" id="btn-empty-switch-generate">
               ⚙️ Jetzt Sets generieren
             </button>
@@ -5246,6 +5249,9 @@ function renderBulkScanTab(container) {
             <button type="button" class="shadcn-btn shadcn-btn-primary btn-inspect-set" data-set-id="${set.id}" style="flex: 1; padding: 6px 10px; font-size: 0.8rem; justify-content: center;">
               👁️ Sortieren & Drag & Drop
             </button>
+            <button type="button" class="shadcn-btn shadcn-btn-secondary btn-separate-duplicates-single" data-set-id="${set.id}" title="Duplikate in diesem Set entzerren (nicht direkt hintereinander)" style="padding: 6px 8px; font-size: 0.8rem; border-color: rgba(56, 189, 248, 0.35); color: #38bdf8;">
+              🔀 Entzerren
+            </button>
             <button type="button" class="shadcn-btn shadcn-btn-secondary btn-export-single-set" data-set-id="${set.id}" title="Als Whatnot CSV exportieren" style="padding: 6px 8px; font-size: 0.8rem;">
               📥 CSV
             </button>
@@ -5260,6 +5266,12 @@ function renderBulkScanTab(container) {
           currentDetailSetId = set.id;
           currentModalTab = 'detail';
           renderModalContent();
+        });
+
+        cardEl.querySelector('.btn-separate-duplicates-single')?.addEventListener('click', () => {
+          setBuilderInstance.separateDuplicates(set.id);
+          renderModalContent();
+          showToast(`Duplikate in Set '${set.name}' wurden erfolgreich entzerrt!`);
         });
 
         cardEl.querySelector('.btn-delete-set').addEventListener('click', () => {
@@ -5307,6 +5319,12 @@ function renderBulkScanTab(container) {
           setBuilderInstance.createEmptySet(name.trim());
           renderModalContent();
         }
+      });
+
+      container.querySelector('#btn-overview-separate-duplicates-all')?.addEventListener('click', () => {
+        const count = setBuilderInstance.separateDuplicatesInAllSets();
+        renderModalContent();
+        showToast(`Duplikate in allen ${count} Sets wurden erfolgreich entzerrt!`);
       });
 
       container.querySelector('#btn-overview-export-whatnot')?.addEventListener('click', () => {
@@ -5381,13 +5399,16 @@ function renderBulkScanTab(container) {
               <span>Schnell-Sortierung:</span>
             </div>
             <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-reorder-separate-duplicates" style="padding: 4px 10px; font-size: 0.78rem; border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;" title="Verteilt Duplikate so, dass keine gleichen Karten direkt hintereinander liegen">
+                🔀 Duplikate entzerren
+              </button>
               <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-reorder-hits-end" style="padding: 4px 10px; font-size: 0.78rem; border-color: rgba(234, 179, 8, 0.4); color: #facc15;">
                 🔀 Hits ans Ende (Pack Hype)
               </button>
               <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-reorder-interleave" style="padding: 4px 10px; font-size: 0.78rem;">
                 🔀 Hits gleichmäßig verteilen
               </button>
-              <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-reorder-csv-order" style="padding: 4px 10px; font-size: 0.78rem; color: #38bdf8;">
+              <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-reorder-csv-order" style="padding: 4px 10px; font-size: 0.78rem; color: #a1a1aa;">
                 🔄 Original CSV-Reihenfolge
               </button>
               <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-detail-export-csv" style="padding: 4px 10px; font-size: 0.78rem;">
@@ -5412,6 +5433,12 @@ function renderBulkScanTab(container) {
       container.querySelector('#btn-detail-back-overview').addEventListener('click', () => {
         currentModalTab = 'overview';
         renderModalContent();
+      });
+
+      container.querySelector('#btn-reorder-separate-duplicates')?.addEventListener('click', () => {
+        setBuilderInstance.separateDuplicates(set.id);
+        renderDndCardsList();
+        showToast('Duplikate wurden entzerrt (keine gleichen Karten direkt hintereinander)!');
       });
 
       container.querySelector('#btn-reorder-hits-end').addEventListener('click', () => {
