@@ -98,6 +98,27 @@ export function calculateMaxPossibleSets(hitCards, baseCards, packSize, hitsPerS
   return maxPossible;
 }
 
+/**
+ * Formats card title for CSV export with ascending sequential number (#1, #2, ... #N)
+ * Replacing any previous leading number (e.g. #66, 66., # 66, [66]) with the new export pipeline number.
+ */
+export function formatExportTitle(rawTitle, fallbackName, exportNumber) {
+  let title = (rawTitle || fallbackName || '').trim();
+
+  // Match leading number patterns: "#66", "# 66", "66.", "#066", "[66]", "(66)", "Nr. 66", "No. 66", "CARD-0066"
+  const leadingNumRegex = /^(?:#\s*\d+|\[\d+\]|\(\d+\)|\d+\.|\b(?:Nr|No|Nummer|CARD)\.?\s*[-#]?\s*\d+)\s*[-:–]?\s*/i;
+
+  if (leadingNumRegex.test(title)) {
+    title = title.replace(leadingNumRegex, `#${exportNumber} `);
+  } else if (title) {
+    title = `#${exportNumber} ${title}`;
+  } else {
+    title = `#${exportNumber} ${fallbackName || 'Karte'}`;
+  }
+
+  return title.trim();
+}
+
 export class SetBuilder {
   constructor(options = {}) {
     this.sets = [];
@@ -646,7 +667,7 @@ export class SetBuilder {
 
     const headers = [
       'Set Name',
-      'Set Position',
+      'Pipeline #',
       'Original CSV #',
       'Card Code',
       'Name',
@@ -659,32 +680,38 @@ export class SetBuilder {
       'Status',
     ];
 
-    const rows = set.cards.map((item, pos) => [
-      `"${set.name}"`,
-      pos + 1,
-      item.originalIndex !== undefined ? item.originalIndex : item.index || pos + 1,
-      `"${item.detectedCode || ''}"`,
-      `"${item.detectedName || item.rawName || ''}"`,
-      `"${item.rawFile || ''}"`,
-      `"${item.rawCondition || 'Near Mint'}"`,
-      `"${item.rawLanguage || 'EN'}"`,
-      item.lastPrice !== null && item.lastPrice !== undefined ? item.lastPrice.toFixed(2) : '',
-      `"${item.lastCheckRelative || item.lastCheckDate || 'Kein Check'}"`,
-      `"${item.filterInfo || ''}"`,
-      `"${item.status}"`,
-    ]);
+    const rows = set.cards.map((item, pos) => {
+      const exportNum = pos + 1;
+      const formattedTitle = formatExportTitle(item.nameDe || item.detectedName || item.rawName, '', exportNum);
+      const origIdx = item.originalIndex !== undefined ? item.originalIndex : item.index || exportNum;
+      return [
+        `"${set.name}"`,
+        exportNum,
+        origIdx,
+        `"${item.detectedCode || ''}"`,
+        `"${formattedTitle}"`,
+        `"${item.rawFile || ''}"`,
+        `"${item.rawCondition || 'Near Mint'}"`,
+        `"${item.rawLanguage || 'EN'}"`,
+        item.lastPrice !== null && item.lastPrice !== undefined ? item.lastPrice.toFixed(2) : '',
+        `"${item.lastCheckRelative || item.lastCheckDate || 'Kein Check'}"`,
+        `"${item.filterInfo || ''}"`,
+        `"${item.status}"`,
+      ];
+    });
 
     return [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
   }
 
   /**
-   * Exports all sets into one combined standard Enriched CSV
+   * Exports all sets into one combined standard Enriched CSV with sequential pipeline numbering
    */
   exportAllSetsToEnrichedCSV() {
     if (this.sets.length === 0) return null;
 
     const headers = [
       'Set Name',
+      'Pipeline #',
       'Set Position',
       'Original CSV #',
       'Card Code',
@@ -699,14 +726,20 @@ export class SetBuilder {
     ];
 
     const rows = [];
+    let globalExportIndex = 1;
+
     this.sets.forEach((set) => {
       set.cards.forEach((item, pos) => {
+        const exportNum = globalExportIndex++;
+        const formattedTitle = formatExportTitle(item.nameDe || item.detectedName || item.rawName, '', exportNum);
+        const origIdx = item.originalIndex !== undefined ? item.originalIndex : item.index || pos + 1;
         rows.push([
           `"${set.name}"`,
+          exportNum,
           pos + 1,
-          item.originalIndex !== undefined ? item.originalIndex : item.index || pos + 1,
+          origIdx,
           `"${item.detectedCode || ''}"`,
-          `"${item.detectedName || item.rawName || ''}"`,
+          `"${formattedTitle}"`,
           `"${item.rawFile || ''}"`,
           `"${item.rawCondition || 'Near Mint'}"`,
           `"${item.rawLanguage || 'EN'}"`,
@@ -722,7 +755,7 @@ export class SetBuilder {
   }
 
   /**
-   * Exports a single set to Whatnot 21-column CSV format
+   * Exports a single set to Whatnot 21-column CSV format with ascending numbers in titles (#1, #2, ...)
    */
   exportSetToWhatnotCSV(set) {
     if (!set || !Array.isArray(set.cards) || set.cards.length === 0) return null;
@@ -744,13 +777,15 @@ export class SetBuilder {
           : (w.preis ?? item.rawPrice ?? '1').toString();
 
       const origIdx = item.originalIndex !== undefined ? item.originalIndex : item.index || pos + 1;
-      const sku = `SET-${set.name.replace(/[^A-Za-z0-9]/g, '')}-P${String(pos + 1).padStart(3, '0')}-CSV#${origIdx}`;
+      const exportNum = pos + 1;
+      const title = formatExportTitle(w.titel, item.detectedName || item.rawName, exportNum);
+      const sku = `SET-${set.name.replace(/[^A-Za-z0-9]/g, '')}-P${String(exportNum).padStart(3, '0')}-CSV#${origIdx}`;
 
       const cells = [
         w.kategorie || 'Trading Card Games',
         w.unterkategorie || (item.tcg === 'OnePiece' ? 'One-Piece-Karten' : 'Pokémon-Karten'),
-        w.titel || item.detectedName || item.rawName || '',
-        w.beschreibung || `Set: ${set.name} | Position: ${pos + 1}/${set.cards.length} | Ursprüngliche CSV #${origIdx}`,
+        title,
+        w.beschreibung || `Set: ${set.name} | Position: ${exportNum}/${set.cards.length} | Ursprüngliche CSV #${origIdx}`,
         w.menge ?? item.quantity ?? 1,
         w.verkaufsformat || 'Auktion',
         priceVal,
@@ -776,13 +811,14 @@ export class SetBuilder {
   }
 
   /**
-   * Exports all sets to Whatnot 21-column CSV format
+   * Exports all sets to Whatnot 21-column CSV format with sequential pipeline numbers across all sets (#1 to #200)
    */
   exportAllSetsToWhatnotCSV() {
     if (this.sets.length === 0) return null;
 
     const headerRow = WHATNOT_COLUMNS.map(escapeCsvCell).join(',');
     const rows = [];
+    let globalExportIndex = 1;
 
     this.sets.forEach((set) => {
       set.cards.forEach((item, pos) => {
@@ -801,13 +837,15 @@ export class SetBuilder {
             : (w.preis ?? item.rawPrice ?? '1').toString();
 
         const origIdx = item.originalIndex !== undefined ? item.originalIndex : item.index || pos + 1;
-        const sku = `SET-${set.name.replace(/[^A-Za-z0-9]/g, '')}-P${String(pos + 1).padStart(3, '0')}-CSV#${origIdx}`;
+        const exportNum = globalExportIndex++;
+        const title = formatExportTitle(w.titel, item.detectedName || item.rawName, exportNum);
+        const sku = `SET-${set.name.replace(/[^A-Za-z0-9]/g, '')}-P${String(pos + 1).padStart(3, '0')}-ALL#${String(exportNum).padStart(3, '0')}-CSV#${origIdx}`;
 
         const cells = [
           w.kategorie || 'Trading Card Games',
           w.unterkategorie || (item.tcg === 'OnePiece' ? 'One-Piece-Karten' : 'Pokémon-Karten'),
-          w.titel || item.detectedName || item.rawName || '',
-          w.beschreibung || `Set: ${set.name} | Position: ${pos + 1}/${set.cards.length} | Ursprüngliche CSV #${origIdx}`,
+          title,
+          w.beschreibung || `Set: ${set.name} | Position: ${pos + 1}/${set.cards.length} | Pipeline #${exportNum} | Ursprüngliche CSV #${origIdx}`,
           w.menge ?? item.quantity ?? 1,
           w.verkaufsformat || 'Auktion',
           priceVal,
