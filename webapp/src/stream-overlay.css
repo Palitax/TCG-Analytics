@@ -1312,6 +1312,67 @@
   cursor: grabbing;
 }
 
+/* Pipeline Position Input & Badge (Click-to-swap) */
+.set-pos-badge-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 1px 4px;
+  min-width: 44px;
+  height: 26px;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  user-select: none;
+}
+
+.set-pos-badge-container:hover {
+  background: rgba(168, 85, 247, 0.12);
+  border-color: rgba(168, 85, 247, 0.4);
+}
+
+.set-pos-badge-container:focus-within {
+  background: rgba(0, 0, 0, 0.6);
+  border-color: #c084fc;
+  box-shadow: 0 0 0 2px rgba(192, 132, 252, 0.25);
+}
+
+.set-pos-prefix {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #a1a1aa;
+  margin-right: 1px;
+  pointer-events: none;
+}
+
+.set-pos-input {
+  width: 32px;
+  padding: 0;
+  text-align: center;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #fff;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  -moz-appearance: textfield;
+  cursor: pointer;
+}
+
+.set-pos-input:focus {
+  cursor: text;
+}
+
+.set-pos-input::-webkit-outer-spin-button,
+.set-pos-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 /* CSV Index Badge (Crucial requirement) */
 .csv-index-badge {
   background: rgba(56, 189, 248, 0.15);

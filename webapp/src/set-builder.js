@@ -264,6 +264,22 @@ export class SetBuilder {
   }
 
   /**
+   * Swaps two cards inside a set by their indices (0-based)
+   */
+  swapCards(setId, indexA, indexB) {
+    const set = this.getSet(setId);
+    if (!set || !Array.isArray(set.cards)) return false;
+    if (indexA < 0 || indexA >= set.cards.length) return false;
+    if (indexB < 0 || indexB >= set.cards.length) return false;
+    if (indexA === indexB) return true;
+
+    const temp = set.cards[indexA];
+    set.cards[indexA] = set.cards[indexB];
+    set.cards[indexB] = temp;
+    return true;
+  }
+
+  /**
    * Moves all hit cards (value >= minHitPrice) to the end of the set's packing order
    */
   moveHitsToEnd(setId, minHitPrice = 5.0) {

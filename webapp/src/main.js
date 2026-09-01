@@ -5421,7 +5421,7 @@ function renderBulkScanTab(container) {
           </div>
 
           <div style="font-size: 0.8rem; color: #94a3b8; display: flex; justify-content: space-between; align-items: center;">
-            <span>Ziehe Karten per <strong>Drag & Drop</strong> oder nutze die Pfeiltasten, um die genaue Auspack-Reihenfolge einzustellen.</span>
+            <span>Ziehe Karten per <strong>Drag & Drop</strong>, nutze die Pfeiltasten oder <strong>klicke auf die Positionsnummer (#)</strong>, um Plätze direkt zu tauschen.</span>
             <span style="color: #38bdf8; font-weight: 600;">Jede Karte behält ihre originale CSV-Nummer (#)</span>
           </div>
 
@@ -5515,8 +5515,9 @@ function renderBulkScanTab(container) {
               </svg>
             </div>
 
-            <div style="font-size: 0.8125rem; font-weight: 700; color: #71717a; width: 28px; text-align: center;">
-              #${index + 1}
+            <div class="set-pos-badge-container" title="Klicke hier, um die Position zu ändern (tauscht die Plätze mit der Zielposition)">
+              <span class="set-pos-prefix">#</span>
+              <input type="number" class="set-pos-input" value="${index + 1}" min="1" max="${set.cards.length}" data-index="${index}" title="Position eingeben und Enter drücken zum Plätze-Tauschen" />
             </div>
 
             <span class="csv-index-badge" title="Ursprüngliche Nummer in der importierten CSV-Datei">
@@ -5555,6 +5556,72 @@ function renderBulkScanTab(container) {
               <button type="button" class="btn-dnd-remove" style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #f87171; border-radius: 4px; padding: 3px 6px; cursor: pointer; font-size: 0.75rem; margin-left: 4px;" title="Aus Set entfernen">✕</button>
             </div>
           `;
+
+          const posContainer = itemEl.querySelector('.set-pos-badge-container');
+          const posInput = itemEl.querySelector('.set-pos-input');
+
+          const applySwap = (rawVal) => {
+            const targetPos = parseInt(rawVal, 10);
+            if (isNaN(targetPos) || targetPos < 1 || targetPos > set.cards.length) {
+              showToast(`⚠️ Ungültige Position: Bitte eine Zahl zwischen 1 und ${set.cards.length} eingeben.`);
+              if (posInput) posInput.value = index + 1;
+              return;
+            }
+            if (targetPos === index + 1) {
+              if (posInput) posInput.value = index + 1;
+              return;
+            }
+            const targetIndex = targetPos - 1;
+            const success = setBuilderInstance.swapCards(set.id, index, targetIndex);
+            if (success) {
+              renderDndCardsList();
+              showToast(`🔄 Plätze getauscht: #${index + 1} ⇄ #${targetPos}`);
+            }
+          };
+
+          if (posInput) {
+            posInput.addEventListener('mousedown', (e) => {
+              e.stopPropagation();
+            });
+            posInput.addEventListener('click', (e) => {
+              e.stopPropagation();
+              posInput.select();
+            });
+            posInput.addEventListener('keydown', (e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                posInput.blur();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                posInput.value = index + 1;
+                posInput.blur();
+              }
+            });
+            posInput.addEventListener('blur', () => {
+              if (posInput.value && parseInt(posInput.value, 10) !== index + 1) {
+                applySwap(posInput.value);
+              } else {
+                posInput.value = index + 1;
+              }
+            });
+            posInput.addEventListener('dragstart', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            });
+          }
+
+          if (posContainer && posInput) {
+            posContainer.addEventListener('click', (e) => {
+              e.stopPropagation();
+              posInput.focus();
+              posInput.select();
+            });
+            posContainer.addEventListener('mousedown', (e) => {
+              e.stopPropagation();
+            });
+          }
 
           if (imgMarkup) {
             itemEl.querySelector('img')?.addEventListener('click', (e) => {
