@@ -8,6 +8,96 @@
 import { WHATNOT_COLUMNS } from './csv-parser.js';
 import { escapeCsvCell } from './bulk-scanner.js';
 
+/**
+ * Returns a unique identity string for a card (by name and set code/number, e.g. Boltund 50091)
+ */
+export function getCardIdentityKey(card) {
+  if (!card) return 'unknown';
+
+  if (card.productId || card.cmId) {
+    return `cm_${card.productId || card.cmId}`;
+  }
+
+  const name = (card.detectedName || card.nameDe || card.rawName || '').trim().toLowerCase();
+  const code = (card.detectedCode || card.code || card.cardNumber || card.rawCode || '').trim().toLowerCase();
+  const set = (card.setNameDe || card.rawSet || '').trim().toLowerCase();
+
+  if (code && name) {
+    return `${name}__${code}`;
+  }
+  if (code && set) {
+    return `${set}__${code}`;
+  }
+  if (code) {
+    return `code_${code}`;
+  }
+  if (name && set) {
+    return `${name}__${set}`;
+  }
+  return name || 'unknown_card';
+}
+
+/**
+ * Computes maximum complete sets considering pack size, hits rule, and duplicate constraints
+ */
+export function calculateMaxPossibleSets(hitCards, baseCards, packSize, hitsPerSet = 0, maxDuplicates = null) {
+  const neededBase = packSize - (hitsPerSet || 0);
+  const totalEligible = hitCards.length + baseCards.length;
+  const theoreticalMax = Math.floor(totalEligible / packSize);
+
+  if (theoreticalMax <= 0) return 0;
+
+  const isPossible = (s) => {
+    if (s <= 0) return true;
+
+    // Check Hits constraint
+    if (hitsPerSet > 0) {
+      if (Math.floor(hitCards.length / hitsPerSet) < s) return false;
+      if (maxDuplicates && maxDuplicates > 0) {
+        const hitCounts = new Map();
+        hitCards.forEach((c) => {
+          const k = getCardIdentityKey(c);
+          hitCounts.set(k, (hitCounts.get(k) || 0) + 1);
+        });
+        let effectiveHits = 0;
+        for (const [, cnt] of hitCounts) {
+          effectiveHits += Math.min(cnt, s * maxDuplicates);
+        }
+        if (effectiveHits < s * hitsPerSet) return false;
+      }
+    }
+
+    // Check Base cards constraint
+    if (neededBase > 0) {
+      if (Math.floor(baseCards.length / neededBase) < s) return false;
+      if (maxDuplicates && maxDuplicates > 0) {
+        const baseCounts = new Map();
+        baseCards.forEach((c) => {
+          const k = getCardIdentityKey(c);
+          baseCounts.set(k, (baseCounts.get(k) || 0) + 1);
+        });
+        let effectiveBase = 0;
+        for (const [, cnt] of baseCounts) {
+          effectiveBase += Math.min(cnt, s * maxDuplicates);
+        }
+        if (effectiveBase < s * neededBase) return false;
+      }
+    }
+
+    return true;
+  };
+
+  let maxPossible = 0;
+  for (let s = 1; s <= theoreticalMax; s++) {
+    if (isPossible(s)) {
+      maxPossible = s;
+    } else {
+      break;
+    }
+  }
+  return maxPossible;
+}
+
 export class SetBuilder {
   constructor(options = {}) {
     this.sets = [];
@@ -287,15 +377,15 @@ export class SetBuilder {
       }
     });
 
+    const useMaxDuplicates = config.useMaxDuplicates !== false && config.useMaxDuplicates !== undefined ? !!config.useMaxDuplicates : (typeof config.maxDuplicates === 'number' && config.maxDuplicates > 0);
+    const maxDuplicates = (useMaxDuplicates && config.maxDuplicates > 0) ? parseInt(config.maxDuplicates, 10) : null;
+
     // Determine total number of possible complete sets
     let totalPossibleSets = 0;
     if (useHitRule && hitsPerSet > 0) {
-      const maxSetsByHits = Math.floor(hitCandidates.length / hitsPerSet);
-      const remainingNeededPerSet = packSize - hitsPerSet;
-      const maxSetsByBase = remainingNeededPerSet > 0 ? Math.floor(baseCandidates.length / remainingNeededPerSet) : maxSetsByHits;
-      totalPossibleSets = Math.min(maxSetsByHits, maxSetsByBase);
+      totalPossibleSets = calculateMaxPossibleSets(hitCandidates, baseCandidates, packSize, hitsPerSet, maxDuplicates);
     } else {
-      totalPossibleSets = Math.floor((hitCandidates.length + baseCandidates.length) / packSize);
+      totalPossibleSets = calculateMaxPossibleSets([], hitCandidates.concat(baseCandidates), packSize, 0, maxDuplicates);
     }
 
     if (config.maxSets && typeof config.maxSets === 'number' && config.maxSets > 0) {
@@ -308,7 +398,7 @@ export class SetBuilder {
         unallocatedCards: pool,
         totalSets: this.sets.length,
         totalAssigned: cards.filter((c) => c.setId).length,
-        error: 'Nicht genügend passende Karten im Pool für die gewählten Kriterien.',
+        error: 'Nicht genügend passende Karten im Pool für die gewählten Kriterien (Hits / Preisbereich / Duplikate).',
       };
     }
 
@@ -324,6 +414,25 @@ export class SetBuilder {
         createdAt: Date.now(),
       });
     }
+
+    // Track card duplicate counts per set
+    const setCardCounts = new Map();
+    createdSets.forEach((s) => {
+      setCardCounts.set(s.id, new Map());
+    });
+
+    const canAddCardToSet = (set, card) => {
+      if (!maxDuplicates || maxDuplicates <= 0) return true;
+      const key = getCardIdentityKey(card);
+      const curr = setCardCounts.get(set.id)?.get(key) || 0;
+      return curr < maxDuplicates;
+    };
+
+    const recordCardInSet = (set, card) => {
+      const key = getCardIdentityKey(card);
+      const curr = setCardCounts.get(set.id)?.get(key) || 0;
+      setCardCounts.get(set.id).set(key, curr + 1);
+    };
 
     // Order pools according to strategy
     if (strategy === 'balanced') {
@@ -348,17 +457,28 @@ export class SetBuilder {
         for (let s = 0; s < createdSets.length; s++) {
           // Serpentine / snake distribution in balanced mode
           const setIndex = strategy === 'balanced' && h % 2 === 1 ? createdSets.length - 1 - s : s;
-          if (hitCandidates.length > 0) {
-            const card = hitCandidates.shift();
-            card.setId = createdSets[setIndex].id;
-            createdSets[setIndex].cards.push(card);
+          const targetSet = createdSets[setIndex];
+
+          let candidateIdx = -1;
+          for (let i = 0; i < hitCandidates.length; i++) {
+            if (canAddCardToSet(targetSet, hitCandidates[i])) {
+              candidateIdx = i;
+              break;
+            }
+          }
+
+          if (candidateIdx !== -1) {
+            const [card] = hitCandidates.splice(candidateIdx, 1);
+            recordCardInSet(targetSet, card);
+            card.setId = targetSet.id;
+            targetSet.cards.push(card);
             assignedCardIds.add(card.id);
           }
         }
       }
     }
 
-    // 2. Fill remaining regular slots strictly from baseCandidates (so hits count is EXACT)
+    // 2. Fill remaining regular slots strictly from baseCandidates (so hits count is EXACT and duplicates are limited)
     const generalFillPool = [...baseCandidates];
     if (strategy === 'balanced') {
       generalFillPool.sort((a, b) => (b.lastPrice || 0) - (a.lastPrice || 0));
@@ -370,12 +490,23 @@ export class SetBuilder {
 
     for (let slot = 0; slot < packSize; slot++) {
       for (let s = 0; s < createdSets.length; s++) {
-        const set = createdSets[s];
-        if (set.cards.length < packSize && generalFillPool.length > 0) {
-          const card = generalFillPool.shift();
-          card.setId = set.id;
-          set.cards.push(card);
-          assignedCardIds.add(card.id);
+        const targetSet = createdSets[s];
+        if (targetSet.cards.length < packSize && generalFillPool.length > 0) {
+          let candidateIdx = -1;
+          for (let i = 0; i < generalFillPool.length; i++) {
+            if (canAddCardToSet(targetSet, generalFillPool[i])) {
+              candidateIdx = i;
+              break;
+            }
+          }
+
+          if (candidateIdx !== -1) {
+            const [card] = generalFillPool.splice(candidateIdx, 1);
+            recordCardInSet(targetSet, card);
+            card.setId = targetSet.id;
+            targetSet.cards.push(card);
+            assignedCardIds.add(card.id);
+          }
         }
       }
     }

@@ -1189,7 +1189,8 @@
   flex: 1;
 }
 
-.set-preset-chip {
+.set-preset-chip,
+.dup-preset-chip {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--theme-text);
@@ -1201,12 +1202,14 @@
   transition: all 0.15s ease;
 }
 
-.set-preset-chip:hover {
+.set-preset-chip:hover,
+.dup-preset-chip:hover {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.25);
 }
 
-.set-preset-chip.active {
+.set-preset-chip.active,
+.dup-preset-chip.active {
   background: #ffffff;
   color: #09090b;
   border-color: #ffffff;

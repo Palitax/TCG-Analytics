@@ -2,7 +2,7 @@ import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase.js';
 import { animate } from 'motion';
 import { Chart, registerables } from 'chart.js';
 import { BulkScanner } from './bulk-scanner.js';
-import { SetBuilder } from './set-builder.js';
+import { SetBuilder, calculateMaxPossibleSets, getCardIdentityKey } from './set-builder.js';
 import { StreamOverlay } from './stream-overlay.js';
 import { extractCardCode, parseCardCodeComponents } from './csv-parser.js';
 import { formatCardMeta, translateCardName, translateSetName } from './tcg-translations.js';
@@ -4852,11 +4852,37 @@ function renderBulkScanTab(container) {
             </div>
           </div>
 
-          <!-- 3. Base Card Price Filter -->
+          <!-- 3. Duplicate Limiter -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <label style="font-weight: 700; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="chk-use-max-dup" checked style="width: 16px; height: 16px; accent-color: #38bdf8; cursor: pointer;" />
+                3. Maximale Duplikate pro Karte im Set begrenzen
+              </label>
+              <span class="hit-slot-badge" style="background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.3); color: #38bdf8;">Anti-Cluster</span>
+            </div>
+            <p style="color: #94a3b8; font-size: 0.82rem; margin: 0 0 14px 0;">
+              Verhindert, dass dieselbe Karte (anhand von Name & Set-Nummer, z. B. Boltund 50091) zu oft im selben Set landet.
+            </p>
+            <div id="dup-rule-fields" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <button type="button" class="dup-preset-chip active" data-dup="1">Max 1x (Keine Duplikate)</button>
+                <button type="button" class="dup-preset-chip" data-dup="2">Max 2x</button>
+                <button type="button" class="dup-preset-chip" data-dup="3">Max 3x</button>
+                <button type="button" class="dup-preset-chip" data-dup="4">Max 4x</button>
+              </div>
+              <div style="display: inline-flex; align-items: center; gap: 6px; margin-left: 4px;">
+                <span style="font-size: 0.82rem; color: #a1a1aa;">Eigene Zahl:</span>
+                <input type="number" id="inp-max-dup" min="1" max="100" value="1" class="form-input" style="width: 65px; padding: 5px 8px; font-size: 0.85rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Base Card Price Filter -->
           <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px;">
             <label style="font-weight: 700; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 8px;">
               <input type="checkbox" id="chk-use-base-range" style="width: 16px; height: 16px; accent-color: #3b82f6; cursor: pointer;" />
-              3. Preisbereich für Basis-Karten (Filler Slots) begrenzen
+              4. Preisbereich für Basis-Karten (Filler Slots) begrenzen
             </label>
             <div id="base-range-fields" style="display: none; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-top: 10px;">
               <div>
@@ -4870,11 +4896,11 @@ function renderBulkScanTab(container) {
             </div>
           </div>
 
-          <!-- 4. Distribution Strategy & Prefix -->
+          <!-- 5. Distribution Strategy & Prefix -->
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px;">
             <div>
               <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #fff; margin-bottom: 6px;">
-                4. Verteilungslogik:
+                5. Verteilungslogik:
               </label>
               <select id="sel-strategy" class="form-input" style="width: 100%; padding: 6px 10px; font-size: 0.85rem; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;">
                 <option value="balanced">Ausbalanciert (Gleichmäßige Wertverteilung)</option>
@@ -4926,6 +4952,9 @@ function renderBulkScanTab(container) {
       const chkUseHit = container.querySelector('#chk-use-hit-rule');
       const inpHitsPerSet = container.querySelector('#inp-hits-per-set');
       const inpMinHitPrice = container.querySelector('#inp-min-hit-price');
+      const chkUseMaxDup = container.querySelector('#chk-use-max-dup');
+      const dupChipButtons = container.querySelectorAll('.dup-preset-chip');
+      const inpMaxDup = container.querySelector('#inp-max-dup');
       const chkUseBase = container.querySelector('#chk-use-base-range');
       const baseFields = container.querySelector('#base-range-fields');
       const inpMinBasePrice = container.querySelector('#inp-min-base-price');
@@ -4937,10 +4966,14 @@ function renderBulkScanTab(container) {
       const btnRunAll = container.querySelector('#btn-run-generate-all-sets');
       const chkAppend = container.querySelector('#chk-append-sets');
 
+      let selectedMaxDup = 1;
+
       function updateSimulation() {
         useHitRule = chkUseHit.checked;
         hitsPerSet = parseInt(inpHitsPerSet.value, 10) || 1;
         minHitPrice = parseFloat(inpMinHitPrice.value) || 5.00;
+        const useDupLimit = chkUseMaxDup ? chkUseMaxDup.checked : true;
+        const maxDup = useDupLimit ? (parseInt(inpMaxDup.value, 10) || 1) : null;
         useBaseRange = chkUseBase.checked;
         minBasePrice = parseFloat(inpMinBasePrice.value) || 0;
         maxBasePrice = parseFloat(inpMaxBasePrice.value) || Infinity;
@@ -4950,30 +4983,28 @@ function renderBulkScanTab(container) {
         const isAppend = chkAppend ? chkAppend.checked : false;
         const availablePool = isAppend ? allCards.filter(c => !c.setId) : allCards;
 
-        const hitCount = availablePool.filter(c => (c.lastPrice || 0) >= minHitPrice).length;
-        const baseCardsCount = availablePool.filter(c => {
+        const hitCandidates = availablePool.filter(c => (c.lastPrice || 0) >= minHitPrice);
+        const baseCandidates = availablePool.filter(c => {
           const p = c.lastPrice || 0;
           if (useHitRule && p >= minHitPrice) return false;
           if (useBaseRange) return p >= minBasePrice && p <= maxBasePrice;
           return true;
-        }).length;
+        });
 
         let maxSets = 0;
         if (useHitRule && hitsPerSet > 0) {
-          const maxByHits = Math.floor(hitCount / hitsPerSet);
-          const neededBase = selectedPackSize - hitsPerSet;
-          const maxByBase = neededBase > 0 ? Math.floor(baseCardsCount / neededBase) : maxByHits;
-          maxSets = Math.min(maxByHits, maxByBase);
+          maxSets = calculateMaxPossibleSets(hitCandidates, baseCandidates, selectedPackSize, hitsPerSet, maxDup);
         } else {
-          maxSets = Math.floor(availablePool.length / selectedPackSize);
+          maxSets = calculateMaxPossibleSets([], hitCandidates.concat(baseCandidates), selectedPackSize, 0, maxDup);
         }
 
         const totalUsed = maxSets * selectedPackSize;
         const remaining = Math.max(0, availablePool.length - totalUsed);
 
         simContainer.innerHTML = `
-          <div>✨ Gefundene Hits (≥ ${minHitPrice.toFixed(2)} €): <strong style="color: #facc15;">${hitCount}</strong></div>
-          <div>🃏 Basis-Karten: <strong style="color: #38bdf8;">${baseCardsCount}</strong></div>
+          <div>✨ Gefundene Hits (≥ ${minHitPrice.toFixed(2)} €): <strong style="color: #facc15;">${hitCandidates.length}</strong></div>
+          <div>🃏 Basis-Karten: <strong style="color: #38bdf8;">${baseCandidates.length}</strong></div>
+          <div>🛡️ Duplikat-Limit: <strong style="color: #38bdf8;">${useDupLimit ? `Max ${maxDup}x` : 'Unbegrenzt'}</strong></div>
           <div>📦 Mögliche Sets: <strong style="color: #4ade80;">${maxSets} Sets à ${selectedPackSize} Karten</strong></div>
           <div>⚠️ Nicht zugeordnete Restkarten: <strong style="color: #cbd5e1;">${remaining}</strong></div>
         `;
@@ -5021,6 +5052,35 @@ function renderBulkScanTab(container) {
         updateSimulation();
       });
 
+      if (chkUseMaxDup) {
+        chkUseMaxDup.addEventListener('change', () => {
+          container.querySelector('#dup-rule-fields').style.opacity = chkUseMaxDup.checked ? '1' : '0.4';
+          updateSimulation();
+        });
+      }
+
+      dupChipButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          dupChipButtons.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          selectedMaxDup = parseInt(btn.getAttribute('data-dup'), 10);
+          inpMaxDup.value = selectedMaxDup;
+          updateSimulation();
+        });
+      });
+
+      inpMaxDup.addEventListener('input', () => {
+        const val = parseInt(inpMaxDup.value, 10);
+        if (!isNaN(val) && val > 0) {
+          selectedMaxDup = val;
+          dupChipButtons.forEach(b => {
+            if (parseInt(b.getAttribute('data-dup'), 10) === val) b.classList.add('active');
+            else b.classList.remove('active');
+          });
+          updateSimulation();
+        }
+      });
+
       chkUseBase.addEventListener('change', () => {
         baseFields.style.display = chkUseBase.checked ? 'grid' : 'none';
         updateSimulation();
@@ -5041,11 +5101,16 @@ function renderBulkScanTab(container) {
 
       function executeGeneration(maxSets = null) {
         const isAppend = chkAppend ? chkAppend.checked : false;
+        const useDupLimit = chkUseMaxDup ? chkUseMaxDup.checked : true;
+        const maxDup = useDupLimit ? (parseInt(inpMaxDup.value, 10) || 1) : null;
+
         const config = {
           packSize: selectedPackSize,
           useHitRule: chkUseHit.checked,
           hitsPerSet: parseInt(inpHitsPerSet.value, 10) || 1,
           minHitPrice: parseFloat(inpMinHitPrice.value) || 5.00,
+          useMaxDuplicates: useDupLimit,
+          maxDuplicates: maxDup,
           useBaseRange: chkUseBase.checked,
           minBasePrice: parseFloat(inpMinBasePrice.value) || 0,
           maxBasePrice: parseFloat(inpMaxBasePrice.value) || Infinity,
