@@ -2,6 +2,7 @@ import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase.js';
 import { animate } from 'motion';
 import { Chart, registerables } from 'chart.js';
 import { BulkScanner } from './bulk-scanner.js';
+import { SetBuilder } from './set-builder.js';
 import { StreamOverlay } from './stream-overlay.js';
 import { extractCardCode, parseCardCodeComponents } from './csv-parser.js';
 import { formatCardMeta, translateCardName, translateSetName } from './tcg-translations.js';
@@ -33,6 +34,7 @@ let lastOriginScreen = 'watchlist';
 let activeStreamQueue = [];
 let streamOverlayInstance = null;
 let bulkScannerInstance = new BulkScanner();
+let setBuilderInstance = new SetBuilder();
 let markedCards = [];
 let activeSortOption = 'custom';
 try {
@@ -4073,6 +4075,12 @@ function renderBulkScanTab(container) {
         <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1.25rem 0; flex-wrap: wrap; gap: 1rem;">
           <h3 style="color: #fff; font-size: 1.15rem; margin: 0; font-weight: 700;" id="scan-summary-title">Gescannt: 0 Karten</h3>
           <div style="display: flex; gap: 0.85rem; flex-wrap: wrap; align-items: center;">
+            <button class="shadcn-btn shadcn-btn-secondary" id="btn-open-set-builder" type="button" title="Karten in konfigurierbare Sets & Mystery Packs aufteilen und sortieren" style="border-color: rgba(168, 85, 247, 0.4); color: #d8b4fe;">
+              <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+              ✨ Sets erstellen / verwalten
+            </button>
             <button class="shadcn-btn shadcn-btn-secondary" id="btn-refresh-bulk-db" type="button" title="Fragt Supabase neu ab nach kürzlich gescannten Preisen & Bildern">
               <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -4128,6 +4136,7 @@ function renderBulkScanTab(container) {
   const btnSelect = wrapper.querySelector('#btn-select-csv');
   const btnNewUpload = wrapper.querySelector('#btn-new-csv-upload');
   const btnRefreshBulkDb = wrapper.querySelector('#btn-refresh-bulk-db');
+  const btnOpenSetBuilder = wrapper.querySelector('#btn-open-set-builder');
   const processingInd = wrapper.querySelector('#bulk-processing-indicator');
   const resultsArea = wrapper.querySelector('#bulk-results-area');
   const tbody = wrapper.querySelector('#scan-review-tbody');
@@ -4135,6 +4144,12 @@ function renderBulkScanTab(container) {
   const btnSendOverlay = wrapper.querySelector('#btn-send-to-overlay');
   const btnSaveColl = wrapper.querySelector('#btn-save-scans-coll');
   const btnExportCsv = wrapper.querySelector('#btn-export-enriched-csv');
+
+  if (btnOpenSetBuilder) {
+    btnOpenSetBuilder.addEventListener('click', () => {
+      openSetBuilderModal(setBuilderInstance.getSets().length > 0 ? 'overview' : 'generate');
+    });
+  }
 
   btnRefreshBulkDb.addEventListener('click', async () => {
     if (!bulkScannerInstance.scanItems || bulkScannerInstance.scanItems.length === 0) return;
@@ -4184,6 +4199,7 @@ function renderBulkScanTab(container) {
     resultsArea.style.display = 'none';
     btnNewUpload.style.display = 'none';
     fileInput.value = '';
+    setBuilderInstance.clearAllSets(bulkScannerInstance.scanItems || []);
   });
 
   dropzone.addEventListener('dragover', (e) => {
@@ -4233,6 +4249,7 @@ function renderBulkScanTab(container) {
         try {
           const text = event.target.result;
           const items = await bulkScannerInstance.processCSVText(text, onProgress);
+          setBuilderInstance.clearAllSets(items);
 
           processingInd.style.display = 'none';
           resultsArea.style.display = 'block';
@@ -4259,6 +4276,15 @@ function renderBulkScanTab(container) {
     }
   }
 
+  // Active popover tracker for closing when clicking outside
+  let activeSetAssignPopover = null;
+  document.addEventListener('click', (e) => {
+    if (activeSetAssignPopover && !activeSetAssignPopover.contains(e.target) && !e.target.closest('.btn-table-set-assign')) {
+      activeSetAssignPopover.remove();
+      activeSetAssignPopover = null;
+    }
+  });
+
   function renderResults(items) {
     summaryTitle.textContent = `Gescannt: ${items.length} Karten`;
     tbody.innerHTML = '';
@@ -4278,6 +4304,11 @@ function renderBulkScanTab(container) {
       const nameEn = item.nameEn || item.detectedName || '';
       const setNameDe = item.setNameDe || item.rawSet || '';
 
+      const currentSet = item.setId ? setBuilderInstance.getSet(item.setId) : null;
+      const setBadgeHtml = currentSet
+        ? `<button type="button" class="card-set-badge assigned btn-table-set-assign" data-card-id="${item.id}" title="Aktuell in Set '${currentSet.name}'. Klicken zum Verschieben oder Entfernen.">📦 ${currentSet.name} ▾</button>`
+        : `<button type="button" class="card-set-badge unassigned btn-table-set-assign" data-card-id="${item.id}" title="Zu einem Set hinzufügen">+ Set</button>`;
+
       const priceCellHtml = hasFoundPrice
         ? `<div style="color: #10b981; font-weight: 700;">${item.lastPrice.toFixed(2)} €</div>`
         : `
@@ -4287,14 +4318,19 @@ function renderBulkScanTab(container) {
           </div>
         `;
 
+      const origIdx = item.originalIndex !== undefined ? item.originalIndex : index + 1;
+
       tr.innerHTML = `
-        <td>${index + 1}</td>
+        <td><strong style="color: #38bdf8;">#${origIdx}</strong></td>
         <td>
           <div style="display: flex; align-items: center; gap: 8px;">
             ${imgMarkup}
             <div>
-              <input type="text" class="form-input code-input" value="${item.detectedCode ? item.detectedCode.replace(/^([A-Za-z0-9]{2,6})\s+(\d{1,4})/i, '$1$2') : ''}" style="min-width: 125px; max-width: 145px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 8px;" />
-              ${item.variant ? `<div style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 5px; border-radius: 4px; display: inline-block; margin-top: 3px;">✨ ${item.variant.replace(/\D/g, '') ? `Version ${item.variant.replace(/\D/g, '')}` : item.variant}</div>` : ''}
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px; flex-wrap: wrap;">
+                <input type="text" class="form-input code-input" value="${item.detectedCode ? item.detectedCode.replace(/^([A-Za-z0-9]{2,6})\s+(\d{1,4})/i, '$1$2') : ''}" style="min-width: 95px; max-width: 125px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 3px 6px; font-size: 0.8rem;" />
+                ${setBadgeHtml}
+              </div>
+              ${item.variant ? `<div style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 5px; border-radius: 4px; display: inline-block; margin-top: 2px;">✨ ${item.variant.replace(/\D/g, '') ? `Version ${item.variant.replace(/\D/g, '')}` : item.variant}</div>` : ''}
             </div>
           </div>
         </td>
@@ -4335,6 +4371,116 @@ function renderBulkScanTab(container) {
           </div>
         </td>
       `;
+
+      // Set Assignment Popover button handler
+      const btnSetAssign = tr.querySelector('.btn-table-set-assign');
+      if (btnSetAssign) {
+        btnSetAssign.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (activeSetAssignPopover) {
+            activeSetAssignPopover.remove();
+            activeSetAssignPopover = null;
+          }
+
+          const existingSets = setBuilderInstance.getSets();
+          const popover = document.createElement('div');
+          popover.className = 'set-assign-popover';
+
+          let setOptionsHtml = '';
+          if (existingSets.length === 0) {
+            setOptionsHtml = `<div style="padding: 6px 10px; color: var(--theme-muted); font-size: 0.75rem;">Noch keine Sets erstellt.</div>`;
+          } else {
+            setOptionsHtml = existingSets.map((s) => {
+              const isCurr = item.setId === s.id;
+              return `
+                <div class="set-assign-option ${isCurr ? 'current' : ''}" data-set-id="${s.id}">
+                  <span>📦 ${s.name}</span>
+                  <span style="font-size: 0.72rem; color: var(--theme-muted);">${s.cards.length}/${s.targetSize}</span>
+                </div>
+              `;
+            }).join('');
+          }
+
+          popover.innerHTML = `
+            <div style="padding: 4px 8px 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 0.72rem; font-weight: 700; color: #a1a1aa; text-transform: uppercase;">
+              Set für Karte #${origIdx} wählen
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px; margin: 4px 0;">
+              ${setOptionsHtml}
+            </div>
+            <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 4px; display: flex; flex-direction: column; gap: 2px;">
+              <div class="set-assign-option" id="popover-create-new-set" style="color: #60a5fa;">
+                <span>➕ Neues Set erstellen</span>
+              </div>
+              ${item.setId ? `
+                <div class="set-assign-option" id="popover-remove-from-set" style="color: #ef4444;">
+                  <span>❌ Aus Set entfernen</span>
+                </div>
+              ` : ''}
+            </div>
+          `;
+
+          // Position popover relative to button
+          document.body.appendChild(popover);
+          const rect = btnSetAssign.getBoundingClientRect();
+          popover.style.position = 'fixed';
+          popover.style.top = `${Math.min(window.innerHeight - 260, rect.bottom + 6)}px`;
+          popover.style.left = `${Math.max(10, Math.min(window.innerWidth - 240, rect.left))}px`;
+          activeSetAssignPopover = popover;
+
+          // Event handlers for popover options
+          popover.querySelectorAll('.set-assign-option[data-set-id]').forEach((opt) => {
+            opt.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              const targetSetId = opt.getAttribute('data-set-id');
+              const targetSet = setBuilderInstance.getSet(targetSetId);
+              if (!targetSet) return;
+
+              if (item.setId && item.setId !== targetSetId) {
+                const oldSet = setBuilderInstance.getSet(item.setId);
+                const oldSetName = oldSet ? oldSet.name : 'anderem Set';
+                const confirmed = confirm(`Möchtest du diese Karte #${origIdx} (${nameDe}) wirklich aus '${oldSetName}' nach '${targetSet.name}' verschieben?`);
+                if (!confirmed) return;
+              }
+
+              setBuilderInstance.assignCardToSet(item, targetSetId);
+              popover.remove();
+              activeSetAssignPopover = null;
+              renderResults(bulkScannerInstance.scanItems);
+              showToast(`Karte #${origIdx} zu '${targetSet.name}' hinzugefügt!`);
+            });
+          });
+
+          const optCreateNew = popover.querySelector('#popover-create-new-set');
+          if (optCreateNew) {
+            optCreateNew.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              const defaultName = `Set #${setBuilderInstance.getSets().length + 1}`;
+              const newName = prompt('Name für das neue Set:', defaultName);
+              if (newName && newName.trim()) {
+                const created = setBuilderInstance.createEmptySet(newName.trim());
+                setBuilderInstance.assignCardToSet(item, created.id);
+                popover.remove();
+                activeSetAssignPopover = null;
+                renderResults(bulkScannerInstance.scanItems);
+                showToast(`Neues Set '${created.name}' erstellt und Karte #${origIdx} hinzugefügt!`);
+              }
+            });
+          }
+
+          const optRemove = popover.querySelector('#popover-remove-from-set');
+          if (optRemove) {
+            optRemove.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              setBuilderInstance.removeCardFromSet(item);
+              popover.remove();
+              activeSetAssignPopover = null;
+              renderResults(bulkScannerInstance.scanItems);
+              showToast(`Karte #${origIdx} aus Set entfernt.`);
+            });
+          }
+        });
+      }
 
       const btnFindCard = tr.querySelector('.btn-find-card-analytics');
       if (btnFindCard) {
@@ -4555,6 +4701,821 @@ function renderBulkScanTab(container) {
     link.click();
     document.body.removeChild(link);
   });
+
+  /**
+   * Set Builder Modal Controller (Generator, Sets Overview, Drag & Drop Detail)
+   */
+  function openSetBuilderModal(initialTab = 'generate', initialSetId = null) {
+    const existingModal = document.querySelector('.set-builder-modal-backdrop');
+    if (existingModal) existingModal.remove();
+
+    let currentModalTab = initialTab; // 'generate', 'overview', 'detail'
+    let currentDetailSetId = initialSetId;
+
+    const modalBackdrop = document.createElement('div');
+    modalBackdrop.className = 'set-builder-modal-backdrop';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'set-builder-modal-dialog';
+    modalBackdrop.appendChild(dialog);
+    document.body.appendChild(modalBackdrop);
+
+    function closeModal() {
+      modalBackdrop.remove();
+      renderResults(bulkScannerInstance.scanItems);
+    }
+
+    modalBackdrop.addEventListener('click', (e) => {
+      if (e.target === modalBackdrop) closeModal();
+    });
+
+    function renderModalContent() {
+      const allCards = bulkScannerInstance.scanItems || [];
+      const sets = setBuilderInstance.getSets();
+      const assignedCount = allCards.filter(c => c.setId).length;
+
+      dialog.innerHTML = `
+        <div class="set-builder-header">
+          <div>
+            <h3 style="color: #fff; font-size: 1.15rem; font-weight: 700; margin: 0 0 4px 0; display: flex; align-items: center; gap: 8px;">
+              <span style="color: #c084fc;">📦</span> TCG Set & Mystery Pack Builder
+            </h3>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #a1a1aa;">
+              <span>Pool: <strong style="color: #38bdf8;">${allCards.length} Karten</strong></span>
+              <span>•</span>
+              <span>In Sets: <strong style="color: #4ade80;">${assignedCount} Karten</strong></span>
+              <span>•</span>
+              <span>Sets: <strong style="color: #c084fc;">${sets.length}</strong></span>
+            </div>
+          </div>
+          <button class="shadcn-btn shadcn-btn-secondary btn-close-modal" type="button" style="padding: 6px 10px; border-radius: 8px; font-size: 1.1rem; line-height: 1;">✕</button>
+        </div>
+
+        <div class="set-builder-nav-tabs">
+          <button class="set-builder-nav-tab ${currentModalTab === 'generate' ? 'active' : ''}" data-tab="generate">
+            ⚙️ Automatisch generieren
+          </button>
+          <button class="set-builder-nav-tab ${currentModalTab === 'overview' ? 'active' : ''}" data-tab="overview">
+            📦 Sets Übersicht (${sets.length})
+          </button>
+          ${currentDetailSetId ? `
+            <button class="set-builder-nav-tab ${currentModalTab === 'detail' ? 'active' : ''}" data-tab="detail">
+              👁️ Set sortieren (Drag & Drop)
+            </button>
+          ` : ''}
+        </div>
+
+        <div class="set-builder-body" id="set-builder-body-container"></div>
+      `;
+
+      dialog.querySelector('.btn-close-modal').addEventListener('click', closeModal);
+
+      dialog.querySelectorAll('.set-builder-nav-tab').forEach(tabBtn => {
+        tabBtn.addEventListener('click', () => {
+          currentModalTab = tabBtn.getAttribute('data-tab');
+          renderModalContent();
+        });
+      });
+
+      const bodyContainer = dialog.querySelector('#set-builder-body-container');
+
+      if (currentModalTab === 'generate') {
+        renderGeneratorTab(bodyContainer);
+      } else if (currentModalTab === 'overview') {
+        renderOverviewTab(bodyContainer);
+      } else if (currentModalTab === 'detail') {
+        renderDetailTab(bodyContainer, currentDetailSetId);
+      }
+    }
+
+    // --- Tab 1: Generator ---
+    function renderGeneratorTab(container) {
+      const allCards = bulkScannerInstance.scanItems || [];
+      let selectedPackSize = 10;
+      let useHitRule = true;
+      let hitsPerSet = 1;
+      let minHitPrice = 5.00;
+      let useBaseRange = false;
+      let minBasePrice = 0.00;
+      let maxBasePrice = 4.99;
+      let strategy = 'balanced';
+      let namePrefix = 'Set #';
+
+      container.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <!-- 1. Set Size -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px;">
+            <label style="display: block; font-weight: 700; font-size: 0.95rem; color: #fff; margin-bottom: 8px;">
+              1. Kartengröße pro Set (Pack Size)
+            </label>
+            <p style="color: #94a3b8; font-size: 0.82rem; margin: 0 0 12px 0;">
+              Wähle eine Standardgröße für deine Mystery Packs oder gib eine eigene Zahl ein:
+            </p>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <button type="button" class="set-preset-chip active" data-size="10">10 Karten</button>
+              <button type="button" class="set-preset-chip" data-size="20">20 Karten</button>
+              <button type="button" class="set-preset-chip" data-size="50">50 Karten</button>
+              <button type="button" class="set-preset-chip" data-size="100">100 Karten</button>
+              <button type="button" class="set-preset-chip" data-size="200">200 Karten</button>
+              <div style="display: inline-flex; align-items: center; gap: 6px; margin-left: 8px;">
+                <span style="font-size: 0.82rem; color: #a1a1aa;">Custom:</span>
+                <input type="number" id="inp-custom-pack-size" min="1" max="1000" value="10" class="form-input" style="width: 70px; padding: 5px 8px; font-size: 0.85rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. Hit Rules -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <label style="font-weight: 700; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="chk-use-hit-rule" checked style="width: 16px; height: 16px; accent-color: #a855f7; cursor: pointer;" />
+                2. Garantierte Hit-Karten pro Set festlegen
+              </label>
+              <span class="hit-slot-badge">✨ Hit Feature</span>
+            </div>
+            <p style="color: #94a3b8; font-size: 0.82rem; margin: 0 0 14px 0;">
+              Definiere, wie viele wertvolle Karten (anhand der Cardmarket Live/Manual Preise) garantiert in jedem Set enthalten sein sollen.
+            </p>
+            <div id="hit-rule-fields" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
+              <div>
+                <label style="display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px; font-weight: 600;">Hits pro Set:</label>
+                <input type="number" id="inp-hits-per-set" min="1" max="50" value="1" class="form-input" style="width: 100%; padding: 6px 10px; font-size: 0.875rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #facc15; font-weight: 700;" />
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px; font-weight: 600;">Mindestwert für Hits (CM Preis in €):</label>
+                <div style="position: relative;">
+                  <input type="number" id="inp-min-hit-price" step="0.5" min="0.1" value="5.00" class="form-input" style="width: 100%; padding: 6px 28px 6px 10px; font-size: 0.875rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #4ade80; font-weight: 700;" />
+                  <span style="position: absolute; right: 10px; top: 7px; color: #94a3b8; font-size: 0.85rem;">€</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Base Card Price Filter -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px;">
+            <label style="font-weight: 700; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 8px;">
+              <input type="checkbox" id="chk-use-base-range" style="width: 16px; height: 16px; accent-color: #3b82f6; cursor: pointer;" />
+              3. Preisbereich für Basis-Karten (Filler Slots) begrenzen
+            </label>
+            <div id="base-range-fields" style="display: none; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-top: 10px;">
+              <div>
+                <label style="display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px;">Min. Preis (€):</label>
+                <input type="number" id="inp-min-base-price" step="0.1" min="0" value="0.00" class="form-input" style="width: 100%; padding: 6px 10px; font-size: 0.85rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;" />
+              </div>
+              <div>
+                <label style="display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px;">Max. Preis (€):</label>
+                <input type="number" id="inp-max-base-price" step="0.1" min="0.1" value="4.99" class="form-input" style="width: 100%; padding: 6px 10px; font-size: 0.85rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Distribution Strategy & Prefix -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px;">
+            <div>
+              <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #fff; margin-bottom: 6px;">
+                4. Verteilungslogik:
+              </label>
+              <select id="sel-strategy" class="form-input" style="width: 100%; padding: 6px 10px; font-size: 0.85rem; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;">
+                <option value="balanced">Ausbalanciert (Gleichmäßige Wertverteilung)</option>
+                <option value="sequential">Original-Reihenfolge (Sequentiell aus CSV)</option>
+                <option value="random">Zufällig durchmischen (Mystery Pack)</option>
+              </select>
+            </div>
+            <div>
+              <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #fff; margin-bottom: 6px;">
+                Set-Name Präfix:
+              </label>
+              <input type="text" id="inp-set-prefix" value="Set #" class="form-input" style="width: 100%; padding: 6px 10px; font-size: 0.85rem; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;" />
+            </div>
+          </div>
+
+          <!-- Simulation Preview Bar -->
+          <div id="simulation-summary-box" style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 12px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="font-size: 0.8rem; font-weight: 700; color: #d8b4fe; text-transform: uppercase; letter-spacing: 0.04em;">
+              📊 Live-Simulation für den aktuellen Kartenpool:
+            </div>
+            <div id="sim-stats-container" style="display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.875rem; color: #f1f5f9;">
+              <!-- Dynamic stats -->
+            </div>
+          </div>
+
+          <!-- Action Button -->
+          <button type="button" id="btn-run-generate-sets" class="shadcn-btn shadcn-btn-primary" style="padding: 12px 24px; font-size: 1rem; width: 100%; justify-content: center; font-weight: 700; background: linear-gradient(135deg, #a855f7, #6366f1) !important; color: #fff !important; border: none !important;">
+            🚀 Sets jetzt automatisch generieren
+          </button>
+        </div>
+      `;
+
+      const chipButtons = container.querySelectorAll('.set-preset-chip');
+      const customSizeInput = container.querySelector('#inp-custom-pack-size');
+      const chkUseHit = container.querySelector('#chk-use-hit-rule');
+      const inpHitsPerSet = container.querySelector('#inp-hits-per-set');
+      const inpMinHitPrice = container.querySelector('#inp-min-hit-price');
+      const chkUseBase = container.querySelector('#chk-use-base-range');
+      const baseFields = container.querySelector('#base-range-fields');
+      const inpMinBasePrice = container.querySelector('#inp-min-base-price');
+      const inpMaxBasePrice = container.querySelector('#inp-max-base-price');
+      const selStrategy = container.querySelector('#sel-strategy');
+      const inpPrefix = container.querySelector('#inp-set-prefix');
+      const simContainer = container.querySelector('#sim-stats-container');
+      const btnRun = container.querySelector('#btn-run-generate-sets');
+
+      function updateSimulation() {
+        useHitRule = chkUseHit.checked;
+        hitsPerSet = parseInt(inpHitsPerSet.value, 10) || 1;
+        minHitPrice = parseFloat(inpMinHitPrice.value) || 5.00;
+        useBaseRange = chkUseBase.checked;
+        minBasePrice = parseFloat(inpMinBasePrice.value) || 0;
+        maxBasePrice = parseFloat(inpMaxBasePrice.value) || Infinity;
+        strategy = selStrategy.value;
+        namePrefix = inpPrefix.value || 'Set #';
+
+        const hitCount = allCards.filter(c => (c.lastPrice || 0) >= minHitPrice).length;
+        const baseCardsCount = allCards.filter(c => {
+          const p = c.lastPrice || 0;
+          if (useHitRule && p >= minHitPrice) return false;
+          if (useBaseRange) return p >= minBasePrice && p <= maxBasePrice;
+          return true;
+        }).length;
+
+        let maxSets = 0;
+        if (useHitRule && hitsPerSet > 0) {
+          const maxByHits = Math.floor(hitCount / hitsPerSet);
+          const neededBase = selectedPackSize - hitsPerSet;
+          const maxByBase = neededBase > 0 ? Math.floor(baseCardsCount / neededBase) : maxByHits;
+          maxSets = Math.min(maxByHits, maxByBase);
+        } else {
+          maxSets = Math.floor(allCards.length / selectedPackSize);
+        }
+
+        const totalUsed = maxSets * selectedPackSize;
+        const remaining = Math.max(0, allCards.length - totalUsed);
+
+        simContainer.innerHTML = `
+          <div>✨ Gefundene Hits (≥ ${minHitPrice.toFixed(2)} €): <strong style="color: #facc15;">${hitCount}</strong></div>
+          <div>🃏 Basis-Karten: <strong style="color: #38bdf8;">${baseCardsCount}</strong></div>
+          <div>📦 Mögliche Sets: <strong style="color: #4ade80;">${maxSets} Sets à ${selectedPackSize} Karten</strong></div>
+          <div>⚠️ Nicht zugeordnete Restkarten: <strong style="color: #cbd5e1;">${remaining}</strong></div>
+        `;
+
+        if (maxSets <= 0) {
+          btnRun.disabled = true;
+          btnRun.style.opacity = '0.5';
+          btnRun.textContent = '⚠️ Keine vollständigen Sets mit diesen Kriterien möglich';
+        } else {
+          btnRun.disabled = false;
+          btnRun.style.opacity = '1';
+          btnRun.textContent = `🚀 ${maxSets} Sets à ${selectedPackSize} Karten jetzt generieren`;
+        }
+      }
+
+      chipButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          chipButtons.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          selectedPackSize = parseInt(btn.getAttribute('data-size'), 10);
+          customSizeInput.value = selectedPackSize;
+          updateSimulation();
+        });
+      });
+
+      customSizeInput.addEventListener('input', () => {
+        const val = parseInt(customSizeInput.value, 10);
+        if (!isNaN(val) && val > 0) {
+          selectedPackSize = val;
+          chipButtons.forEach(b => {
+            if (parseInt(b.getAttribute('data-size'), 10) === val) b.classList.add('active');
+            else b.classList.remove('active');
+          });
+          updateSimulation();
+        }
+      });
+
+      chkUseHit.addEventListener('change', () => {
+        container.querySelector('#hit-rule-fields').style.opacity = chkUseHit.checked ? '1' : '0.4';
+        updateSimulation();
+      });
+
+      chkUseBase.addEventListener('change', () => {
+        baseFields.style.display = chkUseBase.checked ? 'grid' : 'none';
+        updateSimulation();
+      });
+
+      inpHitsPerSet.addEventListener('input', updateSimulation);
+      inpMinHitPrice.addEventListener('input', updateSimulation);
+      inpMinBasePrice.addEventListener('input', updateSimulation);
+      inpMaxBasePrice.addEventListener('input', updateSimulation);
+      selStrategy.addEventListener('change', updateSimulation);
+      inpPrefix.addEventListener('input', updateSimulation);
+
+      updateSimulation();
+
+      btnRun.addEventListener('click', () => {
+        const config = {
+          packSize: selectedPackSize,
+          useHitRule: chkUseHit.checked,
+          hitsPerSet: parseInt(inpHitsPerSet.value, 10) || 1,
+          minHitPrice: parseFloat(inpMinHitPrice.value) || 5.00,
+          useBaseRange: chkUseBase.checked,
+          minBasePrice: parseFloat(inpMinBasePrice.value) || 0,
+          maxBasePrice: parseFloat(inpMaxBasePrice.value) || Infinity,
+          strategy: selStrategy.value,
+          namePrefix: inpPrefix.value || 'Set #',
+        };
+
+        const result = setBuilderInstance.generateSets(allCards, config);
+        if (result.totalSets > 0) {
+          currentModalTab = 'overview';
+          renderModalContent();
+          showToast(`🎉 ${result.totalSets} Sets mit je ${selectedPackSize} Karten erfolgreich erstellt!`);
+        } else {
+          alert(result.error || 'Fehler beim Generieren der Sets.');
+        }
+      });
+    }
+
+    // --- Tab 2: Sets Übersicht ---
+    function renderOverviewTab(container) {
+      const sets = setBuilderInstance.getSets();
+      const allCards = bulkScannerInstance.scanItems || [];
+      const assignedCount = allCards.filter(c => c.setId).length;
+
+      container.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h4 style="font-size: 1.05rem; font-weight: 700; color: #fff; margin: 0 0 2px 0;">
+              Generierte Sets & Mystery Packs (${sets.length})
+            </h4>
+            <p style="color: #94a3b8; font-size: 0.82rem; margin: 0;">
+              ${assignedCount} von ${allCards.length} Karten in ${sets.length} Sets zugeordnet.
+            </p>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+            <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-overview-create-set" style="padding: 6px 12px; font-size: 0.8125rem;">
+              ➕ Neues Set
+            </button>
+            <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-overview-export-whatnot" style="padding: 6px 12px; font-size: 0.8125rem;" ${sets.length === 0 ? 'disabled' : ''}>
+              📥 Whatnot CSV Export
+            </button>
+            <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-overview-export-enriched" style="padding: 6px 12px; font-size: 0.8125rem;" ${sets.length === 0 ? 'disabled' : ''}>
+              📥 Standard CSV Export
+            </button>
+            <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-overview-clear-all" style="padding: 6px 12px; font-size: 0.8125rem; color: #ef4444; border-color: rgba(239, 68, 68, 0.3);" ${sets.length === 0 ? 'disabled' : ''}>
+              🗑️ Alle leeren
+            </button>
+          </div>
+        </div>
+
+        <div id="overview-sets-grid-container"></div>
+      `;
+
+      const gridContainer = container.querySelector('#overview-sets-grid-container');
+
+      if (sets.length === 0) {
+        gridContainer.innerHTML = `
+          <div style="text-align: center; padding: 48px 16px; background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.12); border-radius: 12px;">
+            <p style="font-size: 1.1rem; color: #e2e8f0; font-weight: 600; margin: 0 0 8px 0;">Noch keine Sets angelegt</p>
+            <p style="color: #94a3b8; font-size: 0.875rem; margin: 0 0 16px 0;">Wechsle zum Tab "Automatisch generieren", um deine ${allCards.length} Karten in gleichmäßige Sets aufzuteilen.</p>
+            <button type="button" class="shadcn-btn shadcn-btn-primary" id="btn-empty-switch-generate">
+              ⚙️ Jetzt Sets generieren
+            </button>
+          </div>
+        `;
+        gridContainer.querySelector('#btn-empty-switch-generate')?.addEventListener('click', () => {
+          currentModalTab = 'generate';
+          renderModalContent();
+        });
+        return;
+      }
+
+      const grid = document.createElement('div');
+      grid.className = 'set-card-grid';
+
+      sets.forEach((set, setIndex) => {
+        const stats = setBuilderInstance.calculateSetStats(set);
+        const cardEl = document.createElement('div');
+        cardEl.className = 'set-card-item';
+
+        const topCardsPreviewHtml = set.cards.slice(0, 4).map(c => `
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #cbd5e1; background: rgba(0,0,0,0.3); padding: 3px 6px; border-radius: 4px;" title="${c.detectedName || c.rawName}">
+            <span class="csv-index-badge" style="font-size: 0.68rem; padding: 1px 4px;">CSV #${c.originalIndex || c.index}</span>
+            <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px;">${c.nameDe || c.detectedName || c.rawName}</span>
+            <span style="color: #4ade80; font-weight: 700; margin-left: auto;">${c.lastPrice !== null && c.lastPrice !== undefined ? c.lastPrice.toFixed(2) + '€' : '-'}</span>
+          </div>
+        `).join('');
+
+        cardEl.innerHTML = `
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+              <div>
+                <h5 style="color: #fff; font-size: 1rem; font-weight: 700; margin: 0 0 2px 0;">📦 ${set.name}</h5>
+                <span class="set-card-badge">${set.cards.length} / ${set.targetSize} Karten</span>
+              </div>
+              <button type="button" class="btn-delete-set" data-set-id="${set.id}" title="Set löschen" style="background: transparent; border: none; color: #71717a; cursor: pointer; padding: 4px; font-size: 0.9rem; transition: color 0.15s ease;">
+                🗑️
+              </button>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; background: rgba(0,0,0,0.25); border-radius: 8px; padding: 8px 10px;">
+              <div>
+                <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">Gesamtwert:</div>
+                <div style="font-size: 0.95rem; font-weight: 700; color: #4ade80;">${stats.totalValue.toFixed(2)} €</div>
+              </div>
+              <div>
+                <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase;">Ø pro Karte:</div>
+                <div style="font-size: 0.95rem; font-weight: 700; color: #38bdf8;">${stats.avgPrice.toFixed(2)} €</div>
+              </div>
+            </div>
+
+            ${set.cards.length > 0 ? `
+              <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px;">
+                <div style="font-size: 0.7rem; color: #a1a1aa; font-weight: 600;">Karten-Vorschau (CSV-Originalnummern):</div>
+                ${topCardsPreviewHtml}
+                ${set.cards.length > 4 ? `<div style="font-size: 0.72rem; color: #71717a; text-align: center;">+ ${set.cards.length - 4} weitere Karten</div>` : ''}
+              </div>
+            ` : `
+              <div style="padding: 16px; text-align: center; color: #71717a; font-size: 0.8rem;">Dieses Set ist noch leer.</div>
+            `}
+          </div>
+
+          <div style="display: flex; gap: 6px; flex-wrap: wrap; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px; margin-top: auto;">
+            <button type="button" class="shadcn-btn shadcn-btn-primary btn-inspect-set" data-set-id="${set.id}" style="flex: 1; padding: 6px 10px; font-size: 0.8rem; justify-content: center;">
+              👁️ Sortieren & Drag & Drop
+            </button>
+            <button type="button" class="shadcn-btn shadcn-btn-secondary btn-export-single-set" data-set-id="${set.id}" title="Als Whatnot CSV exportieren" style="padding: 6px 8px; font-size: 0.8rem;">
+              📥 CSV
+            </button>
+            <button type="button" class="shadcn-btn shadcn-btn-secondary btn-stream-single-set" data-set-id="${set.id}" title="Dieses Set in Stream Overlay laden" style="padding: 6px 8px; font-size: 0.8rem; color: #60a5fa;">
+              📺 Overlay
+            </button>
+          </div>
+        `;
+
+        // Action Handlers
+        cardEl.querySelector('.btn-inspect-set').addEventListener('click', () => {
+          currentDetailSetId = set.id;
+          currentModalTab = 'detail';
+          renderModalContent();
+        });
+
+        cardEl.querySelector('.btn-delete-set').addEventListener('click', () => {
+          if (confirm(`Set '${set.name}' wirklich löschen? Die Karten werden wieder freigegeben.`)) {
+            setBuilderInstance.deleteSet(set.id, allCards);
+            renderModalContent();
+          }
+        });
+
+        cardEl.querySelector('.btn-export-single-set').addEventListener('click', () => {
+          const csvContent = setBuilderInstance.exportSetToWhatnotCSV(set);
+          if (!csvContent) return;
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.setAttribute('href', url);
+          link.setAttribute('download', `${set.name.replace(/[^A-Za-z0-9]/g, '_')}_whatnot.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        });
+
+        cardEl.querySelector('.btn-stream-single-set').addEventListener('click', async () => {
+          if (set.cards.length === 0) {
+            alert('Dieses Set hat keine Karten.');
+            return;
+          }
+          activeStreamQueue = [...set.cards];
+          try { localStorage.setItem('cache_stream_queue', JSON.stringify(activeStreamQueue)); } catch(e) {}
+          saveCachedUserData(currentUser?.id);
+          await syncStreamQueueToSupabase(activeStreamQueue, 0);
+          closeModal();
+          navigate('/stream-overlay');
+        });
+
+        grid.appendChild(cardEl);
+      });
+
+      gridContainer.appendChild(grid);
+
+      // Top action bar handlers
+      container.querySelector('#btn-overview-create-set')?.addEventListener('click', () => {
+        const name = prompt('Name für das neue Set:', `Set #${sets.length + 1}`);
+        if (name && name.trim()) {
+          setBuilderInstance.createEmptySet(name.trim());
+          renderModalContent();
+        }
+      });
+
+      container.querySelector('#btn-overview-export-whatnot')?.addEventListener('click', () => {
+        const csvContent = setBuilderInstance.exportAllSetsToWhatnotCSV();
+        if (!csvContent) return;
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `all_sets_whatnot_${Date.now()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+
+      container.querySelector('#btn-overview-export-enriched')?.addEventListener('click', () => {
+        const csvContent = setBuilderInstance.exportAllSetsToEnrichedCSV();
+        if (!csvContent) return;
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `all_sets_overview_${Date.now()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+
+      container.querySelector('#btn-overview-clear-all')?.addEventListener('click', () => {
+        if (confirm('Wirklich ALLE Sets löschen und alle Karten wieder in den Pool freigeben?')) {
+          setBuilderInstance.clearAllSets(allCards);
+          renderModalContent();
+        }
+      });
+    }
+
+    // --- Tab 3: Set Detail & Drag & Drop Reordering ---
+    function renderDetailTab(container, setId) {
+      const set = setBuilderInstance.getSet(setId);
+      if (!set) {
+        container.innerHTML = `<div style="padding: 24px; color: #ef4444;">Set nicht gefunden.</div>`;
+        return;
+      }
+
+      const stats = setBuilderInstance.calculateSetStats(set);
+
+      container.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <!-- Top Bar -->
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-detail-back-overview" style="padding: 6px 12px; font-size: 0.8125rem;">
+                ← Zurück zur Übersicht
+              </button>
+              <h4 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0;">
+                📦 ${set.name}
+              </h4>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <div style="background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 4px 10px; font-size: 0.8rem; display: flex; gap: 10px;">
+                <span>Karten: <strong style="color: #38bdf8;">${set.cards.length} / ${set.targetSize}</strong></span>
+                <span>Gesamtwert: <strong style="color: #4ade80;">${stats.totalValue.toFixed(2)} €</strong></span>
+                <span>Ø: <strong style="color: #facc15;">${stats.avgPrice.toFixed(2)} €</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Reorder Chips -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+            <div style="font-size: 0.8rem; font-weight: 600; color: #a1a1aa; display: flex; align-items: center; gap: 6px;">
+              <span>Schnell-Sortierung:</span>
+            </div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-reorder-hits-end" style="padding: 4px 10px; font-size: 0.78rem; border-color: rgba(234, 179, 8, 0.4); color: #facc15;">
+                🔀 Hits ans Ende (Pack Hype)
+              </button>
+              <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-reorder-interleave" style="padding: 4px 10px; font-size: 0.78rem;">
+                🔀 Hits gleichmäßig verteilen
+              </button>
+              <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-reorder-csv-order" style="padding: 4px 10px; font-size: 0.78rem; color: #38bdf8;">
+                🔄 Original CSV-Reihenfolge
+              </button>
+              <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-detail-export-csv" style="padding: 4px 10px; font-size: 0.78rem;">
+                📥 CSV Export
+              </button>
+              <button type="button" class="shadcn-btn shadcn-btn-primary" id="btn-detail-stream-overlay" style="padding: 4px 10px; font-size: 0.78rem;">
+                📺 Streamen
+              </button>
+            </div>
+          </div>
+
+          <div style="font-size: 0.8rem; color: #94a3b8; display: flex; justify-content: space-between; align-items: center;">
+            <span>Ziehe Karten per <strong>Drag & Drop</strong> oder nutze die Pfeiltasten, um die genaue Auspack-Reihenfolge einzustellen.</span>
+            <span style="color: #38bdf8; font-weight: 600;">Jede Karte behält ihre originale CSV-Nummer (#)</span>
+          </div>
+
+          <!-- Drag and Drop List Container -->
+          <div class="set-dnd-list" id="set-dnd-list-container"></div>
+        </div>
+      `;
+
+      container.querySelector('#btn-detail-back-overview').addEventListener('click', () => {
+        currentModalTab = 'overview';
+        renderModalContent();
+      });
+
+      container.querySelector('#btn-reorder-hits-end').addEventListener('click', () => {
+        setBuilderInstance.moveHitsToEnd(set.id, 5.0);
+        renderDndCardsList();
+        showToast('Hits wurden an das Ende des Sets verschoben!');
+      });
+
+      container.querySelector('#btn-reorder-interleave').addEventListener('click', () => {
+        setBuilderInstance.interleaveHits(set.id, 5.0);
+        renderDndCardsList();
+        showToast('Hits wurden gleichmäßig über das Set verteilt!');
+      });
+
+      container.querySelector('#btn-reorder-csv-order').addEventListener('click', () => {
+        setBuilderInstance.resetSetToOriginalOrder(set.id);
+        renderDndCardsList();
+        showToast('Set zurück auf originale CSV-Reihenfolge sortiert!');
+      });
+
+      container.querySelector('#btn-detail-export-csv').addEventListener('click', () => {
+        const csvContent = setBuilderInstance.exportSetToWhatnotCSV(set);
+        if (!csvContent) return;
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `${set.name.replace(/[^A-Za-z0-9]/g, '_')}_whatnot.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      });
+
+      container.querySelector('#btn-detail-stream-overlay').addEventListener('click', async () => {
+        if (set.cards.length === 0) return;
+        activeStreamQueue = [...set.cards];
+        try { localStorage.setItem('cache_stream_queue', JSON.stringify(activeStreamQueue)); } catch(e) {}
+        saveCachedUserData(currentUser?.id);
+        await syncStreamQueueToSupabase(activeStreamQueue, 0);
+        closeModal();
+        navigate('/stream-overlay');
+      });
+
+      const dndListContainer = container.querySelector('#set-dnd-list-container');
+
+      function renderDndCardsList() {
+        dndListContainer.innerHTML = '';
+
+        if (set.cards.length === 0) {
+          dndListContainer.innerHTML = `
+            <div style="padding: 32px; text-align: center; color: #71717a; border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px;">
+              Dieses Set ist leer. Füge Karten in der Haupttabelle über den Button "+ Set" hinzu.
+            </div>
+          `;
+          return;
+        }
+
+        let draggedIndex = null;
+
+        set.cards.forEach((card, index) => {
+          const itemEl = document.createElement('div');
+          itemEl.className = 'set-dnd-item';
+          itemEl.setAttribute('draggable', 'true');
+          itemEl.setAttribute('data-index', index);
+
+          const origIdx = card.originalIndex !== undefined ? card.originalIndex : card.index || index + 1;
+          const isHit = (card.lastPrice || 0) >= 5.0;
+          const imgMarkup = card.imageUrl ? `<img src="${getProxiedImageUrl(card.imageUrl)}" style="width: 32px; height: 44px; object-fit: cover; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); cursor: pointer;" alt="Card" />` : '';
+
+          itemEl.innerHTML = `
+            <div class="set-drag-handle" title="Ziehen zum Neuanordnen">
+              <svg style="width: 16px; height: 16px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 8h16M4 16h16" />
+              </svg>
+            </div>
+
+            <div style="font-size: 0.8125rem; font-weight: 700; color: #71717a; width: 28px; text-align: center;">
+              #${index + 1}
+            </div>
+
+            <span class="csv-index-badge" title="Ursprüngliche Nummer in der importierten CSV-Datei">
+              CSV #${origIdx}
+            </span>
+
+            ${imgMarkup}
+
+            <div style="flex: 1; min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-weight: 700; color: #fff; font-size: 0.875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                  ${card.nameDe || card.detectedName || card.rawName}
+                </span>
+                ${card.detectedCode ? `<span style="font-size: 0.75rem; color: #a1a1aa; font-family: monospace;">(${card.detectedCode})</span>` : ''}
+                ${isHit ? `<span class="hit-slot-badge">✨ Hit</span>` : ''}
+              </div>
+              <div style="font-size: 0.75rem; color: #71717a; display: flex; gap: 8px;">
+                <span>${card.setNameDe || card.rawSet || 'TCG'}</span>
+                <span>•</span>
+                <span>${card.rawCondition || 'NM'}</span>
+                <span>•</span>
+                <span>${card.rawLanguage || 'EN'}</span>
+              </div>
+            </div>
+
+            <div style="text-align: right; margin-right: 8px;">
+              <div style="font-size: 0.9375rem; font-weight: 700; color: #4ade80;">
+                ${card.lastPrice !== null && card.lastPrice !== undefined ? card.lastPrice.toFixed(2) + ' €' : '-'}
+              </div>
+              ${card.tcgplayerPrice ? `<div style="font-size: 0.72rem; color: #60a5fa;">$${Number(card.tcgplayerPrice).toFixed(2)}</div>` : ''}
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <button type="button" class="btn-dnd-move-up" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; border-radius: 4px; padding: 3px 6px; cursor: pointer; font-size: 0.75rem;" title="Nach oben">▲</button>
+              <button type="button" class="btn-dnd-move-down" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; border-radius: 4px; padding: 3px 6px; cursor: pointer; font-size: 0.75rem;" title="Nach unten">▼</button>
+              <button type="button" class="btn-dnd-remove" style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #f87171; border-radius: 4px; padding: 3px 6px; cursor: pointer; font-size: 0.75rem; margin-left: 4px;" title="Aus Set entfernen">✕</button>
+            </div>
+          `;
+
+          if (imgMarkup) {
+            itemEl.querySelector('img')?.addEventListener('click', (e) => {
+              e.stopPropagation();
+              showLightbox(card.imageUrl);
+            });
+          }
+
+          itemEl.querySelector('.btn-dnd-move-up').addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (index > 0) {
+              setBuilderInstance.reorderCard(set.id, index, index - 1);
+              renderDndCardsList();
+            }
+          });
+
+          itemEl.querySelector('.btn-dnd-move-down').addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (index < set.cards.length - 1) {
+              setBuilderInstance.reorderCard(set.id, index, index + 1);
+              renderDndCardsList();
+            }
+          });
+
+          itemEl.querySelector('.btn-dnd-remove').addEventListener('click', (e) => {
+            e.stopPropagation();
+            setBuilderInstance.removeCardFromSet(card);
+            renderDndCardsList();
+            showToast(`Karte #${origIdx} aus Set '${set.name}' entfernt.`);
+          });
+
+          // Drag & Drop event bindings
+          itemEl.addEventListener('dragstart', (e) => {
+            draggedIndex = index;
+            itemEl.classList.add('is-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(index));
+          });
+
+          itemEl.addEventListener('dragend', () => {
+            itemEl.classList.remove('is-dragging');
+            dndListContainer.querySelectorAll('.set-dnd-item').forEach(el => {
+              el.classList.remove('drag-target-top', 'drag-target-bottom');
+            });
+          });
+
+          itemEl.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            const rect = itemEl.getBoundingClientRect();
+            const offset = e.clientY - rect.top;
+            if (offset < rect.height / 2) {
+              itemEl.classList.add('drag-target-top');
+              itemEl.classList.remove('drag-target-bottom');
+            } else {
+              itemEl.classList.add('drag-target-bottom');
+              itemEl.classList.remove('drag-target-top');
+            }
+          });
+
+          itemEl.addEventListener('dragleave', () => {
+            itemEl.classList.remove('drag-target-top', 'drag-target-bottom');
+          });
+
+          itemEl.addEventListener('drop', (e) => {
+            e.preventDefault();
+            itemEl.classList.remove('drag-target-top', 'drag-target-bottom');
+            if (draggedIndex === null || draggedIndex === index) return;
+
+            const rect = itemEl.getBoundingClientRect();
+            const offset = e.clientY - rect.top;
+            let targetIdx = index;
+            if (offset > rect.height / 2 && draggedIndex < index) {
+              targetIdx = index;
+            } else if (offset > rect.height / 2 && draggedIndex > index) {
+              targetIdx = index + 1;
+            }
+
+            setBuilderInstance.reorderCard(set.id, draggedIndex, targetIdx);
+            draggedIndex = null;
+            renderDndCardsList();
+          });
+
+          dndListContainer.appendChild(itemEl);
+        });
+      }
+
+      renderDndCardsList();
+    }
+
+    renderModalContent();
+  }
 }
 
 // Realtime WebSocket broadcast & DB fallback for Cross-Device Stream Overlay (Mac <-> iPad)

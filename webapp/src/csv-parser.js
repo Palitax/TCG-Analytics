@@ -743,6 +743,8 @@ export function normalizeScanData(parsedCSV) {
     return {
       id: `scan_${Date.now()}_${index}`,
       index: index + 1,
+      originalIndex: index + 1,
+      setId: null,
       rawCode: rawLegacyCode || detectedCode || '',
       rawName: wTitel || detectedName,
       rawSet: row['set'] || row['expansion'] || '',
