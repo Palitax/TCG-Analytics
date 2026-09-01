@@ -4075,11 +4075,11 @@ function renderBulkScanTab(container) {
         <div style="display: flex; justify-content: space-between; align-items: center; margin: 1.5rem 0 1.25rem 0; flex-wrap: wrap; gap: 1rem;">
           <h3 style="color: #fff; font-size: 1.15rem; margin: 0; font-weight: 700;" id="scan-summary-title">Gescannt: 0 Karten</h3>
           <div style="display: flex; gap: 0.85rem; flex-wrap: wrap; align-items: center;">
-            <button class="shadcn-btn shadcn-btn-secondary" id="btn-open-set-builder" type="button" title="Karten in konfigurierbare Sets & Mystery Packs aufteilen und sortieren" style="border-color: rgba(168, 85, 247, 0.4); color: #d8b4fe;">
+            <button class="shadcn-btn shadcn-btn-secondary" id="btn-open-set-builder" type="button" title="Pipeline Builder: Karten in konfigurierbare Sets & Mystery Packs aufteilen und sortieren" style="border-color: rgba(168, 85, 247, 0.4); color: #d8b4fe;">
               <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
-              ✨ Sets erstellen / verwalten
+              ✨ Pipeline Builder
             </button>
             <button class="shadcn-btn shadcn-btn-secondary" id="btn-refresh-bulk-db" type="button" title="Fragt Supabase neu ab nach kürzlich gescannten Preisen & Bildern">
               <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -4738,7 +4738,7 @@ function renderBulkScanTab(container) {
         <div class="set-builder-header">
           <div>
             <h3 style="color: #fff; font-size: 1.15rem; font-weight: 700; margin: 0 0 4px 0; display: flex; align-items: center; gap: 8px;">
-              <span style="color: #c084fc;">📦</span> TCG Set & Mystery Pack Builder
+              <span style="color: #c084fc;">📦</span> Pipeline Builder
             </h3>
             <div style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #a1a1aa;">
               <span>Pool: <strong style="color: #38bdf8;">${allCards.length} Karten</strong></span>
@@ -4753,10 +4753,10 @@ function renderBulkScanTab(container) {
 
         <div class="set-builder-nav-tabs">
           <button class="set-builder-nav-tab ${currentModalTab === 'generate' ? 'active' : ''}" data-tab="generate">
-            ⚙️ Automatisch generieren
+            ⚙️ Pipeline Generator
           </button>
           <button class="set-builder-nav-tab ${currentModalTab === 'overview' ? 'active' : ''}" data-tab="overview">
-            📦 Sets Übersicht (${sets.length})
+            📦 Pipeline Sets (${sets.length})
           </button>
           ${currentDetailSetId ? `
             <button class="set-builder-nav-tab ${currentModalTab === 'detail' ? 'active' : ''}" data-tab="detail">
@@ -4791,6 +4791,7 @@ function renderBulkScanTab(container) {
     // --- Tab 1: Generator ---
     function renderGeneratorTab(container) {
       const allCards = bulkScannerInstance.scanItems || [];
+      const currentSets = setBuilderInstance.getSets();
       let selectedPackSize = 10;
       let useHitRule = true;
       let hitsPerSet = 1;
@@ -4899,10 +4900,24 @@ function renderBulkScanTab(container) {
             </div>
           </div>
 
-          <!-- Action Button -->
-          <button type="button" id="btn-run-generate-sets" class="shadcn-btn shadcn-btn-primary" style="padding: 12px 24px; font-size: 1rem; width: 100%; justify-content: center; font-weight: 700; background: linear-gradient(135deg, #a855f7, #6366f1) !important; color: #fff !important; border: none !important;">
-            🚀 Sets jetzt automatisch generieren
-          </button>
+          ${currentSets.length > 0 ? `
+            <div style="display: flex; align-items: center; gap: 8px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; padding: 10px 14px;">
+              <input type="checkbox" id="chk-append-sets" checked style="width: 16px; height: 16px; accent-color: #3b82f6; cursor: pointer;" />
+              <label for="chk-append-sets" style="font-size: 0.85rem; color: #93c5fd; cursor: pointer; user-select: none;">
+                An bestehende Sets anhängen (${currentSets.length} Sets bereits vorhanden)
+              </label>
+            </div>
+          ` : ''}
+
+          <!-- Action Buttons -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px;">
+            <button type="button" id="btn-run-generate-single-set" class="shadcn-btn shadcn-btn-secondary" style="padding: 12px 16px; font-size: 0.9375rem; justify-content: center; font-weight: 700; border-color: rgba(168, 85, 247, 0.5); color: #d8b4fe; background: rgba(168, 85, 247, 0.12);">
+              📦 Nur 1 Set generieren
+            </button>
+            <button type="button" id="btn-run-generate-all-sets" class="shadcn-btn shadcn-btn-primary" style="padding: 12px 16px; font-size: 0.9375rem; justify-content: center; font-weight: 700; background: linear-gradient(135deg, #a855f7, #6366f1) !important; color: #fff !important; border: none !important;">
+              🚀 Alle möglichen Sets generieren
+            </button>
+          </div>
         </div>
       `;
 
@@ -4918,7 +4933,9 @@ function renderBulkScanTab(container) {
       const selStrategy = container.querySelector('#sel-strategy');
       const inpPrefix = container.querySelector('#inp-set-prefix');
       const simContainer = container.querySelector('#sim-stats-container');
-      const btnRun = container.querySelector('#btn-run-generate-sets');
+      const btnRunSingle = container.querySelector('#btn-run-generate-single-set');
+      const btnRunAll = container.querySelector('#btn-run-generate-all-sets');
+      const chkAppend = container.querySelector('#chk-append-sets');
 
       function updateSimulation() {
         useHitRule = chkUseHit.checked;
@@ -4930,8 +4947,11 @@ function renderBulkScanTab(container) {
         strategy = selStrategy.value;
         namePrefix = inpPrefix.value || 'Set #';
 
-        const hitCount = allCards.filter(c => (c.lastPrice || 0) >= minHitPrice).length;
-        const baseCardsCount = allCards.filter(c => {
+        const isAppend = chkAppend ? chkAppend.checked : false;
+        const availablePool = isAppend ? allCards.filter(c => !c.setId) : allCards;
+
+        const hitCount = availablePool.filter(c => (c.lastPrice || 0) >= minHitPrice).length;
+        const baseCardsCount = availablePool.filter(c => {
           const p = c.lastPrice || 0;
           if (useHitRule && p >= minHitPrice) return false;
           if (useBaseRange) return p >= minBasePrice && p <= maxBasePrice;
@@ -4941,15 +4961,19 @@ function renderBulkScanTab(container) {
         let maxSets = 0;
         if (useHitRule && hitsPerSet > 0) {
           const maxByHits = Math.floor(hitCount / hitsPerSet);
-          const neededBase = selectedPackSize - hitsPerSet;
-          const maxByBase = neededBase > 0 ? Math.floor(baseCardsCount / neededBase) : maxByHits;
-          maxSets = Math.min(maxByHits, maxByBase);
+          if (useBaseRange) {
+            const neededBase = selectedPackSize - hitsPerSet;
+            const maxByBase = neededBase > 0 ? Math.floor(baseCardsCount / neededBase) : maxByHits;
+            maxSets = Math.min(maxByHits, maxByBase);
+          } else {
+            maxSets = Math.min(maxByHits, Math.floor(availablePool.length / selectedPackSize));
+          }
         } else {
-          maxSets = Math.floor(allCards.length / selectedPackSize);
+          maxSets = Math.floor(availablePool.length / selectedPackSize);
         }
 
         const totalUsed = maxSets * selectedPackSize;
-        const remaining = Math.max(0, allCards.length - totalUsed);
+        const remaining = Math.max(0, availablePool.length - totalUsed);
 
         simContainer.innerHTML = `
           <div>✨ Gefundene Hits (≥ ${minHitPrice.toFixed(2)} €): <strong style="color: #facc15;">${hitCount}</strong></div>
@@ -4959,13 +4983,18 @@ function renderBulkScanTab(container) {
         `;
 
         if (maxSets <= 0) {
-          btnRun.disabled = true;
-          btnRun.style.opacity = '0.5';
-          btnRun.textContent = '⚠️ Keine vollständigen Sets mit diesen Kriterien möglich';
+          btnRunSingle.disabled = true;
+          btnRunSingle.style.opacity = '0.5';
+          btnRunAll.disabled = true;
+          btnRunAll.style.opacity = '0.5';
+          btnRunAll.textContent = '⚠️ Keine vollständigen Sets möglich';
         } else {
-          btnRun.disabled = false;
-          btnRun.style.opacity = '1';
-          btnRun.textContent = `🚀 ${maxSets} Sets à ${selectedPackSize} Karten jetzt generieren`;
+          btnRunSingle.disabled = false;
+          btnRunSingle.style.opacity = '1';
+          btnRunSingle.textContent = `📦 Nur 1 Set (${selectedPackSize} Karten)`;
+          btnRunAll.disabled = false;
+          btnRunAll.style.opacity = '1';
+          btnRunAll.textContent = `🚀 Alle ${maxSets} Sets generieren`;
         }
       }
 
@@ -5001,6 +5030,10 @@ function renderBulkScanTab(container) {
         updateSimulation();
       });
 
+      if (chkAppend) {
+        chkAppend.addEventListener('change', updateSimulation);
+      }
+
       inpHitsPerSet.addEventListener('input', updateSimulation);
       inpMinHitPrice.addEventListener('input', updateSimulation);
       inpMinBasePrice.addEventListener('input', updateSimulation);
@@ -5010,7 +5043,8 @@ function renderBulkScanTab(container) {
 
       updateSimulation();
 
-      btnRun.addEventListener('click', () => {
+      function executeGeneration(maxSets = null) {
+        const isAppend = chkAppend ? chkAppend.checked : false;
         const config = {
           packSize: selectedPackSize,
           useHitRule: chkUseHit.checked,
@@ -5021,17 +5055,26 @@ function renderBulkScanTab(container) {
           maxBasePrice: parseFloat(inpMaxBasePrice.value) || Infinity,
           strategy: selStrategy.value,
           namePrefix: inpPrefix.value || 'Set #',
+          maxSets: maxSets,
+          append: isAppend,
         };
 
         const result = setBuilderInstance.generateSets(allCards, config);
         if (result.totalSets > 0) {
           currentModalTab = 'overview';
           renderModalContent();
-          showToast(`🎉 ${result.totalSets} Sets mit je ${selectedPackSize} Karten erfolgreich erstellt!`);
+          if (maxSets === 1) {
+            showToast(`🎉 1 Set mit ${selectedPackSize} Karten erfolgreich erstellt!`);
+          } else {
+            showToast(`🎉 ${result.totalSets} Sets mit je ${selectedPackSize} Karten erfolgreich erstellt!`);
+          }
         } else {
           alert(result.error || 'Fehler beim Generieren der Sets.');
         }
-      });
+      }
+
+      btnRunSingle.addEventListener('click', () => executeGeneration(1));
+      btnRunAll.addEventListener('click', () => executeGeneration(null));
     }
 
     // --- Tab 2: Sets Übersicht ---
@@ -5044,7 +5087,7 @@ function renderBulkScanTab(container) {
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
           <div>
             <h4 style="font-size: 1.05rem; font-weight: 700; color: #fff; margin: 0 0 2px 0;">
-              Generierte Sets & Mystery Packs (${sets.length})
+              Pipeline Sets (${sets.length})
             </h4>
             <p style="color: #94a3b8; font-size: 0.82rem; margin: 0;">
               ${assignedCount} von ${allCards.length} Karten in ${sets.length} Sets zugeordnet.

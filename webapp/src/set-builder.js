@@ -1,5 +1,5 @@
 /**
- * TCG Set & Mystery Pack Builder
+ * Pipeline Builder (Set & Mystery Pack Builder)
  * Handles custom pack/set generation, drag-and-drop card reordering,
  * per-card set assignment, and multi-format CSV exports with immutable
  * original CSV row index preservation.
@@ -251,12 +251,19 @@ export class SetBuilder {
     const strategy = config.strategy || 'balanced'; // 'balanced' | 'sequential' | 'random'
     const namePrefix = config.namePrefix || 'Set #';
 
+    const append = !!config.append;
+    const existingSets = append ? [...this.sets] : [];
+    const baseOffset = existingSets.length;
+
+    // Filter available cards: if append, only pick unassigned cards
+    const sourceCards = append ? cards.filter((c) => !c.setId) : cards;
+
     // Clone available cards and preserve originalIndex
-    const pool = cards.map((c, i) => {
+    const pool = sourceCards.map((c, i) => {
       if (c.originalIndex === undefined || c.originalIndex === null) {
         c.originalIndex = c.index !== undefined ? c.index : i + 1;
       }
-      c.setId = null;
+      if (!append) c.setId = null;
       return c;
     });
 
@@ -304,10 +311,10 @@ export class SetBuilder {
 
     if (totalPossibleSets <= 0) {
       return {
-        sets: [],
+        sets: this.sets,
         unallocatedCards: pool,
-        totalSets: 0,
-        totalAssigned: 0,
+        totalSets: this.sets.length,
+        totalAssigned: cards.filter((c) => c.setId).length,
         error: 'Nicht genügend passende Karten im Pool für die gewählten Kriterien.',
       };
     }
@@ -315,9 +322,10 @@ export class SetBuilder {
     // Initialize set buckets
     const createdSets = [];
     for (let i = 0; i < totalPossibleSets; i++) {
+      const setNum = baseOffset + i + 1;
       createdSets.push({
-        id: `set_${Date.now()}_${i + 1}_${Math.random().toString(36).slice(2, 6)}`,
-        name: `${namePrefix}${i + 1}`,
+        id: `set_${Date.now()}_${setNum}_${Math.random().toString(36).slice(2, 6)}`,
+        name: `${namePrefix}${setNum}`,
         targetSize: packSize,
         cards: [],
         createdAt: Date.now(),
@@ -378,16 +386,21 @@ export class SetBuilder {
       }
     }
 
-    // Identify unallocated cards
-    const unallocatedCards = pool.filter((c) => !assignedCardIds.has(c.id));
+    if (append) {
+      this.sets = [...existingSets, ...createdSets];
+    } else {
+      this.sets = createdSets;
+    }
 
-    this.sets = createdSets;
+    // Identify unallocated cards from the total pool
+    const unallocatedCards = cards.filter((c) => !c.setId);
 
     return {
-      sets: createdSets,
+      sets: this.sets,
+      newSets: createdSets,
       unallocatedCards,
-      totalSets: createdSets.length,
-      totalAssigned: assignedCardIds.size,
+      totalSets: this.sets.length,
+      totalAssigned: cards.filter((c) => c.setId).length,
     };
   }
 
