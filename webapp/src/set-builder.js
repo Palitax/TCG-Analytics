@@ -38,6 +38,154 @@ export function getCardIdentityKey(card) {
 }
 
 /**
+ * Returns a normalized character / Pokemon species identity string (e.g. 'pikachu', 'glurak', 'monkey d. luffy')
+ */
+export function getCardSpeciesKey(card) {
+  if (!card) return 'unknown';
+
+  let name = (card.nameDe || card.detectedName || card.nameEn || card.rawName || '').trim();
+  if (!name) return 'unknown';
+
+  // Strip set code, card number prefix/postfix, bracketed/parenthesized info
+  let clean = name
+    .replace(/^#\d+\s+/, '')
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*\[[^\]]*\]/g, '')
+    .trim();
+
+  // Strip trailing card rarity/variant suffixes e.g. "ex", "GX", "VMAX", "VSTAR", "V", "Prime", "Break"
+  clean = clean.replace(/\s+\b(ex|gx|vmax|vstar|v-union|v|break|lv\.x|prime|legend|radiant|shining|strahlendes|prisma|tera|star|δ)\b/gi, '').trim();
+
+  return clean.toLowerCase() || name.toLowerCase();
+}
+
+/**
+ * Evenly disperses duplicate cards and duplicate species across the entire array
+ * to maximize the minimum distance between any identical cards and prevent ABAB alternation.
+ */
+export function disperseAndSeparateDuplicates(cards) {
+  if (!Array.isArray(cards) || cards.length <= 2) return cards || [];
+  const N = cards.length;
+
+  // 1. Group cards by identity key
+  const groupsMap = new Map();
+  cards.forEach((card) => {
+    const k = getCardIdentityKey(card);
+    if (!groupsMap.has(k)) groupsMap.set(k, []);
+    groupsMap.get(k).push(card);
+  });
+
+  // Sort groups by size descending (largest duplicate buckets first)
+  const sortedGroups = Array.from(groupsMap.values()).sort((a, b) => b.length - a.length);
+
+  // Stride-based initial placement
+  const slots = Array(N).fill(null);
+  let globalOffset = 0;
+
+  for (const group of sortedGroups) {
+    const count = group.length;
+    const stride = N / count;
+
+    let bestStartOffset = 0;
+    let minCollisions = Infinity;
+    const stepCandidates = Math.min(24, Math.ceil(stride * 2));
+    for (let o = 0; o < stepCandidates; o++) {
+      const testOffset = (globalOffset + o * (stride / stepCandidates)) % stride;
+      let collisions = 0;
+      for (let j = 0; j < count; j++) {
+        const idealPos = Math.floor(testOffset + j * stride) % N;
+        if (slots[idealPos] !== null) collisions++;
+      }
+      if (collisions < minCollisions) {
+        minCollisions = collisions;
+        bestStartOffset = testOffset;
+      }
+    }
+
+    for (let j = 0; j < count; j++) {
+      const idealPos = Math.floor(bestStartOffset + j * stride) % N;
+      for (let offset = 0; offset < N; offset++) {
+        const idx1 = (idealPos + offset) % N;
+        const idx2 = (idealPos - offset + N) % N;
+        if (slots[idx1] === null) {
+          slots[idx1] = group[j];
+          break;
+        }
+        if (slots[idx2] === null) {
+          slots[idx2] = group[j];
+          break;
+        }
+      }
+    }
+
+    globalOffset = (globalOffset + stride / (sortedGroups.length || 1) + 1.61803398875) % N;
+  }
+
+  const initial = slots.filter((c) => c !== null);
+
+  // 2. Score evaluation for distance penalty
+  function scoreSequence(arr) {
+    let penalty = 0;
+    const lastIdent = new Map();
+    const lastSpec = new Map();
+
+    for (let i = 0; i < arr.length; i++) {
+      const c = arr[i];
+      const kIdent = getCardIdentityKey(c);
+      const kSpec = getCardSpeciesKey(c);
+
+      if (lastIdent.has(kIdent)) {
+        const d = i - lastIdent.get(kIdent);
+        if (d === 1) penalty += 100000;
+        else if (d === 2) penalty += 20000;
+        else penalty += 5000 / (d * d);
+      }
+      if (lastSpec.has(kSpec)) {
+        const d = i - lastSpec.get(kSpec);
+        if (d === 1) penalty += 50000;
+        else if (d === 2) penalty += 10000;
+        else penalty += 2000 / (d * d);
+      }
+
+      lastIdent.set(kIdent, i);
+      lastSpec.set(kSpec, i);
+    }
+    return penalty;
+  }
+
+  // 3. Local 2-opt swap refinement pass
+  let best = [...initial];
+  let bestScore = scoreSequence(best);
+  let improved = true;
+  let iterations = 0;
+  const maxIterations = 50;
+
+  while (improved && iterations < maxIterations) {
+    improved = false;
+    iterations++;
+
+    for (let i = 0; i < N - 1; i++) {
+      for (let j = i + 1; j < N; j++) {
+        const temp = best[i];
+        best[i] = best[j];
+        best[j] = temp;
+
+        const newScore = scoreSequence(best);
+        if (newScore < bestScore - 0.001) {
+          bestScore = newScore;
+          improved = true;
+        } else {
+          best[j] = best[i];
+          best[i] = temp;
+        }
+      }
+    }
+  }
+
+  return best;
+}
+
+/**
  * Computes maximum complete sets considering pack size, hits rule, and duplicate constraints
  */
 export function calculateMaxPossibleSets(hitCards, baseCards, packSize, hitsPerSet = 0, maxDuplicates = null) {
@@ -361,55 +509,14 @@ export class SetBuilder {
   }
 
   /**
-   * Rearranges cards in a set so that duplicate cards (same name & card number) are not directly behind each other
+   * Rearranges cards in a set so that duplicates are evenly spaced at maximum possible distance
+   * without adjacent repetitions or ABAB alternation.
    */
   separateDuplicates(setId) {
     const set = this.getSet(setId);
     if (!set || !Array.isArray(set.cards) || set.cards.length <= 1) return false;
 
-    const cards = [...set.cards];
-    const groups = new Map(); // key -> card[]
-    cards.forEach((card) => {
-      const k = getCardIdentityKey(card);
-      if (!groups.has(k)) groups.set(k, []);
-      groups.get(k).push(card);
-    });
-
-    // Buckets sorted by remaining card count descending
-    const buckets = Array.from(groups.values()).sort((a, b) => b.length - a.length);
-
-    const result = [];
-    let lastKey = null;
-
-    while (result.length < cards.length) {
-      // Find the largest available bucket whose key !== lastKey
-      let bestBucketIdx = -1;
-      for (let i = 0; i < buckets.length; i++) {
-        if (buckets[i].length > 0) {
-          const bucketKey = getCardIdentityKey(buckets[i][0]);
-          if (bucketKey !== lastKey) {
-            bestBucketIdx = i;
-            break;
-          }
-        }
-      }
-
-      // If no different bucket is available, pick the first available non-empty bucket
-      if (bestBucketIdx === -1) {
-        bestBucketIdx = buckets.findIndex((b) => b.length > 0);
-      }
-
-      if (bestBucketIdx === -1) break;
-
-      const card = buckets[bestBucketIdx].shift();
-      result.push(card);
-      lastKey = getCardIdentityKey(card);
-
-      // Re-sort buckets by remaining size descending
-      buckets.sort((a, b) => b.length - a.length);
-    }
-
-    set.cards = result;
+    set.cards = disperseAndSeparateDuplicates(set.cards);
     return true;
   }
 
@@ -516,10 +623,12 @@ export class SetBuilder {
       });
     }
 
-    // Track card duplicate counts per set
+    // Track card duplicate counts and Pokemon species counts per set
     const setCardCounts = new Map();
+    const setSpeciesCounts = new Map();
     createdSets.forEach((s) => {
       setCardCounts.set(s.id, new Map());
+      setSpeciesCounts.set(s.id, new Map());
     });
 
     const canAddCardToSet = (set, card) => {
@@ -531,8 +640,43 @@ export class SetBuilder {
 
     const recordCardInSet = (set, card) => {
       const key = getCardIdentityKey(card);
+      const specKey = getCardSpeciesKey(card);
       const curr = setCardCounts.get(set.id)?.get(key) || 0;
+      const currSpec = setSpeciesCounts.get(set.id)?.get(specKey) || 0;
       setCardCounts.get(set.id).set(key, curr + 1);
+      setSpeciesCounts.get(set.id).set(specKey, currSpec + 1);
+    };
+
+    // Helper to find best candidate prioritizing previously unrepresented Pokemon species first
+    const findBestCandidateIndex = (candidatePool, targetSet) => {
+      let bestIdx = -1;
+      let minSpeciesCount = Infinity;
+      let minIdentityCount = Infinity;
+
+      for (let i = 0; i < candidatePool.length; i++) {
+        const card = candidatePool[i];
+        if (!canAddCardToSet(targetSet, card)) continue;
+
+        const specKey = getCardSpeciesKey(card);
+        const identKey = getCardIdentityKey(card);
+        const specCount = setSpeciesCounts.get(targetSet.id)?.get(specKey) || 0;
+        const identCount = setCardCounts.get(targetSet.id)?.get(identKey) || 0;
+
+        // Top priority: Pokemon species not yet represented in this set (count === 0)
+        if (specCount === 0 && identCount === 0) {
+          bestIdx = i;
+          break; // candidatePool is already ordered by strategy (balanced/sequential/random)
+        }
+
+        // Secondary priority: Lowest species count, then lowest identity count
+        if (specCount < minSpeciesCount || (specCount === minSpeciesCount && identCount < minIdentityCount)) {
+          minSpeciesCount = specCount;
+          minIdentityCount = identCount;
+          bestIdx = i;
+        }
+      }
+
+      return bestIdx;
     };
 
     // Order pools according to strategy
@@ -552,7 +696,7 @@ export class SetBuilder {
 
     const assignedCardIds = new Set();
 
-    // 1. Distribute EXACTLY hitsPerSet Guaranteed Hits per set
+    // 1. Distribute EXACTLY hitsPerSet Guaranteed Hits per set (prioritizing diverse Pokemon)
     if (useHitRule && hitsPerSet > 0) {
       for (let h = 0; h < hitsPerSet; h++) {
         for (let s = 0; s < createdSets.length; s++) {
@@ -560,14 +704,7 @@ export class SetBuilder {
           const setIndex = strategy === 'balanced' && h % 2 === 1 ? createdSets.length - 1 - s : s;
           const targetSet = createdSets[setIndex];
 
-          let candidateIdx = -1;
-          for (let i = 0; i < hitCandidates.length; i++) {
-            if (canAddCardToSet(targetSet, hitCandidates[i])) {
-              candidateIdx = i;
-              break;
-            }
-          }
-
+          const candidateIdx = findBestCandidateIndex(hitCandidates, targetSet);
           if (candidateIdx !== -1) {
             const [card] = hitCandidates.splice(candidateIdx, 1);
             recordCardInSet(targetSet, card);
@@ -579,7 +716,7 @@ export class SetBuilder {
       }
     }
 
-    // 2. Fill remaining regular slots strictly from baseCandidates (so hits count is EXACT and duplicates are limited)
+    // 2. Fill remaining regular slots strictly from baseCandidates (prioritizing diverse Pokemon)
     const generalFillPool = [...baseCandidates];
     if (strategy === 'balanced') {
       generalFillPool.sort((a, b) => (b.lastPrice || 0) - (a.lastPrice || 0));
@@ -593,14 +730,7 @@ export class SetBuilder {
       for (let s = 0; s < createdSets.length; s++) {
         const targetSet = createdSets[s];
         if (targetSet.cards.length < packSize && generalFillPool.length > 0) {
-          let candidateIdx = -1;
-          for (let i = 0; i < generalFillPool.length; i++) {
-            if (canAddCardToSet(targetSet, generalFillPool[i])) {
-              candidateIdx = i;
-              break;
-            }
-          }
-
+          const candidateIdx = findBestCandidateIndex(generalFillPool, targetSet);
           if (candidateIdx !== -1) {
             const [card] = generalFillPool.splice(candidateIdx, 1);
             recordCardInSet(targetSet, card);
@@ -611,6 +741,11 @@ export class SetBuilder {
         }
       }
     }
+
+    // 3. Evenly disperse duplicates across each created set for optimal spacing
+    createdSets.forEach((s) => {
+      s.cards = disperseAndSeparateDuplicates(s.cards);
+    });
 
     if (append) {
       this.sets = [...existingSets, ...createdSets];
