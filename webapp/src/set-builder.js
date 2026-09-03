@@ -123,7 +123,7 @@ export function disperseAndSeparateDuplicates(cards) {
 
   const initial = slots.filter((c) => c !== null);
 
-  // 2. Score evaluation for distance penalty
+  // 2. Fast score evaluation for distance penalty
   function scoreSequence(arr) {
     let penalty = 0;
     const lastIdent = new Map();
@@ -138,13 +138,13 @@ export function disperseAndSeparateDuplicates(cards) {
         const d = i - lastIdent.get(kIdent);
         if (d === 1) penalty += 100000;
         else if (d === 2) penalty += 20000;
-        else penalty += 5000 / (d * d);
+        else if (d === 3) penalty += 5000;
       }
       if (lastSpec.has(kSpec)) {
         const d = i - lastSpec.get(kSpec);
         if (d === 1) penalty += 50000;
         else if (d === 2) penalty += 10000;
-        else penalty += 2000 / (d * d);
+        else if (d === 3) penalty += 2000;
       }
 
       lastIdent.set(kIdent, i);
@@ -153,32 +153,62 @@ export function disperseAndSeparateDuplicates(cards) {
     return penalty;
   }
 
-  // 3. Local 2-opt swap refinement pass
+  // 3. Targeted collision-swap refinement pass
   let best = [...initial];
   let bestScore = scoreSequence(best);
+  if (bestScore === 0) return best;
+
   let improved = true;
   let iterations = 0;
-  const maxIterations = 50;
+  const maxIterations = 20;
 
-  while (improved && iterations < maxIterations) {
+  while (improved && iterations < maxIterations && bestScore > 0) {
     improved = false;
     iterations++;
 
-    for (let i = 0; i < N - 1; i++) {
-      for (let j = i + 1; j < N; j++) {
+    // Find indices with collisions
+    const collisionIndices = [];
+    const lastIdent = new Map();
+    const lastSpec = new Map();
+
+    for (let i = 0; i < N; i++) {
+      const c = best[i];
+      const kIdent = getCardIdentityKey(c);
+      const kSpec = getCardSpeciesKey(c);
+
+      if (lastIdent.has(kIdent) && i - lastIdent.get(kIdent) <= 3) {
+        collisionIndices.push(i);
+      } else if (lastSpec.has(kSpec) && i - lastSpec.get(kSpec) <= 3) {
+        collisionIndices.push(i);
+      }
+
+      lastIdent.set(kIdent, i);
+      lastSpec.set(kSpec, i);
+    }
+
+    if (collisionIndices.length === 0) break;
+
+    for (const i of collisionIndices) {
+      // Test swapping with candidates across the array
+      const step = Math.max(1, Math.floor(N / 25));
+      for (let j = 0; j < N; j += step) {
+        if (i === j) continue;
+
         const temp = best[i];
         best[i] = best[j];
         best[j] = temp;
 
         const newScore = scoreSequence(best);
-        if (newScore < bestScore - 0.001) {
+        if (newScore < bestScore) {
           bestScore = newScore;
           improved = true;
+          if (bestScore === 0) break;
         } else {
           best[j] = best[i];
           best[i] = temp;
         }
       }
+      if (bestScore === 0) break;
     }
   }
 
@@ -532,17 +562,187 @@ export class SetBuilder {
   }
 
   /**
+   * Balances the average card price across all given sets using multi-way 2-opt swaps.
+   * Ensures that sets with different or equal capacities achieve a nearly identical average card price (€/card)
+   * while respecting maximum duplicate constraints.
+   */
+  balanceSetsAverageValue(setsToBalance = null, maxDuplicates = null) {
+    const targetSets = setsToBalance || this.sets;
+    if (!Array.isArray(targetSets) || targetSets.length <= 1) return targetSets;
+
+    // Filter sets that have cards
+    const activeSets = targetSets.filter((s) => Array.isArray(s.cards) && s.cards.length > 0);
+    if (activeSets.length <= 1) return targetSets;
+
+    // Helper to calculate total value and average price for a set
+    const getSetStats = (set) => {
+      const total = set.cards.reduce((sum, c) => sum + (typeof c.lastPrice === 'number' ? c.lastPrice : 0), 0);
+      const count = set.cards.length;
+      return { total, count, avg: count > 0 ? total / count : 0 };
+    };
+
+    // Calculate global target average across all active sets
+    let totalCardsAll = 0;
+    let totalValueAll = 0;
+    activeSets.forEach((s) => {
+      const stats = getSetStats(s);
+      totalCardsAll += stats.count;
+      totalValueAll += stats.total;
+    });
+
+    if (totalCardsAll === 0) return targetSets;
+    const globalTargetAvg = totalValueAll / totalCardsAll;
+
+    // Helper to check if swapping cardA from setA with cardB from setB violates maxDuplicates
+    const isSwapDuplicateSafe = (setA, cardA, setB, cardB) => {
+      if (!maxDuplicates || maxDuplicates <= 0) return true;
+      const keyA = getCardIdentityKey(cardA);
+      const keyB = getCardIdentityKey(cardB);
+
+      // If both cards have the same identity, counts don't change
+      if (keyA === keyB) return true;
+
+      // Check setA when receiving cardB
+      const countBInA = setA.cards.filter((c) => c !== cardA && getCardIdentityKey(c) === keyB).length;
+      if (countBInA + 1 > maxDuplicates) return false;
+
+      // Check setB when receiving cardA
+      const countAInB = setB.cards.filter((c) => c !== cardB && getCardIdentityKey(c) === keyA).length;
+      if (countAInB + 1 > maxDuplicates) return false;
+
+      return true;
+    };
+
+    // Total variance helper: sum of squared error from target average
+    const calculateTotalVariance = () => {
+      let variance = 0;
+      activeSets.forEach((s) => {
+        const stats = getSetStats(s);
+        variance += Math.pow(stats.avg - globalTargetAvg, 2) * stats.count;
+      });
+      return variance;
+    };
+
+    let currentVariance = calculateTotalVariance();
+    let improved = true;
+    let iterations = 0;
+    const maxIterations = 200;
+
+    while (improved && iterations < maxIterations) {
+      improved = false;
+      iterations++;
+
+      // Sort sets by average price descending
+      const setStatsList = activeSets.map((s) => ({ set: s, ...getSetStats(s) }));
+      setStatsList.sort((a, b) => b.avg - a.avg);
+
+      const highestSet = setStatsList[0];
+      const lowestSet = setStatsList[setStatsList.length - 1];
+
+      // If difference between highest and lowest is negligible (< 1 Cent), stop
+      if (highestSet.avg - lowestSet.avg < 0.01) {
+        break;
+      }
+
+      let bestSwap = null;
+      let bestVarianceGain = 0;
+
+      // Try pairs of sets: prioritize highest avg set with lowest avg set
+      for (let i = 0; i < setStatsList.length - 1; i++) {
+        for (let j = setStatsList.length - 1; j > i; j--) {
+          const setHigh = setStatsList[i].set;
+          const setLow = setStatsList[j].set;
+          const avgHigh = setStatsList[i].avg;
+          const avgLow = setStatsList[j].avg;
+
+          if (avgHigh - avgLow < 0.01) continue;
+
+          for (let idxH = 0; idxH < setHigh.cards.length; idxH++) {
+            const cardH = setHigh.cards[idxH];
+            const priceH = typeof cardH.lastPrice === 'number' ? cardH.lastPrice : 0;
+
+            for (let idxL = 0; idxL < setLow.cards.length; idxL++) {
+              const cardL = setLow.cards[idxL];
+              const priceL = typeof cardL.lastPrice === 'number' ? cardL.lastPrice : 0;
+
+              const priceDiff = priceH - priceL;
+              if (priceDiff <= 0.01) continue; // High set must give a more expensive card to low set
+
+              if (!isSwapDuplicateSafe(setHigh, cardH, setLow, cardL)) continue;
+
+              // Simulate swap
+              const newTotalHigh = setStatsList[i].total - priceDiff;
+              const newAvgHigh = newTotalHigh / setStatsList[i].count;
+              const newTotalLow = setStatsList[j].total + priceDiff;
+              const newAvgLow = newTotalLow / setStatsList[j].count;
+
+              // Old pairwise error vs new pairwise error
+              const oldPairError =
+                Math.pow(avgHigh - globalTargetAvg, 2) * setStatsList[i].count +
+                Math.pow(avgLow - globalTargetAvg, 2) * setStatsList[j].count;
+              const newPairError =
+                Math.pow(newAvgHigh - globalTargetAvg, 2) * setStatsList[i].count +
+                Math.pow(newAvgLow - globalTargetAvg, 2) * setStatsList[j].count;
+
+              const varianceGain = oldPairError - newPairError;
+              if (varianceGain > 0.0001 && varianceGain > bestVarianceGain) {
+                bestVarianceGain = varianceGain;
+                bestSwap = { setHigh, idxH, cardH, setLow, idxL, cardL };
+              }
+            }
+          }
+
+          if (bestSwap) break; // Found a good swap for this step
+        }
+        if (bestSwap) break;
+      }
+
+      if (bestSwap) {
+        // Execute the swap
+        const { setHigh, idxH, cardH, setLow, idxL, cardL } = bestSwap;
+        setHigh.cards[idxH] = cardL;
+        cardL.setId = setHigh.id;
+
+        setLow.cards[idxL] = cardH;
+        cardH.setId = setLow.id;
+
+        currentVariance = calculateTotalVariance();
+        improved = true;
+      }
+    }
+
+    return targetSets;
+  }
+
+  /**
+   * Rebalances average card values across all existing sets and separates duplicates
+   */
+  balanceExistingSets(allCards = [], maxDuplicates = null) {
+    if (this.sets.length <= 1) return { sets: this.sets, iterations: 0 };
+
+    this.balanceSetsAverageValue(this.sets, maxDuplicates);
+
+    // Re-run intra-set duplicate separation on each set
+    this.sets.forEach((set) => {
+      set.cards = disperseAndSeparateDuplicates(set.cards);
+    });
+
+    return { sets: this.sets };
+  }
+
+  /**
    * Automatic Set Generator based on configurable criteria
+   * Supports uniform pack sizes as well as custom multi-pipeline definitions (e.g. 2x 100 + 1x 200).
    */
   generateSets(cards, config = {}) {
     if (!Array.isArray(cards) || cards.length === 0) {
       return { sets: [], unallocatedCards: [], totalSets: 0, totalAssigned: 0 };
     }
 
-    const packSize = Math.max(1, parseInt(config.packSize, 10) || 10);
     const useHitRule = !!config.useHitRule;
     const minHitPrice = typeof config.minHitPrice === 'number' ? config.minHitPrice : 5.0;
     const hitsPerSet = useHitRule ? Math.max(1, parseInt(config.hitsPerSet, 10) || 1) : 0;
+    const proportionalHits = config.proportionalHits !== false; // true by default
     const useBaseRange = !!config.useBaseRange;
     const minBasePrice = typeof config.minBasePrice === 'number' ? config.minBasePrice : 0;
     const maxBasePrice = typeof config.maxBasePrice === 'number' ? config.maxBasePrice : Infinity;
@@ -585,42 +785,85 @@ export class SetBuilder {
       }
     });
 
-    const useMaxDuplicates = config.useMaxDuplicates !== false && config.useMaxDuplicates !== undefined ? !!config.useMaxDuplicates : (typeof config.maxDuplicates === 'number' && config.maxDuplicates > 0);
-    const maxDuplicates = (useMaxDuplicates && config.maxDuplicates > 0) ? parseInt(config.maxDuplicates, 10) : null;
+    const useMaxDuplicates =
+      config.useMaxDuplicates !== false && config.useMaxDuplicates !== undefined
+        ? !!config.useMaxDuplicates
+        : typeof config.maxDuplicates === 'number' && config.maxDuplicates > 0;
+    const maxDuplicates = useMaxDuplicates && config.maxDuplicates > 0 ? parseInt(config.maxDuplicates, 10) : null;
 
-    // Determine total number of possible complete sets
-    let totalPossibleSets = 0;
-    if (useHitRule && hitsPerSet > 0) {
-      totalPossibleSets = calculateMaxPossibleSets(hitCandidates, baseCandidates, packSize, hitsPerSet, maxDuplicates);
+    // 1. Build set definitions (either from config.customSets or uniform packSize)
+    const customSetsConfig = Array.isArray(config.customSets) && config.customSets.length > 0 ? config.customSets : null;
+    const createdSets = [];
+
+    if (customSetsConfig) {
+      customSetsConfig.forEach((cs, i) => {
+        const targetSize = Math.max(1, parseInt(cs.targetSize || cs.size, 10) || 10);
+        const setNum = baseOffset + i + 1;
+        const setName = (cs.name && cs.name.trim()) || `${namePrefix}${setNum}`;
+        createdSets.push({
+          id: `set_${Date.now()}_${setNum}_${Math.random().toString(36).slice(2, 6)}`,
+          name: setName,
+          targetSize: targetSize,
+          cards: [],
+          createdAt: Date.now(),
+        });
+      });
     } else {
-      totalPossibleSets = calculateMaxPossibleSets([], hitCandidates.concat(baseCandidates), packSize, 0, maxDuplicates);
+      const packSize = Math.max(1, parseInt(config.packSize, 10) || 10);
+      let totalPossibleSets = 0;
+      if (useHitRule && hitsPerSet > 0) {
+        totalPossibleSets = calculateMaxPossibleSets(hitCandidates, baseCandidates, packSize, hitsPerSet, maxDuplicates);
+      } else {
+        totalPossibleSets = calculateMaxPossibleSets([], hitCandidates.concat(baseCandidates), packSize, 0, maxDuplicates);
+      }
+
+      if (config.maxSets && typeof config.maxSets === 'number' && config.maxSets > 0) {
+        totalPossibleSets = Math.min(totalPossibleSets, config.maxSets);
+      }
+
+      if (totalPossibleSets <= 0) {
+        return {
+          sets: this.sets,
+          unallocatedCards: pool,
+          totalSets: this.sets.length,
+          totalAssigned: cards.filter((c) => c.setId).length,
+          error: 'Nicht genügend passende Karten im Pool für die gewählten Kriterien (Hits / Preisbereich / Duplikate).',
+        };
+      }
+
+      for (let i = 0; i < totalPossibleSets; i++) {
+        const setNum = baseOffset + i + 1;
+        createdSets.push({
+          id: `set_${Date.now()}_${setNum}_${Math.random().toString(36).slice(2, 6)}`,
+          name: `${namePrefix}${setNum}`,
+          targetSize: packSize,
+          cards: [],
+          createdAt: Date.now(),
+        });
+      }
     }
 
-    if (config.maxSets && typeof config.maxSets === 'number' && config.maxSets > 0) {
-      totalPossibleSets = Math.min(totalPossibleSets, config.maxSets);
-    }
-
-    if (totalPossibleSets <= 0) {
+    if (createdSets.length === 0) {
       return {
         sets: this.sets,
         unallocatedCards: pool,
         totalSets: this.sets.length,
         totalAssigned: cards.filter((c) => c.setId).length,
-        error: 'Nicht genügend passende Karten im Pool für die gewählten Kriterien (Hits / Preisbereich / Duplikate).',
+        error: 'Keine Sets definiert.',
       };
     }
 
-    // Initialize set buckets
-    const createdSets = [];
-    for (let i = 0; i < totalPossibleSets; i++) {
-      const setNum = baseOffset + i + 1;
-      createdSets.push({
-        id: `set_${Date.now()}_${setNum}_${Math.random().toString(36).slice(2, 6)}`,
-        name: `${namePrefix}${setNum}`,
-        targetSize: packSize,
-        cards: [],
-        createdAt: Date.now(),
-      });
+    const totalTargetCards = createdSets.reduce((sum, s) => sum + s.targetSize, 0);
+    const totalAvailableCards = hitCandidates.length + baseCandidates.length;
+
+    if (totalAvailableCards < totalTargetCards) {
+      return {
+        sets: this.sets,
+        unallocatedCards: pool,
+        totalSets: this.sets.length,
+        totalAssigned: cards.filter((c) => c.setId).length,
+        error: `Nicht genügend Karten im Pool vorhanden. Benötigt: ${totalTargetCards} Karten, Verfügbar: ${totalAvailableCards} Karten.`,
+      };
     }
 
     // Track card duplicate counts and Pokemon species counts per set
@@ -632,6 +875,7 @@ export class SetBuilder {
     });
 
     const canAddCardToSet = (set, card) => {
+      if (set.cards.length >= set.targetSize) return false;
       if (!maxDuplicates || maxDuplicates <= 0) return true;
       const key = getCardIdentityKey(card);
       const curr = setCardCounts.get(set.id)?.get(key) || 0;
@@ -647,43 +891,34 @@ export class SetBuilder {
       setSpeciesCounts.get(set.id).set(specKey, currSpec + 1);
     };
 
-    // Helper to find best candidate prioritizing previously unrepresented Pokemon species first
-    const findBestCandidateIndex = (candidatePool, targetSet) => {
-      let bestIdx = -1;
-      let minSpeciesCount = Infinity;
-      let minIdentityCount = Infinity;
+    // Calculate pool target average value
+    const allAvailableCandidates = [...hitCandidates, ...baseCandidates];
+    const totalPoolValue = allAvailableCandidates.reduce((sum, c) => sum + (c.lastPrice || 0), 0);
+    const globalTargetAvg = allAvailableCandidates.length > 0 ? totalPoolValue / allAvailableCandidates.length : 0;
 
-      for (let i = 0; i < candidatePool.length; i++) {
-        const card = candidatePool[i];
-        if (!canAddCardToSet(targetSet, card)) continue;
-
-        const specKey = getCardSpeciesKey(card);
-        const identKey = getCardIdentityKey(card);
-        const specCount = setSpeciesCounts.get(targetSet.id)?.get(specKey) || 0;
-        const identCount = setCardCounts.get(targetSet.id)?.get(identKey) || 0;
-
-        // Top priority: Pokemon species not yet represented in this set (count === 0)
-        if (specCount === 0 && identCount === 0) {
-          bestIdx = i;
-          break; // candidatePool is already ordered by strategy (balanced/sequential/random)
-        }
-
-        // Secondary priority: Lowest species count, then lowest identity count
-        if (specCount < minSpeciesCount || (specCount === minSpeciesCount && identCount < minIdentityCount)) {
-          minSpeciesCount = specCount;
-          minIdentityCount = identCount;
-          bestIdx = i;
-        }
-      }
-
-      return bestIdx;
+    // Helper to calculate current set total value
+    const getSetCurrentTotal = (set) => {
+      return set.cards.reduce((sum, c) => sum + (c.lastPrice || 0), 0);
     };
 
-    // Order pools according to strategy
+    // 2. Determine Hit Quotas per set
+    const setHitQuotas = new Map();
+    if (useHitRule && hitsPerSet > 0) {
+      const baseRefSize = Math.min(...createdSets.map((s) => s.targetSize));
+      createdSets.forEach((s) => {
+        let quota = hitsPerSet;
+        if (proportionalHits && baseRefSize > 0) {
+          quota = Math.max(1, Math.round(hitsPerSet * (s.targetSize / baseRefSize)));
+        }
+        setHitQuotas.set(s.id, quota);
+      });
+    } else {
+      createdSets.forEach((s) => setHitQuotas.set(s.id, 0));
+    }
+
+    // Sort candidates according to strategy
     if (strategy === 'balanced') {
-      // Sort hits descending by price to balance value
       hitCandidates.sort((a, b) => (b.lastPrice || 0) - (a.lastPrice || 0));
-      // Sort base cards descending by price
       baseCandidates.sort((a, b) => (b.lastPrice || 0) - (a.lastPrice || 0));
     } else if (strategy === 'random') {
       hitCandidates.sort(() => Math.random() - 0.5);
@@ -696,53 +931,133 @@ export class SetBuilder {
 
     const assignedCardIds = new Set();
 
-    // 1. Distribute EXACTLY hitsPerSet Guaranteed Hits per set (prioritizing diverse Pokemon)
+    // 3. Distribute Hit Cards
     if (useHitRule && hitsPerSet > 0) {
-      for (let h = 0; h < hitsPerSet; h++) {
-        for (let s = 0; s < createdSets.length; s++) {
-          // Serpentine / snake distribution in balanced mode
-          const setIndex = strategy === 'balanced' && h % 2 === 1 ? createdSets.length - 1 - s : s;
-          const targetSet = createdSets[setIndex];
+      // Track hits assigned per set
+      const hitsAssigned = new Map();
+      createdSets.forEach((s) => hitsAssigned.set(s.id, 0));
 
-          const candidateIdx = findBestCandidateIndex(hitCandidates, targetSet);
-          if (candidateIdx !== -1) {
-            const [card] = hitCandidates.splice(candidateIdx, 1);
-            recordCardInSet(targetSet, card);
-            card.setId = targetSet.id;
-            targetSet.cards.push(card);
-            assignedCardIds.add(card.id);
+      let hitsRemaining = true;
+      while (hitsRemaining && hitCandidates.length > 0) {
+        let assignedAny = false;
+
+        // In balanced mode, assign from most expensive hit to set that has hit quota and lowest relative value
+        for (let i = 0; i < hitCandidates.length; i++) {
+          const hitCard = hitCandidates[i];
+          const hitPrice = hitCard.lastPrice || 0;
+
+          // Find eligible sets that still need hits
+          const eligibleSets = createdSets.filter((s) => {
+            const currentHits = hitsAssigned.get(s.id) || 0;
+            const quota = setHitQuotas.get(s.id) || 0;
+            return currentHits < quota && canAddCardToSet(s, hitCard);
+          });
+
+          if (eligibleSets.length === 0) continue;
+
+          // Score eligible sets: in balanced mode, pick set with highest normalized deficit
+          let chosenSet = eligibleSets[0];
+          if (strategy === 'balanced') {
+            let minProjNormalizedVal = Infinity;
+            for (const s of eligibleSets) {
+              const currentTotal = getSetCurrentTotal(s);
+              const targetSetTotal = s.targetSize * globalTargetAvg;
+              const normalizedVal = (currentTotal + hitPrice) / (targetSetTotal || 1);
+              if (normalizedVal < minProjNormalizedVal) {
+                minProjNormalizedVal = normalizedVal;
+                chosenSet = s;
+              }
+            }
           }
+
+          // Assign hit card
+          hitCandidates.splice(i, 1);
+          i--;
+          recordCardInSet(chosenSet, hitCard);
+          hitCard.setId = chosenSet.id;
+          chosenSet.cards.push(hitCard);
+          assignedCardIds.add(hitCard.id);
+          hitsAssigned.set(chosenSet.id, (hitsAssigned.get(chosenSet.id) || 0) + 1);
+          assignedAny = true;
+        }
+
+        if (!assignedAny) {
+          hitsRemaining = false;
         }
       }
     }
 
-    // 2. Fill remaining regular slots strictly from baseCandidates (prioritizing diverse Pokemon)
-    const generalFillPool = [...baseCandidates];
+    // 4. Distribute Remaining Cards (Hits overflow + Base Cards)
+    const remainingCardsPool = [...hitCandidates, ...baseCandidates];
     if (strategy === 'balanced') {
-      generalFillPool.sort((a, b) => (b.lastPrice || 0) - (a.lastPrice || 0));
-    } else if (strategy === 'sequential') {
-      generalFillPool.sort((a, b) => (a.originalIndex || 0) - (b.originalIndex || 0));
+      remainingCardsPool.sort((a, b) => (b.lastPrice || 0) - (a.lastPrice || 0));
     } else if (strategy === 'random') {
-      generalFillPool.sort(() => Math.random() - 0.5);
+      remainingCardsPool.sort(() => Math.random() - 0.5);
+    } else {
+      remainingCardsPool.sort((a, b) => (a.originalIndex || 0) - (b.originalIndex || 0));
     }
 
-    for (let slot = 0; slot < packSize; slot++) {
-      for (let s = 0; s < createdSets.length; s++) {
-        const targetSet = createdSets[s];
-        if (targetSet.cards.length < packSize && generalFillPool.length > 0) {
-          const candidateIdx = findBestCandidateIndex(generalFillPool, targetSet);
-          if (candidateIdx !== -1) {
-            const [card] = generalFillPool.splice(candidateIdx, 1);
-            recordCardInSet(targetSet, card);
-            card.setId = targetSet.id;
-            targetSet.cards.push(card);
-            assignedCardIds.add(card.id);
-          }
+    // Helper to find best candidate set for a card in balanced mode
+    const findBestSetForCard = (card) => {
+      const cardPrice = card.lastPrice || 0;
+      const specKey = getCardSpeciesKey(card);
+
+      const eligibleSets = createdSets.filter((s) => canAddCardToSet(s, card));
+      if (eligibleSets.length === 0) return null;
+
+      if (strategy === 'sequential' || strategy === 'random') {
+        // Find first set with remaining capacity
+        return eligibleSets[0];
+      }
+
+      // Balanced mode: score by proximity to target set average and species diversity
+      let bestSet = null;
+      let bestScore = Infinity;
+
+      for (const s of eligibleSets) {
+        const currentCount = s.cards.length;
+        const currentTotal = getSetCurrentTotal(s);
+        const projectedAvg = (currentTotal + cardPrice) / (currentCount + 1);
+
+        // Value deviation penalty
+        const valueDeviation = Math.pow(projectedAvg - globalTargetAvg, 2);
+
+        // Species diversity factor
+        const specCount = setSpeciesCounts.get(s.id)?.get(specKey) || 0;
+        const diversityPenalty = specCount * 0.05;
+
+        const score = valueDeviation + diversityPenalty;
+        if (score < bestScore) {
+          bestScore = score;
+          bestSet = s;
         }
+      }
+
+      return bestSet || eligibleSets[0];
+    };
+
+    while (remainingCardsPool.length > 0) {
+      // Check if all sets are full
+      const openSets = createdSets.filter((s) => s.cards.length < s.targetSize);
+      if (openSets.length === 0) break;
+
+      const card = remainingCardsPool.shift();
+      const targetSet = findBestSetForCard(card);
+
+      if (targetSet) {
+        recordCardInSet(targetSet, card);
+        card.setId = targetSet.id;
+        targetSet.cards.push(card);
+        assignedCardIds.add(card.id);
       }
     }
 
-    // 3. Evenly disperse duplicates across each created set for optimal spacing
+    // 5. Post-Allocation Value Balancing & Swap Optimization (in balanced mode)
+    if (strategy === 'balanced') {
+      this.balanceSetsAverageValue(createdSets, maxDuplicates);
+    }
+
+    // 6. Evenly disperse duplicates across each created set for optimal spacing
     createdSets.forEach((s) => {
       s.cards = disperseAndSeparateDuplicates(s.cards);
     });

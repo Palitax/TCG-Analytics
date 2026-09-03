@@ -4788,44 +4788,178 @@ function renderBulkScanTab(container) {
       }
     }
 
+    // Generator State across renders
+    let generatorMode = 'custom'; // 'uniform' | 'custom'
+    let selectedPackSize = 100;
+    let customPipelines = [
+      { id: 'p_1', name: 'Set #1', size: 100 },
+      { id: 'p_2', name: 'Set #2', size: 100 },
+      { id: 'p_3', name: 'Set #3', size: 200 },
+    ];
+
     // --- Tab 1: Generator ---
     function renderGeneratorTab(container) {
       const allCards = bulkScannerInstance.scanItems || [];
       const currentSets = setBuilderInstance.getSets();
-      let selectedPackSize = 10;
       let useHitRule = true;
       let hitsPerSet = 1;
-      let minHitPrice = 5.00;
+      let minHitPrice = 5.0;
+      let proportionalHits = true;
       let useBaseRange = false;
-      let minBasePrice = 0.00;
+      let minBasePrice = 0.0;
       let maxBasePrice = 4.99;
       let strategy = 'balanced';
       let namePrefix = 'Set #';
 
+      // Smart initial pipeline setup if customPipelines is empty or total cards matches
+      const isAppend = false;
+      const availablePool = allCards.filter((c) => !c.setId);
+      const poolCount = availablePool.length;
+
+      if (customPipelines.length === 0) {
+        if (poolCount >= 400) {
+          customPipelines = [
+            { id: `p_${Date.now()}_1`, name: 'Set #1', size: 100 },
+            { id: `p_${Date.now()}_2`, name: 'Set #2', size: 100 },
+            { id: `p_${Date.now()}_3`, name: 'Set #3', size: 200 },
+          ];
+        } else if (poolCount >= 200) {
+          customPipelines = [
+            { id: `p_${Date.now()}_1`, name: 'Set #1', size: 100 },
+            { id: `p_${Date.now()}_2`, name: 'Set #2', size: 100 },
+          ];
+        } else if (poolCount > 0) {
+          customPipelines = [
+            { id: `p_${Date.now()}_1`, name: 'Set #1', size: Math.min(poolCount, 100) },
+          ];
+        }
+      }
+
+      // Generate split template suggestions for current pool count
+      const getTemplatesForPool = (N) => {
+        const templates = [];
+        if (N >= 400) {
+          templates.push({ label: '2x 100 + 1x 200', sets: [100, 100, 200] });
+          templates.push({ label: '1x 300 + 1x 100', sets: [300, 100] });
+          templates.push({ label: '4x 100', sets: [100, 100, 100, 100] });
+          templates.push({ label: '2x 200', sets: [200, 200] });
+          templates.push({ label: '8x 50', sets: Array(8).fill(50) });
+        } else if (N >= 300) {
+          templates.push({ label: '1x 200 + 1x 100', sets: [200, 100] });
+          templates.push({ label: '3x 100', sets: [100, 100, 100] });
+          templates.push({ label: '6x 50', sets: Array(6).fill(50) });
+        } else if (N >= 200) {
+          templates.push({ label: '2x 100', sets: [100, 100] });
+          templates.push({ label: '1x 150 + 1x 50', sets: [150, 50] });
+          templates.push({ label: '4x 50', sets: [50, 50, 50, 50] });
+        } else if (N >= 100) {
+          templates.push({ label: '1x 100', sets: [100] });
+          templates.push({ label: '2x 50', sets: [50, 50] });
+          templates.push({ label: '4x 25', sets: [25, 25, 25, 25] });
+        } else if (N > 0) {
+          templates.push({ label: `1x ${N}`, sets: [N] });
+          if (N >= 20) templates.push({ label: `2x ${Math.floor(N / 2)}`, sets: [Math.floor(N / 2), Math.ceil(N / 2)] });
+        }
+        return templates;
+      };
+
+      const splitTemplates = getTemplatesForPool(poolCount || allCards.length);
+
       container.innerHTML = `
         <div style="display: flex; flex-direction: column; gap: 20px;">
-          <!-- 1. Set Size -->
-          <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px;">
-            <label style="display: block; font-weight: 700; font-size: 0.95rem; color: #fff; margin-bottom: 8px;">
-              1. Kartengröße pro Set (Pack Size)
-            </label>
-            <p style="color: #94a3b8; font-size: 0.82rem; margin: 0 0 12px 0;">
-              Wähle eine Standardgröße für deine Mystery Packs oder gib eine eigene Zahl ein:
-            </p>
-            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-              <button type="button" class="set-preset-chip active" data-size="10">10 Karten</button>
-              <button type="button" class="set-preset-chip" data-size="20">20 Karten</button>
-              <button type="button" class="set-preset-chip" data-size="50">50 Karten</button>
-              <button type="button" class="set-preset-chip" data-size="100">100 Karten</button>
-              <button type="button" class="set-preset-chip" data-size="200">200 Karten</button>
-              <div style="display: inline-flex; align-items: center; gap: 6px; margin-left: 8px;">
-                <span style="font-size: 0.82rem; color: #a1a1aa;">Custom:</span>
-                <input type="number" id="inp-custom-pack-size" min="1" max="1000" value="10" class="form-input" style="width: 70px; padding: 5px 8px; font-size: 0.85rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;" />
+          <!-- Mode Switcher -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 16px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+              <label style="font-weight: 700; font-size: 0.95rem; color: #fff; margin: 0;">
+                1. Aufteilungsmodus für Pipelines & Sets
+              </label>
+              <span style="font-size: 0.8rem; color: #38bdf8; font-weight: 600;">Kartenpool: ${poolCount} Karten verfügbar</span>
+            </div>
+
+            <div class="pipeline-mode-toggle">
+              <button type="button" class="pipeline-mode-btn ${generatorMode === 'custom' ? 'active' : ''}" id="btn-mode-custom">
+                🎨 Individuelle Pipeline-Größen (z. B. 2x 100 + 1x 200)
+              </button>
+              <button type="button" class="pipeline-mode-btn ${generatorMode === 'uniform' ? 'active' : ''}" id="btn-mode-uniform">
+                🔘 Gleichmäßige Sets (Alle Sets gleiche Größe)
+              </button>
+            </div>
+
+            <!-- UNIFORM MODE VIEW -->
+            <div id="view-mode-uniform" style="display: ${generatorMode === 'uniform' ? 'block' : 'none'}; margin-top: 16px;">
+              <p style="color: #94a3b8; font-size: 0.82rem; margin: 0 0 10px 0;">
+                Wähle eine einheitliche Kartengröße pro Set:
+              </p>
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <button type="button" class="set-preset-chip ${selectedPackSize === 10 ? 'active' : ''}" data-size="10">10 Karten</button>
+                <button type="button" class="set-preset-chip ${selectedPackSize === 20 ? 'active' : ''}" data-size="20">20 Karten</button>
+                <button type="button" class="set-preset-chip ${selectedPackSize === 50 ? 'active' : ''}" data-size="50">50 Karten</button>
+                <button type="button" class="set-preset-chip ${selectedPackSize === 100 ? 'active' : ''}" data-size="100">100 Karten</button>
+                <button type="button" class="set-preset-chip ${selectedPackSize === 200 ? 'active' : ''}" data-size="200">200 Karten</button>
+                <div style="display: inline-flex; align-items: center; gap: 6px; margin-left: 8px;">
+                  <span style="font-size: 0.82rem; color: #a1a1aa;">Custom:</span>
+                  <input type="number" id="inp-custom-pack-size" min="1" max="1000" value="${selectedPackSize}" class="form-input" style="width: 70px; padding: 5px 8px; font-size: 0.85rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;" />
+                </div>
+              </div>
+            </div>
+
+            <!-- CUSTOM MODE VIEW -->
+            <div id="view-mode-custom" style="display: ${generatorMode === 'custom' ? 'block' : 'none'}; margin-top: 16px;">
+              <!-- Quick Split Templates -->
+              ${splitTemplates.length > 0 ? `
+                <div style="margin-bottom: 14px;">
+                  <div style="font-size: 0.78rem; font-weight: 700; color: #a1a1aa; text-transform: uppercase; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>⚡ Schnellauswahl für ${poolCount} Karten:</span>
+                  </div>
+                  <div style="display: flex; gap: 8px; flex-wrap: wrap;" id="template-chips-container">
+                    ${splitTemplates.map((t, idx) => `
+                      <button type="button" class="split-template-chip" data-template-idx="${idx}">
+                        ✨ ${t.label}
+                      </button>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+
+              <!-- Pipeline Definitions List -->
+              <div style="margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <span style="font-size: 0.82rem; font-weight: 600; color: #cbd5e1;">Definierte Pipelines / Sets:</span>
+                  <span style="font-size: 0.78rem; color: #a1a1aa;">Anzahl: <strong style="color: #fff;" id="custom-pipeline-count">${customPipelines.length}</strong></span>
+                </div>
+                <div class="custom-pipeline-list" id="custom-pipeline-list-container">
+                  <!-- Dynamic rows rendered here -->
+                </div>
+              </div>
+
+              <!-- Pipeline List Action Buttons -->
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; align-items: center;">
+                <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-add-custom-set" style="padding: 6px 12px; font-size: 0.8125rem; border-color: rgba(168, 85, 247, 0.4); color: #d8b4fe;">
+                  ➕ Weiteres Set hinzufügen
+                </button>
+                <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-add-remaining-as-set" style="padding: 6px 12px; font-size: 0.8125rem; border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
+                  ➕ Restkarten als Set anlegen
+                </button>
+                <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-clear-custom-sets" style="padding: 6px 12px; font-size: 0.8125rem; color: #71717a; margin-left: auto;">
+                  🗑️ Zurücksetzen
+                </button>
+              </div>
+
+              <!-- Capacity Progress Meter -->
+              <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.82rem;">
+                  <span style="color: #cbd5e1;">Kapazitäts-Auslastung:</span>
+                  <span id="custom-capacity-text" style="font-weight: 700; color: #fff;">0 / 0</span>
+                </div>
+                <div class="pool-capacity-meter">
+                  <div class="pool-capacity-meter-bar" id="custom-capacity-bar" style="width: 0%; background: #4ade80;"></div>
+                </div>
+                <div id="custom-capacity-status" style="margin-top: 6px; font-size: 0.78rem; font-weight: 600;"></div>
               </div>
             </div>
           </div>
 
-          <!-- 2. Hit Rules -->
+          <!-- 2. Hit Rules & Value Distribution -->
           <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
               <label style="font-weight: 700; font-size: 0.95rem; color: #fff; display: flex; align-items: center; gap: 8px; cursor: pointer;">
@@ -4835,11 +4969,11 @@ function renderBulkScanTab(container) {
               <span class="hit-slot-badge">✨ Hit Feature</span>
             </div>
             <p style="color: #94a3b8; font-size: 0.82rem; margin: 0 0 14px 0;">
-              Definiere, wie viele wertvolle Karten (anhand der Cardmarket Live/Manual Preise) garantiert in jedem Set enthalten sein sollen.
+              Definiere, wie viele wertvolle Karten garantiert in jedem Set enthalten sein sollen.
             </p>
             <div id="hit-rule-fields" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
               <div>
-                <label style="display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px; font-weight: 600;">Hits pro Set:</label>
+                <label style="display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px; font-weight: 600;">Basis-Hits pro Set:</label>
                 <input type="number" id="inp-hits-per-set" min="1" max="50" value="1" class="form-input" style="width: 100%; padding: 6px 10px; font-size: 0.875rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #facc15; font-weight: 700;" />
               </div>
               <div>
@@ -4849,6 +4983,12 @@ function renderBulkScanTab(container) {
                   <span style="position: absolute; right: 10px; top: 7px; color: #94a3b8; font-size: 0.85rem;">€</span>
                 </div>
               </div>
+            </div>
+            <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="chk-proportional-hits" checked style="width: 15px; height: 15px; accent-color: #a855f7; cursor: pointer;" />
+              <label for="chk-proportional-hits" style="font-size: 0.82rem; color: #d8b4fe; cursor: pointer; user-select: none;">
+                Hits proportional zur Set-Größe skalieren (z. B. ein 200er Set erhält doppelt so viele Hits wie ein 100er Set)
+              </label>
             </div>
           </div>
 
@@ -4862,7 +5002,7 @@ function renderBulkScanTab(container) {
               <span class="hit-slot-badge" style="background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.3); color: #38bdf8;">Anti-Cluster</span>
             </div>
             <p style="color: #94a3b8; font-size: 0.82rem; margin: 0 0 14px 0;">
-              Verhindert, dass dieselbe Karte (anhand von Name & Set-Nummer, z. B. Boltund 50091) zu oft im selben Set landet.
+              Verhindert, dass dieselbe Karte (anhand von Name & Set-Nummer) zu oft im selben Set landet.
             </p>
             <div id="dup-rule-fields" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
               <div style="display: flex; gap: 6px; flex-wrap: wrap;">
@@ -4897,22 +5037,27 @@ function renderBulkScanTab(container) {
           </div>
 
           <!-- 5. Distribution Strategy & Prefix -->
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px;">
-            <div>
-              <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #fff; margin-bottom: 6px;">
-                5. Verteilungslogik:
-              </label>
-              <select id="sel-strategy" class="form-input" style="width: 100%; padding: 6px 10px; font-size: 0.85rem; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;">
-                <option value="balanced">Ausbalanciert (Gleichmäßige Wertverteilung)</option>
-                <option value="sequential">Original-Reihenfolge (Sequentiell aus CSV)</option>
-                <option value="random">Zufällig durchmischen (Mystery Pack)</option>
-              </select>
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 12px;">
+              <div>
+                <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #fff; margin-bottom: 6px;">
+                  5. Verteilungslogik:
+                </label>
+                <select id="sel-strategy" class="form-input" style="width: 100%; padding: 6px 10px; font-size: 0.85rem; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;">
+                  <option value="balanced" selected>⚖️ Ausbalanciert (Gleichmäßiger Ø-Wert pro Karte über alle Sets)</option>
+                  <option value="sequential">📋 Original-Reihenfolge (Sequentiell aus CSV)</option>
+                  <option value="random">🎲 Zufällig durchmischen (Mystery Pack)</option>
+                </select>
+              </div>
+              <div>
+                <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #fff; margin-bottom: 6px;">
+                  Set-Name Standardpräfix:
+                </label>
+                <input type="text" id="inp-set-prefix" value="Set #" class="form-input" style="width: 100%; padding: 6px 10px; font-size: 0.85rem; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;" />
+              </div>
             </div>
-            <div>
-              <label style="display: block; font-weight: 700; font-size: 0.85rem; color: #fff; margin-bottom: 6px;">
-                Set-Name Präfix:
-              </label>
-              <input type="text" id="inp-set-prefix" value="Set #" class="form-input" style="width: 100%; padding: 6px 10px; font-size: 0.85rem; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: #fff;" />
+            <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 8px; padding: 8px 12px; font-size: 0.8rem; color: #e9d5ff;">
+              💡 <strong>Ausbalancierter Modus:</strong> Verteilt wertvolle Hits und Basiskarten so auf alle Sets, dass jedes Set einen fairen, nahezu identischen Durchschnittswert (€ pro Karte) erzielt.
             </div>
           </div>
 
@@ -4936,22 +5081,33 @@ function renderBulkScanTab(container) {
           ` : ''}
 
           <!-- Action Buttons -->
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px;">
-            <button type="button" id="btn-run-generate-single-set" class="shadcn-btn shadcn-btn-secondary" style="padding: 12px 16px; font-size: 0.9375rem; justify-content: center; font-weight: 700; border-color: rgba(168, 85, 247, 0.5); color: #d8b4fe; background: rgba(168, 85, 247, 0.12);">
-              📦 Nur 1 Set generieren
-            </button>
-            <button type="button" id="btn-run-generate-all-sets" class="shadcn-btn shadcn-btn-primary" style="padding: 12px 16px; font-size: 0.9375rem; justify-content: center; font-weight: 700; background: linear-gradient(135deg, #a855f7, #6366f1) !important; color: #fff !important; border: none !important;">
-              🚀 Alle möglichen Sets generieren
-            </button>
+          <div id="action-buttons-container" style="margin-top: 4px;">
+            <!-- Rendered dynamically depending on mode -->
           </div>
         </div>
       `;
 
+      // Elements
+      const btnModeCustom = container.querySelector('#btn-mode-custom');
+      const btnModeUniform = container.querySelector('#btn-mode-uniform');
+      const viewModeCustom = container.querySelector('#view-mode-custom');
+      const viewModeUniform = container.querySelector('#view-mode-uniform');
+
       const chipButtons = container.querySelectorAll('.set-preset-chip');
       const customSizeInput = container.querySelector('#inp-custom-pack-size');
+      const customPipelineList = container.querySelector('#custom-pipeline-list-container');
+      const customPipelineCount = container.querySelector('#custom-pipeline-count');
+      const customCapacityText = container.querySelector('#custom-capacity-text');
+      const customCapacityBar = container.querySelector('#custom-capacity-bar');
+      const customCapacityStatus = container.querySelector('#custom-capacity-status');
+      const btnAddCustomSet = container.querySelector('#btn-add-custom-set');
+      const btnAddRemainingAsSet = container.querySelector('#btn-add-remaining-as-set');
+      const btnClearCustomSets = container.querySelector('#btn-clear-custom-sets');
+
       const chkUseHit = container.querySelector('#chk-use-hit-rule');
       const inpHitsPerSet = container.querySelector('#inp-hits-per-set');
       const inpMinHitPrice = container.querySelector('#inp-min-hit-price');
+      const chkProportionalHits = container.querySelector('#chk-proportional-hits');
       const chkUseMaxDup = container.querySelector('#chk-use-max-dup');
       const dupChipButtons = container.querySelectorAll('.dup-preset-chip');
       const inpMaxDup = container.querySelector('#inp-max-dup');
@@ -4962,90 +5118,306 @@ function renderBulkScanTab(container) {
       const selStrategy = container.querySelector('#sel-strategy');
       const inpPrefix = container.querySelector('#inp-set-prefix');
       const simContainer = container.querySelector('#sim-stats-container');
-      const btnRunSingle = container.querySelector('#btn-run-generate-single-set');
-      const btnRunAll = container.querySelector('#btn-run-generate-all-sets');
       const chkAppend = container.querySelector('#chk-append-sets');
+      const actionButtonsContainer = container.querySelector('#action-buttons-container');
 
       let selectedMaxDup = 1;
+
+      // Mode Switch Handlers
+      btnModeCustom.addEventListener('click', () => {
+        generatorMode = 'custom';
+        btnModeCustom.classList.add('active');
+        btnModeUniform.classList.remove('active');
+        viewModeCustom.style.display = 'block';
+        viewModeUniform.style.display = 'none';
+        renderCustomPipelineList();
+        updateSimulation();
+      });
+
+      btnModeUniform.addEventListener('click', () => {
+        generatorMode = 'uniform';
+        btnModeUniform.classList.add('active');
+        btnModeCustom.classList.remove('active');
+        viewModeUniform.style.display = 'block';
+        viewModeCustom.style.display = 'none';
+        updateSimulation();
+      });
+
+      // Render Custom Pipeline Rows
+      function renderCustomPipelineList() {
+        if (!customPipelineList) return;
+        customPipelineList.innerHTML = '';
+        if (customPipelineCount) customPipelineCount.textContent = customPipelines.length;
+
+        if (customPipelines.length === 0) {
+          customPipelineList.innerHTML = `
+            <div style="padding: 16px; text-align: center; color: #71717a; font-size: 0.82rem; background: rgba(0,0,0,0.2); border-radius: 8px;">
+              Noch keine Pipelines angelegt. Klicke auf eine Schnellauswahl oben oder auf "➕ Weiteres Set hinzufügen".
+            </div>
+          `;
+          return;
+        }
+
+        customPipelines.forEach((pipeline, idx) => {
+          const row = document.createElement('div');
+          row.className = 'custom-pipeline-row';
+
+          row.innerHTML = `
+            <span class="custom-pipeline-idx">#${idx + 1}</span>
+            <input type="text" class="custom-pipeline-name-input" value="${pipeline.name || `Set #${idx + 1}`}" placeholder="Set Name" />
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <span style="font-size: 0.8rem; color: #94a3b8;">Größe:</span>
+              <input type="number" class="custom-pipeline-size-input" min="1" max="5000" value="${pipeline.size || 100}" />
+              <span style="font-size: 0.78rem; color: #71717a;">Karten</span>
+            </div>
+            <div style="display: flex; gap: 4px; align-items: center; margin-left: auto;">
+              <button type="button" class="custom-pipeline-quick-btn btn-quick-add" data-delta="50">+50</button>
+              <button type="button" class="custom-pipeline-quick-btn btn-quick-add" data-delta="100">+100</button>
+              <button type="button" class="custom-pipeline-quick-btn btn-quick-sub" data-delta="50">-50</button>
+              <button type="button" class="custom-pipeline-del-btn" title="Dieses Set entfernen">✕</button>
+            </div>
+          `;
+
+          const nameInp = row.querySelector('.custom-pipeline-name-input');
+          const sizeInp = row.querySelector('.custom-pipeline-size-input');
+          const delBtn = row.querySelector('.custom-pipeline-del-btn');
+          const quickBtns = row.querySelectorAll('.btn-quick-add, .btn-quick-sub');
+
+          nameInp.addEventListener('input', () => {
+            pipeline.name = nameInp.value;
+          });
+
+          sizeInp.addEventListener('input', () => {
+            const val = parseInt(sizeInp.value, 10);
+            if (!isNaN(val) && val > 0) {
+              pipeline.size = val;
+              updateSimulation();
+            }
+          });
+
+          quickBtns.forEach((qb) => {
+            qb.addEventListener('click', () => {
+              const delta = parseInt(qb.getAttribute('data-delta'), 10) || 50;
+              const isSub = qb.classList.contains('btn-quick-sub');
+              const newSize = isSub ? Math.max(10, (pipeline.size || 100) - delta) : (pipeline.size || 100) + delta;
+              pipeline.size = newSize;
+              sizeInp.value = newSize;
+              updateSimulation();
+            });
+          });
+
+          delBtn.addEventListener('click', () => {
+            customPipelines.splice(idx, 1);
+            renderCustomPipelineList();
+            updateSimulation();
+          });
+
+          customPipelineList.appendChild(row);
+        });
+      }
+
+      // Add Set Handler
+      btnAddCustomSet.addEventListener('click', () => {
+        const isAppendActive = chkAppend ? chkAppend.checked : false;
+        const currentPool = isAppendActive ? allCards.filter((c) => !c.setId) : allCards;
+        const totalPlanned = customPipelines.reduce((s, p) => s + (p.size || 0), 0);
+        const remaining = Math.max(0, currentPool.length - totalPlanned);
+
+        const newSize = remaining >= 100 ? 100 : remaining > 0 ? remaining : 100;
+        customPipelines.push({
+          id: `p_${Date.now()}_${customPipelines.length + 1}`,
+          name: `Set #${customPipelines.length + 1}`,
+          size: newSize,
+        });
+        renderCustomPipelineList();
+        updateSimulation();
+      });
+
+      // Add Remaining as Set
+      btnAddRemainingAsSet.addEventListener('click', () => {
+        const isAppendActive = chkAppend ? chkAppend.checked : false;
+        const currentPool = isAppendActive ? allCards.filter((c) => !c.setId) : allCards;
+        const totalPlanned = customPipelines.reduce((s, p) => s + (p.size || 0), 0);
+        const remaining = Math.max(0, currentPool.length - totalPlanned);
+
+        if (remaining <= 0) {
+          showToast('Keine unverteilten Restkarten mehr im Pool vorhanden.');
+          return;
+        }
+
+        customPipelines.push({
+          id: `p_${Date.now()}_${customPipelines.length + 1}`,
+          name: `Set #${customPipelines.length + 1}`,
+          size: remaining,
+        });
+        renderCustomPipelineList();
+        updateSimulation();
+      });
+
+      // Clear Custom Sets
+      btnClearCustomSets.addEventListener('click', () => {
+        customPipelines = [];
+        renderCustomPipelineList();
+        updateSimulation();
+      });
+
+      // Split Template Chips Handler
+      container.querySelectorAll('.split-template-chip').forEach((chip) => {
+        chip.addEventListener('click', () => {
+          const tIdx = parseInt(chip.getAttribute('data-template-idx'), 10);
+          const template = splitTemplates[tIdx];
+          if (template && Array.isArray(template.sets)) {
+            customPipelines = template.sets.map((sz, i) => ({
+              id: `p_${Date.now()}_${i + 1}`,
+              name: `Set #${i + 1}`,
+              size: sz,
+            }));
+            renderCustomPipelineList();
+            updateSimulation();
+          }
+        });
+      });
 
       function updateSimulation() {
         useHitRule = chkUseHit.checked;
         hitsPerSet = parseInt(inpHitsPerSet.value, 10) || 1;
-        minHitPrice = parseFloat(inpMinHitPrice.value) || 5.00;
+        minHitPrice = parseFloat(inpMinHitPrice.value) || 5.0;
+        proportionalHits = chkProportionalHits ? chkProportionalHits.checked : true;
         const useDupLimit = chkUseMaxDup ? chkUseMaxDup.checked : true;
-        const maxDup = useDupLimit ? (parseInt(inpMaxDup.value, 10) || 1) : null;
+        const maxDup = useDupLimit ? parseInt(inpMaxDup.value, 10) || 1 : null;
         useBaseRange = chkUseBase.checked;
         minBasePrice = parseFloat(inpMinBasePrice.value) || 0;
         maxBasePrice = parseFloat(inpMaxBasePrice.value) || Infinity;
         strategy = selStrategy.value;
         namePrefix = inpPrefix.value || 'Set #';
 
-        const isAppend = chkAppend ? chkAppend.checked : false;
-        const availablePool = isAppend ? allCards.filter(c => !c.setId) : allCards;
+        const isAppendActive = chkAppend ? chkAppend.checked : false;
+        const availablePool = isAppendActive ? allCards.filter((c) => !c.setId) : allCards;
 
-        const hitCandidates = availablePool.filter(c => (c.lastPrice || 0) >= minHitPrice);
-        const baseCandidates = availablePool.filter(c => {
+        const hitCandidates = availablePool.filter((c) => (c.lastPrice || 0) >= minHitPrice);
+        const baseCandidates = availablePool.filter((c) => {
           const p = c.lastPrice || 0;
           if (useHitRule && p >= minHitPrice) return false;
           if (useBaseRange) return p >= minBasePrice && p <= maxBasePrice;
           return true;
         });
 
-        let maxSets = 0;
-        if (useHitRule && hitsPerSet > 0) {
-          maxSets = calculateMaxPossibleSets(hitCandidates, baseCandidates, selectedPackSize, hitsPerSet, maxDup);
+        if (generatorMode === 'custom') {
+          const totalPlanned = customPipelines.reduce((sum, p) => sum + (p.size || 0), 0);
+          const totalAvailable = availablePool.length;
+          const remaining = totalAvailable - totalPlanned;
+          const pct = totalAvailable > 0 ? Math.min(100, Math.round((totalPlanned / totalAvailable) * 100)) : 0;
+
+          if (customCapacityText) {
+            customCapacityText.textContent = `${totalPlanned} / ${totalAvailable} Karten (${pct}%)`;
+          }
+
+          if (customCapacityBar) {
+            customCapacityBar.style.width = `${Math.min(100, pct)}%`;
+            if (totalPlanned === totalAvailable) {
+              customCapacityBar.style.background = '#4ade80';
+            } else if (totalPlanned < totalAvailable) {
+              customCapacityBar.style.background = '#38bdf8';
+            } else {
+              customCapacityBar.style.background = '#ef4444';
+            }
+          }
+
+          if (customCapacityStatus) {
+            if (totalPlanned === totalAvailable && totalAvailable > 0) {
+              customCapacityStatus.innerHTML = `<span style="color: #4ade80;">✅ Perfekt aufgeteilt! Alle ${totalAvailable} Karten aus dem Pool sind exakt verplant.</span>`;
+            } else if (totalPlanned < totalAvailable) {
+              customCapacityStatus.innerHTML = `<span style="color: #facc15;">⚠️ Noch ${remaining} Restkarten im Pool unverteilt.</span>`;
+            } else {
+              customCapacityStatus.innerHTML = `<span style="color: #ef4444;">🛑 Geplante Karten (${totalPlanned}) überschreiten den verfügbaren Pool (${totalAvailable}) um ${Math.abs(remaining)} Karten!</span>`;
+            }
+          }
+
+          simContainer.innerHTML = `
+            <div>✨ Gefundene Hits (≥ ${minHitPrice.toFixed(2)} €): <strong style="color: #facc15;">${hitCandidates.length}</strong></div>
+            <div>🃏 Basis-Karten: <strong style="color: #38bdf8;">${baseCandidates.length}</strong></div>
+            <div>🛡️ Duplikat-Limit: <strong style="color: #38bdf8;">${useDupLimit ? `Max ${maxDup}x` : 'Unbegrenzt'}</strong></div>
+            <div>📦 Geplante Sets: <strong style="color: #c084fc;">${customPipelines.length} Sets (${customPipelines.map((p) => p.size).join(' + ')} Karten)</strong></div>
+          `;
+
+          // Action Button in custom mode
+          const isValid = customPipelines.length > 0 && totalPlanned <= totalAvailable && totalPlanned > 0;
+          actionButtonsContainer.innerHTML = `
+            <button type="button" id="btn-run-generate-custom" class="shadcn-btn shadcn-btn-primary" style="width: 100%; padding: 14px 20px; font-size: 1rem; justify-content: center; font-weight: 700; background: linear-gradient(135deg, #a855f7, #6366f1) !important; color: #fff !important; border: none !important;" ${!isValid ? 'disabled style="opacity: 0.5;"' : ''}>
+              ${isValid ? `🚀 Alle ${customPipelines.length} definierten Pipelines (${totalPlanned} Karten) generieren` : '⚠️ Pipeline-Größe ungültig oder übersteigt Pool'}
+            </button>
+          `;
+
+          const btnRunCustom = actionButtonsContainer.querySelector('#btn-run-generate-custom');
+          if (btnRunCustom && isValid) {
+            btnRunCustom.addEventListener('click', () => executeCustomGeneration());
+          }
         } else {
-          maxSets = calculateMaxPossibleSets([], hitCandidates.concat(baseCandidates), selectedPackSize, 0, maxDup);
-        }
+          // UNIFORM MODE
+          let maxSets = 0;
+          if (useHitRule && hitsPerSet > 0) {
+            maxSets = calculateMaxPossibleSets(hitCandidates, baseCandidates, selectedPackSize, hitsPerSet, maxDup);
+          } else {
+            maxSets = calculateMaxPossibleSets([], hitCandidates.concat(baseCandidates), selectedPackSize, 0, maxDup);
+          }
 
-        const totalUsed = maxSets * selectedPackSize;
-        const remaining = Math.max(0, availablePool.length - totalUsed);
+          const totalUsed = maxSets * selectedPackSize;
+          const remaining = Math.max(0, availablePool.length - totalUsed);
 
-        simContainer.innerHTML = `
-          <div>✨ Gefundene Hits (≥ ${minHitPrice.toFixed(2)} €): <strong style="color: #facc15;">${hitCandidates.length}</strong></div>
-          <div>🃏 Basis-Karten: <strong style="color: #38bdf8;">${baseCandidates.length}</strong></div>
-          <div>🛡️ Duplikat-Limit: <strong style="color: #38bdf8;">${useDupLimit ? `Max ${maxDup}x` : 'Unbegrenzt'}</strong></div>
-          <div>📦 Mögliche Sets: <strong style="color: #4ade80;">${maxSets} Sets à ${selectedPackSize} Karten</strong></div>
-          <div>⚠️ Nicht zugeordnete Restkarten: <strong style="color: #cbd5e1;">${remaining}</strong></div>
-        `;
+          simContainer.innerHTML = `
+            <div>✨ Gefundene Hits (≥ ${minHitPrice.toFixed(2)} €): <strong style="color: #facc15;">${hitCandidates.length}</strong></div>
+            <div>🃏 Basis-Karten: <strong style="color: #38bdf8;">${baseCandidates.length}</strong></div>
+            <div>🛡️ Duplikat-Limit: <strong style="color: #38bdf8;">${useDupLimit ? `Max ${maxDup}x` : 'Unbegrenzt'}</strong></div>
+            <div>📦 Mögliche Sets: <strong style="color: #4ade80;">${maxSets} Sets à ${selectedPackSize} Karten</strong></div>
+            <div>⚠️ Nicht zugeordnete Restkarten: <strong style="color: #cbd5e1;">${remaining}</strong></div>
+          `;
 
-        if (maxSets <= 0) {
-          btnRunSingle.disabled = true;
-          btnRunSingle.style.opacity = '0.5';
-          btnRunAll.disabled = true;
-          btnRunAll.style.opacity = '0.5';
-          btnRunAll.textContent = '⚠️ Keine vollständigen Sets möglich';
-        } else {
-          btnRunSingle.disabled = false;
-          btnRunSingle.style.opacity = '1';
-          btnRunSingle.textContent = `📦 Nur 1 Set (${selectedPackSize} Karten)`;
-          btnRunAll.disabled = false;
-          btnRunAll.style.opacity = '1';
-          btnRunAll.textContent = `🚀 Alle ${maxSets} Sets generieren`;
+          actionButtonsContainer.innerHTML = `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <button type="button" id="btn-run-generate-single-set" class="shadcn-btn shadcn-btn-secondary" style="padding: 12px 16px; font-size: 0.9375rem; justify-content: center; font-weight: 700; border-color: rgba(168, 85, 247, 0.5); color: #d8b4fe; background: rgba(168, 85, 247, 0.12);" ${maxSets <= 0 ? 'disabled style="opacity: 0.5;"' : ''}>
+                📦 Nur 1 Set (${selectedPackSize} Karten)
+              </button>
+              <button type="button" id="btn-run-generate-all-sets" class="shadcn-btn shadcn-btn-primary" style="padding: 12px 16px; font-size: 0.9375rem; justify-content: center; font-weight: 700; background: linear-gradient(135deg, #a855f7, #6366f1) !important; color: #fff !important; border: none !important;" ${maxSets <= 0 ? 'disabled style="opacity: 0.5;"' : ''}>
+                ${maxSets > 0 ? `🚀 Alle ${maxSets} Sets generieren` : '⚠️ Keine vollständigen Sets möglich'}
+              </button>
+            </div>
+          `;
+
+          const btnRunSingle = actionButtonsContainer.querySelector('#btn-run-generate-single-set');
+          const btnRunAll = actionButtonsContainer.querySelector('#btn-run-generate-all-sets');
+
+          if (btnRunSingle && maxSets > 0) {
+            btnRunSingle.addEventListener('click', () => executeUniformGeneration(1));
+          }
+          if (btnRunAll && maxSets > 0) {
+            btnRunAll.addEventListener('click', () => executeUniformGeneration(null));
+          }
         }
       }
 
-      chipButtons.forEach(btn => {
+      chipButtons.forEach((btn) => {
         btn.addEventListener('click', () => {
-          chipButtons.forEach(b => b.classList.remove('active'));
+          chipButtons.forEach((b) => b.classList.remove('active'));
           btn.classList.add('active');
           selectedPackSize = parseInt(btn.getAttribute('data-size'), 10);
-          customSizeInput.value = selectedPackSize;
+          if (customSizeInput) customSizeInput.value = selectedPackSize;
           updateSimulation();
         });
       });
 
-      customSizeInput.addEventListener('input', () => {
-        const val = parseInt(customSizeInput.value, 10);
-        if (!isNaN(val) && val > 0) {
-          selectedPackSize = val;
-          chipButtons.forEach(b => {
-            if (parseInt(b.getAttribute('data-size'), 10) === val) b.classList.add('active');
-            else b.classList.remove('active');
-          });
-          updateSimulation();
-        }
-      });
+      if (customSizeInput) {
+        customSizeInput.addEventListener('input', () => {
+          const val = parseInt(customSizeInput.value, 10);
+          if (!isNaN(val) && val > 0) {
+            selectedPackSize = val;
+            chipButtons.forEach((b) => {
+              if (parseInt(b.getAttribute('data-size'), 10) === val) b.classList.add('active');
+              else b.classList.remove('active');
+            });
+            updateSimulation();
+          }
+        });
+      }
 
       chkUseHit.addEventListener('change', () => {
         container.querySelector('#hit-rule-fields').style.opacity = chkUseHit.checked ? '1' : '0.4';
@@ -5059,9 +5431,9 @@ function renderBulkScanTab(container) {
         });
       }
 
-      dupChipButtons.forEach(btn => {
+      dupChipButtons.forEach((btn) => {
         btn.addEventListener('click', () => {
-          dupChipButtons.forEach(b => b.classList.remove('active'));
+          dupChipButtons.forEach((b) => b.classList.remove('active'));
           btn.classList.add('active');
           selectedMaxDup = parseInt(btn.getAttribute('data-dup'), 10);
           inpMaxDup.value = selectedMaxDup;
@@ -5073,7 +5445,7 @@ function renderBulkScanTab(container) {
         const val = parseInt(inpMaxDup.value, 10);
         if (!isNaN(val) && val > 0) {
           selectedMaxDup = val;
-          dupChipButtons.forEach(b => {
+          dupChipButtons.forEach((b) => {
             if (parseInt(b.getAttribute('data-dup'), 10) === val) b.classList.add('active');
             else b.classList.remove('active');
           });
@@ -5092,23 +5464,62 @@ function renderBulkScanTab(container) {
 
       inpHitsPerSet.addEventListener('input', updateSimulation);
       inpMinHitPrice.addEventListener('input', updateSimulation);
+      if (chkProportionalHits) chkProportionalHits.addEventListener('change', updateSimulation);
       inpMinBasePrice.addEventListener('input', updateSimulation);
       inpMaxBasePrice.addEventListener('input', updateSimulation);
       selStrategy.addEventListener('change', updateSimulation);
       inpPrefix.addEventListener('input', updateSimulation);
 
+      renderCustomPipelineList();
       updateSimulation();
 
-      function executeGeneration(maxSets = null) {
-        const isAppend = chkAppend ? chkAppend.checked : false;
+      // Custom Pipeline Execution
+      function executeCustomGeneration() {
+        const isAppendActive = chkAppend ? chkAppend.checked : false;
         const useDupLimit = chkUseMaxDup ? chkUseMaxDup.checked : true;
-        const maxDup = useDupLimit ? (parseInt(inpMaxDup.value, 10) || 1) : null;
+        const maxDup = useDupLimit ? parseInt(inpMaxDup.value, 10) || 1 : null;
+
+        const config = {
+          customSets: customPipelines.map((p, idx) => ({
+            name: (p.name || `Set #${idx + 1}`).trim(),
+            targetSize: parseInt(p.size, 10) || 10,
+          })),
+          useHitRule: chkUseHit.checked,
+          hitsPerSet: parseInt(inpHitsPerSet.value, 10) || 1,
+          minHitPrice: parseFloat(inpMinHitPrice.value) || 5.0,
+          proportionalHits: chkProportionalHits ? chkProportionalHits.checked : true,
+          useMaxDuplicates: useDupLimit,
+          maxDuplicates: maxDup,
+          useBaseRange: chkUseBase.checked,
+          minBasePrice: parseFloat(inpMinBasePrice.value) || 0,
+          maxBasePrice: parseFloat(inpMaxBasePrice.value) || Infinity,
+          strategy: selStrategy.value,
+          namePrefix: inpPrefix.value || 'Set #',
+          append: isAppendActive,
+        };
+
+        const result = setBuilderInstance.generateSets(allCards, config);
+        if (result.totalSets > 0) {
+          currentModalTab = 'overview';
+          renderModalContent();
+          showToast(`🎉 ${result.totalSets} Pipelines (${customPipelines.map((p) => p.size).join(' + ')} Karten) erfolgreich erstellt!`);
+        } else {
+          alert(result.error || 'Fehler beim Generieren der Sets.');
+        }
+      }
+
+      // Uniform Execution
+      function executeUniformGeneration(maxSets = null) {
+        const isAppendActive = chkAppend ? chkAppend.checked : false;
+        const useDupLimit = chkUseMaxDup ? chkUseMaxDup.checked : true;
+        const maxDup = useDupLimit ? parseInt(inpMaxDup.value, 10) || 1 : null;
 
         const config = {
           packSize: selectedPackSize,
           useHitRule: chkUseHit.checked,
           hitsPerSet: parseInt(inpHitsPerSet.value, 10) || 1,
-          minHitPrice: parseFloat(inpMinHitPrice.value) || 5.00,
+          minHitPrice: parseFloat(inpMinHitPrice.value) || 5.0,
+          proportionalHits: false,
           useMaxDuplicates: useDupLimit,
           maxDuplicates: maxDup,
           useBaseRange: chkUseBase.checked,
@@ -5117,7 +5528,7 @@ function renderBulkScanTab(container) {
           strategy: selStrategy.value,
           namePrefix: inpPrefix.value || 'Set #',
           maxSets: maxSets,
-          append: isAppend,
+          append: isAppendActive,
         };
 
         const result = setBuilderInstance.generateSets(allCards, config);
@@ -5133,19 +5544,33 @@ function renderBulkScanTab(container) {
           alert(result.error || 'Fehler beim Generieren der Sets.');
         }
       }
-
-      btnRunSingle.addEventListener('click', () => executeGeneration(1));
-      btnRunAll.addEventListener('click', () => executeGeneration(null));
     }
 
     // --- Tab 2: Sets Übersicht ---
     function renderOverviewTab(container) {
       const sets = setBuilderInstance.getSets();
       const allCards = bulkScannerInstance.scanItems || [];
-      const assignedCount = allCards.filter(c => c.setId).length;
+      const assignedCount = allCards.filter((c) => c.setId).length;
+
+      // Compute overview analytics across all sets
+      let totalValueAllSets = 0;
+      let totalCardsInSets = 0;
+      const setAverages = [];
+
+      sets.forEach((s) => {
+        const st = setBuilderInstance.calculateSetStats(s);
+        totalValueAllSets += st.totalValue;
+        totalCardsInSets += st.cardCount;
+        if (st.cardCount > 0) setAverages.push(st.avgPrice);
+      });
+
+      const overallAvg = totalCardsInSets > 0 ? totalValueAllSets / totalCardsInSets : 0;
+      const minAvg = setAverages.length > 0 ? Math.min(...setAverages) : 0;
+      const maxAvg = setAverages.length > 0 ? Math.max(...setAverages) : 0;
+      const avgSpread = maxAvg - minAvg;
 
       container.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
           <div>
             <h4 style="font-size: 1.05rem; font-weight: 700; color: #fff; margin: 0 0 2px 0;">
               Pipeline Sets (${sets.length})
@@ -5157,6 +5582,9 @@ function renderBulkScanTab(container) {
           <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
             <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-overview-create-set" style="padding: 6px 12px; font-size: 0.8125rem;">
               ➕ Neues Set
+            </button>
+            <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-overview-balance-values" style="padding: 6px 12px; font-size: 0.8125rem; border-color: rgba(168, 85, 247, 0.4); color: #d8b4fe;" ${sets.length <= 1 ? 'disabled' : ''} title="Gleicht die Durchschnittspreise pro Karte über alle Sets gleichmäßig an">
+              ⚖️ Werte über Sets ausgleichen
             </button>
             <button type="button" class="shadcn-btn shadcn-btn-secondary" id="btn-overview-separate-duplicates-all" style="padding: 6px 12px; font-size: 0.8125rem; border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;" ${sets.length === 0 ? 'disabled' : ''} title="Ordnet alle Sets so an, dass keine Duplikate direkt hintereinander liegen">
               🔀 Duplikate entzerren (Alle)
@@ -5173,6 +5601,28 @@ function renderBulkScanTab(container) {
           </div>
         </div>
 
+        ${sets.length > 0 ? `
+          <!-- Value Balance Analytics Banner -->
+          <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 10px; padding: 10px 16px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 0.82rem;">
+              <span>📦 Gesamtwert: <strong style="color: #4ade80;">${totalValueAllSets.toFixed(2)} €</strong></span>
+              <span>•</span>
+              <span>Ø pro Karte: <strong style="color: #38bdf8;">${overallAvg.toFixed(2)} €</strong></span>
+              <span>•</span>
+              <span>Ø-Spanne: <strong style="${avgSpread < 0.2 ? 'color: #4ade80;' : 'color: #facc15;'}">${minAvg.toFixed(2)} € – ${maxAvg.toFixed(2)} € (Diff: ${avgSpread.toFixed(2)} €)</strong></span>
+            </div>
+            ${avgSpread <= 0.2 ? `
+              <span class="hit-slot-badge" style="background: rgba(74, 222, 128, 0.15); border-color: rgba(74, 222, 128, 0.4); color: #4ade80;">
+                ✨ Optimal ausbalanciert
+              </span>
+            ` : `
+              <span class="hit-slot-badge" style="background: rgba(250, 204, 21, 0.15); border-color: rgba(250, 204, 21, 0.4); color: #facc15;">
+                ⚖️ Klicke 'Werte über Sets ausgleichen' zum Feinabgleich
+              </span>
+            `}
+          </div>
+        ` : ''}
+
         <div id="overview-sets-grid-container"></div>
       `;
 
@@ -5182,7 +5632,7 @@ function renderBulkScanTab(container) {
         gridContainer.innerHTML = `
           <div style="text-align: center; padding: 48px 16px; background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.12); border-radius: 12px;">
             <p style="font-size: 1.1rem; color: #e2e8f0; font-weight: 600; margin: 0 0 8px 0;">Noch keine Sets angelegt</p>
-            <p style="color: #94a3b8; font-size: 0.875rem; margin: 0 0 16px 0;">Wechsle zum Tab "Pipeline Generator", um deine ${allCards.length} Karten in gleichmäßige Sets aufzuteilen.</p>
+            <p style="color: #94a3b8; font-size: 0.875rem; margin: 0 0 16px 0;">Wechsle zum Tab "Pipeline Generator", um deine ${allCards.length} Karten in gleichmäßige oder individuelle Sets aufzuteilen.</p>
             <button type="button" class="shadcn-btn shadcn-btn-primary" id="btn-empty-switch-generate">
               ⚙️ Jetzt Sets generieren
             </button>
@@ -5203,7 +5653,7 @@ function renderBulkScanTab(container) {
         const cardEl = document.createElement('div');
         cardEl.className = 'set-card-item';
 
-        const topCardsPreviewHtml = set.cards.slice(0, 4).map(c => `
+        const topCardsPreviewHtml = set.cards.slice(0, 4).map((c) => `
           <div style="display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #cbd5e1; background: rgba(0,0,0,0.3); padding: 3px 6px; border-radius: 4px;" title="${c.detectedName || c.rawName}">
             <span class="csv-index-badge" style="font-size: 0.68rem; padding: 1px 4px;">CSV #${c.originalIndex || c.index}</span>
             <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 130px;">${c.nameDe || c.detectedName || c.rawName}</span>
@@ -5300,7 +5750,9 @@ function renderBulkScanTab(container) {
             return;
           }
           activeStreamQueue = [...set.cards];
-          try { localStorage.setItem('cache_stream_queue', JSON.stringify(activeStreamQueue)); } catch(e) {}
+          try {
+            localStorage.setItem('cache_stream_queue', JSON.stringify(activeStreamQueue));
+          } catch (e) {}
           saveCachedUserData(currentUser?.id);
           await syncStreamQueueToSupabase(activeStreamQueue, 0);
           closeModal();
@@ -5319,6 +5771,12 @@ function renderBulkScanTab(container) {
           setBuilderInstance.createEmptySet(name.trim());
           renderModalContent();
         }
+      });
+
+      container.querySelector('#btn-overview-balance-values')?.addEventListener('click', () => {
+        setBuilderInstance.balanceExistingSets(allCards, 1);
+        renderModalContent();
+        showToast(`✨ Durchschnittswerte über alle ${sets.length} Sets wurden erfolgreich angeglichen!`);
       });
 
       container.querySelector('#btn-overview-separate-duplicates-all')?.addEventListener('click', () => {
