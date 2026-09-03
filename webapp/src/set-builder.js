@@ -9,7 +9,7 @@ import { WHATNOT_COLUMNS } from './csv-parser.js';
 import { escapeCsvCell } from './bulk-scanner.js';
 
 /**
- * Returns a unique identity string for a card (by name and set code/number, e.g. Boltund 50091)
+ * Returns a unique identity string for a card (by name and set code/number, e.g. Libelldra M2088)
  */
 export function getCardIdentityKey(card) {
   if (!card) return 'unknown';
@@ -18,12 +18,12 @@ export function getCardIdentityKey(card) {
     return `cm_${card.productId || card.cmId}`;
   }
 
-  const name = (card.detectedName || card.nameDe || card.rawName || '').trim().toLowerCase();
+  const spec = getCardSpeciesKey(card);
   const code = (card.detectedCode || card.code || card.cardNumber || card.rawCode || '').trim().toLowerCase();
   const set = (card.setNameDe || card.rawSet || '').trim().toLowerCase();
 
-  if (code && name) {
-    return `${name}__${code}`;
+  if (code && spec && spec !== 'unknown') {
+    return `${spec}__${code}`;
   }
   if (code && set) {
     return `${set}__${code}`;
@@ -31,25 +31,26 @@ export function getCardIdentityKey(card) {
   if (code) {
     return `code_${code}`;
   }
-  if (name && set) {
-    return `${name}__${set}`;
+  if (spec && set) {
+    return `${spec}__${set}`;
   }
-  return name || 'unknown_card';
+  return spec || (card.detectedName || card.nameDe || card.rawName || 'unknown_card').toLowerCase();
 }
 
 /**
- * Returns a normalized character / Pokemon species identity string (e.g. 'pikachu', 'glurak', 'monkey d. luffy')
+ * Returns a normalized character / Pokemon species identity string (e.g. 'pikachu', 'glurak', 'libelldra', 'ambidiffel')
  */
 export function getCardSpeciesKey(card) {
   if (!card) return 'unknown';
 
-  let name = (card.nameDe || card.detectedName || card.nameEn || card.rawName || '').trim();
+  let name = (card.nameDe || card.detectedName || card.nameEn || card.rawName || (card.whatnot && card.whatnot.titel) || '').trim();
   if (!name) return 'unknown';
 
-  // Strip set code, card number prefix/postfix, bracketed/parenthesized info
+  // Strip set code, card number prefix/postfix, pipe separators e.g. "Libelldra (Flygon) | Inferno-X (JP)", and bracketed/parenthesized info
   let clean = name
     .replace(/^#\d+\s+/, '')
-    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*\|.*$/g, '') // remove trailing '| Inferno-X (JP)'
+    .replace(/\s*\([^)]*\)/g, '') // remove parenthesized English name e.g. '(Flygon)'
     .replace(/\s*\[[^\]]*\]/g, '')
     .trim();
 
@@ -245,12 +246,15 @@ export function calculateMaxPossibleSets(hitCards, baseCards, packSize, hitsPerS
       }
     }
 
-    // Check Base cards constraint
+    // Check Base cards constraint (surplus hits count as eligible cards)
+    const surplusHits = hitsPerSet > 0 ? Math.max(0, hitCards.length - s * hitsPerSet) : 0;
+    const totalAvailableForBase = baseCards.length + surplusHits;
+
     if (neededBase > 0) {
-      if (Math.floor(baseCards.length / neededBase) < s) return false;
+      if (totalAvailableForBase < s * neededBase) return false;
       if (maxDuplicates && maxDuplicates > 0) {
         const baseCounts = new Map();
-        baseCards.forEach((c) => {
+        [...baseCards, ...hitCards].forEach((c) => {
           const k = getCardIdentityKey(c);
           baseCounts.set(k, (baseCounts.get(k) || 0) + 1);
         });
@@ -258,7 +262,7 @@ export function calculateMaxPossibleSets(hitCards, baseCards, packSize, hitsPerS
         for (const [, cnt] of baseCounts) {
           effectiveBase += Math.min(cnt, s * maxDuplicates);
         }
-        if (effectiveBase < s * neededBase) return false;
+        if (effectiveBase < s * packSize) return false;
       }
     }
 
@@ -564,7 +568,7 @@ export class SetBuilder {
   /**
    * Balances the average card price across all given sets using multi-way 2-opt swaps.
    * Ensures that sets with different or equal capacities achieve a nearly identical average card price (€/card)
-   * while respecting maximum duplicate constraints.
+   * while respecting maximum duplicate constraints and evenly dispersing Pokemon species.
    */
   balanceSetsAverageValue(setsToBalance = null, maxDuplicates = null) {
     const targetSets = setsToBalance || this.sets;
@@ -593,22 +597,50 @@ export class SetBuilder {
     if (totalCardsAll === 0) return targetSets;
     const globalTargetAvg = totalValueAll / totalCardsAll;
 
-    // Helper to check if swapping cardA from setA with cardB from setB violates maxDuplicates
+    // Pre-index card counts per set for O(1) diversity checks
+    const setCardIdentityMaps = new Map();
+    activeSets.forEach((s) => {
+      const m = new Map();
+      s.cards.forEach((c) => {
+        const k = getCardIdentityKey(c);
+        m.set(k, (m.get(k) || 0) + 1);
+      });
+      setCardIdentityMaps.set(s.id, m);
+    });
+
+    // Helper to check if swapping cardA from setA with cardB from setB preserves duplicate and species diversity
     const isSwapDuplicateSafe = (setA, cardA, setB, cardB) => {
-      if (!maxDuplicates || maxDuplicates <= 0) return true;
       const keyA = getCardIdentityKey(cardA);
       const keyB = getCardIdentityKey(cardB);
 
-      // If both cards have the same identity, counts don't change
-      if (keyA === keyB) return true;
+      // If both cards have the same identity, swapping doesn't change anything
+      if (keyA === keyB) return false;
 
-      // Check setA when receiving cardB
-      const countBInA = setA.cards.filter((c) => c !== cardA && getCardIdentityKey(c) === keyB).length;
-      if (countBInA + 1 > maxDuplicates) return false;
+      const mapA = setCardIdentityMaps.get(setA.id);
+      const mapB = setCardIdentityMaps.get(setB.id);
 
-      // Check setB when receiving cardA
-      const countAInB = setB.cards.filter((c) => c !== cardB && getCardIdentityKey(c) === keyA).length;
-      if (countAInB + 1 > maxDuplicates) return false;
+      const countAInA = mapA?.get(keyA) || 0;
+      const countAInB = mapB?.get(keyA) || 0;
+
+      const countBInB = mapB?.get(keyB) || 0;
+      const countBInA = mapA?.get(keyB) || 0;
+
+      // Duplicate limit constraint
+      if (maxDuplicates && maxDuplicates > 0) {
+        if (countBInA + 1 > maxDuplicates) return false;
+        if (countAInB + 1 > maxDuplicates) return false;
+      }
+
+      // Diversity Rule: Do not increase imbalance!
+      // New difference between sets for cardA must not exceed current difference
+      const oldDiffA = Math.abs(countAInA - countAInB);
+      const newDiffA = Math.abs(countAInA - 1 - (countAInB + 1));
+      if (newDiffA > oldDiffA) return false;
+
+      // New difference between sets for cardB must not exceed current difference
+      const oldDiffB = Math.abs(countBInB - countBInA);
+      const newDiffB = Math.abs(countBInB - 1 - (countBInA + 1));
+      if (newDiffB > oldDiffB) return false;
 
       return true;
     };
@@ -706,8 +738,71 @@ export class SetBuilder {
         setLow.cards[idxL] = cardH;
         cardH.setId = setLow.id;
 
+        // Update card count maps
+        const keyH = getCardIdentityKey(cardH);
+        const keyL = getCardIdentityKey(cardL);
+        const mapH = setCardIdentityMaps.get(setHigh.id);
+        const mapL = setCardIdentityMaps.get(setLow.id);
+        if (mapH) {
+          mapH.set(keyH, Math.max(0, (mapH.get(keyH) || 1) - 1));
+          mapH.set(keyL, (mapH.get(keyL) || 0) + 1);
+        }
+        if (mapL) {
+          mapL.set(keyL, Math.max(0, (mapL.get(keyL) || 1) - 1));
+          mapL.set(keyH, (mapL.get(keyH) || 0) + 1);
+        }
+
         currentVariance = calculateTotalVariance();
         improved = true;
+      }
+    }
+
+    // Duplicate Equalization Pass: strictly reduces difference between sets for cards with similar price
+    for (let i = 0; i < activeSets.length; i++) {
+      for (let j = 0; j < activeSets.length; j++) {
+        if (i === j) continue;
+        const setA = activeSets[i];
+        const setB = activeSets[j];
+        const mapA = setCardIdentityMaps.get(setA.id);
+        const mapB = setCardIdentityMaps.get(setB.id);
+
+        for (let idxA = 0; idxA < setA.cards.length; idxA++) {
+          const cardA = setA.cards[idxA];
+          const keyA = getCardIdentityKey(cardA);
+          const countAInA = mapA?.get(keyA) || 0;
+          const countAInB = mapB?.get(keyA) || 0;
+
+          // Only swap if setA has more than setB + 1 (i.e. difference >= 2)
+          if (countAInA >= countAInB + 2) {
+            const priceA = typeof cardA.lastPrice === 'number' ? cardA.lastPrice : 0;
+
+            for (let idxB = 0; idxB < setB.cards.length; idxB++) {
+              const cardB = setB.cards[idxB];
+              const keyB = getCardIdentityKey(cardB);
+              if (keyA === keyB) continue;
+
+              const countBInB = mapB?.get(keyB) || 0;
+              const countBInA = mapA?.get(keyB) || 0;
+
+              // Only swap if setB has more than setA + 1 of cardB, and prices are close (<= 0.30 €)
+              if (countBInB >= countBInA + 2) {
+                const priceB = typeof cardB.lastPrice === 'number' ? cardB.lastPrice : 0;
+                if (Math.abs(priceA - priceB) <= 0.30) {
+                  setA.cards[idxA] = cardB;
+                  cardB.setId = setA.id;
+                  setB.cards[idxB] = cardA;
+                  cardA.setId = setB.id;
+
+                  mapA.set(keyA, countAInA - 1);
+                  mapA.set(keyB, countBInA + 1);
+                  mapB.set(keyB, countBInB - 1);
+                  mapB.set(keyA, countAInB + 1);
+                  break;
+                }
+              }
+            }
+          }
+        }
       }
     }
 
@@ -941,10 +1036,12 @@ export class SetBuilder {
       while (hitsRemaining && hitCandidates.length > 0) {
         let assignedAny = false;
 
-        // In balanced mode, assign from most expensive hit to set that has hit quota and lowest relative value
+        // In balanced mode, assign from most expensive hit to set that has hit quota, lowest duplicate count, and lowest relative value
         for (let i = 0; i < hitCandidates.length; i++) {
           const hitCard = hitCandidates[i];
           const hitPrice = hitCard.lastPrice || 0;
+          const hitIdentKey = getCardIdentityKey(hitCard);
+          const hitSpecKey = getCardSpeciesKey(hitCard);
 
           // Find eligible sets that still need hits
           const eligibleSets = createdSets.filter((s) => {
@@ -955,11 +1052,32 @@ export class SetBuilder {
 
           if (eligibleSets.length === 0) continue;
 
+          // Dispersal Filter: Prefer sets with lowest count of this hit card
+          let minIdent = Infinity;
+          eligibleSets.forEach((s) => {
+            const cnt = setCardCounts.get(s.id)?.get(hitIdentKey) || 0;
+            if (cnt < minIdent) minIdent = cnt;
+          });
+          let candidateSets = eligibleSets.filter(
+            (s) => (setCardCounts.get(s.id)?.get(hitIdentKey) || 0) === minIdent
+          );
+
+          // Dispersal Filter: Prefer sets with lowest count of this Pokemon species
+          let minSpec = Infinity;
+          candidateSets.forEach((s) => {
+            const specCnt = setSpeciesCounts.get(s.id)?.get(hitSpecKey) || 0;
+            if (specCnt < minSpec) minSpec = specCnt;
+          });
+          const specFiltered = candidateSets.filter(
+            (s) => (setSpeciesCounts.get(s.id)?.get(hitSpecKey) || 0) === minSpec
+          );
+          const poolForHit = specFiltered.length > 0 ? specFiltered : candidateSets;
+
           // Score eligible sets: in balanced mode, pick set with highest normalized deficit
-          let chosenSet = eligibleSets[0];
+          let chosenSet = poolForHit[0];
           if (strategy === 'balanced') {
             let minProjNormalizedVal = Infinity;
-            for (const s of eligibleSets) {
+            for (const s of poolForHit) {
               const currentTotal = getSetCurrentTotal(s);
               const targetSetTotal = s.targetSize * globalTargetAvg;
               const normalizedVal = (currentTotal + hitPrice) / (targetSetTotal || 1);
@@ -997,10 +1115,11 @@ export class SetBuilder {
       remainingCardsPool.sort((a, b) => (a.originalIndex || 0) - (b.originalIndex || 0));
     }
 
-    // Helper to find best candidate set for a card in balanced mode
+    // Helper to find best candidate set for a card in balanced mode with strict identity and species dispersal
     const findBestSetForCard = (card) => {
       const cardPrice = card.lastPrice || 0;
       const specKey = getCardSpeciesKey(card);
+      const identKey = getCardIdentityKey(card);
 
       const eligibleSets = createdSets.filter((s) => canAddCardToSet(s, card));
       if (eligibleSets.length === 0) return null;
@@ -1010,30 +1129,71 @@ export class SetBuilder {
         return eligibleSets[0];
       }
 
-      // Balanced mode: score by proximity to target set average and species diversity
+      // 1. Primary Dispersal Constraint: Sets with the minimum count of this exact card
+      let minIdentCount = Infinity;
+      eligibleSets.forEach((s) => {
+        const cnt = setCardCounts.get(s.id)?.get(identKey) || 0;
+        if (cnt < minIdentCount) minIdentCount = cnt;
+      });
+
+      let candidateSets = eligibleSets.filter((s) => {
+        const cnt = setCardCounts.get(s.id)?.get(identKey) || 0;
+        return cnt === minIdentCount;
+      });
+
+      // If all candidate sets already have minIdentCount > 0, also filter by normalized density (cnt / targetSize)
+      if (minIdentCount > 0 && candidateSets.length < eligibleSets.length) {
+        let minNormIdent = Infinity;
+        eligibleSets.forEach((s) => {
+          const cnt = setCardCounts.get(s.id)?.get(identKey) || 0;
+          const norm = cnt / s.targetSize;
+          if (norm < minNormIdent) minNormIdent = norm;
+        });
+        candidateSets = eligibleSets.filter((s) => {
+          const cnt = setCardCounts.get(s.id)?.get(identKey) || 0;
+          const norm = cnt / s.targetSize;
+          return norm <= minNormIdent + 0.005;
+        });
+      }
+
+      // 2. Secondary Dispersal Constraint: Pokemon species diversity
+      let minSpecCount = Infinity;
+      candidateSets.forEach((s) => {
+        const specCnt = setSpeciesCounts.get(s.id)?.get(specKey) || 0;
+        if (specCnt < minSpecCount) minSpecCount = specCnt;
+      });
+
+      const bestSpeciesCandidates = candidateSets.filter((s) => {
+        const specCnt = setSpeciesCounts.get(s.id)?.get(specKey) || 0;
+        return specCnt === minSpecCount;
+      });
+
+      const poolToScore = bestSpeciesCandidates.length > 0 ? bestSpeciesCandidates : candidateSets;
+
+      // 3. Score candidates by: Proportional Fill Progress Parity + Value Parity
       let bestSet = null;
       let bestScore = Infinity;
 
-      for (const s of eligibleSets) {
+      for (const s of poolToScore) {
         const currentCount = s.cards.length;
         const currentTotal = getSetCurrentTotal(s);
         const projectedAvg = (currentTotal + cardPrice) / (currentCount + 1);
 
-        // Value deviation penalty
-        const valueDeviation = Math.pow(projectedAvg - globalTargetAvg, 2);
+        const fillRatio = currentCount / s.targetSize;
 
-        // Species diversity factor
-        const specCount = setSpeciesCounts.get(s.id)?.get(specKey) || 0;
-        const diversityPenalty = specCount * 0.05;
+        // Absolute error from global pool average price
+        const valueDeviation = Math.abs(projectedAvg - globalTargetAvg);
 
-        const score = valueDeviation + diversityPenalty;
+        // Prioritize sets with lowest fillRatio to keep all sets filling in lockstep, while minimizing value deviation
+        const score = fillRatio * 10 + valueDeviation;
+
         if (score < bestScore) {
           bestScore = score;
           bestSet = s;
         }
       }
 
-      return bestSet || eligibleSets[0];
+      return bestSet || poolToScore[0] || eligibleSets[0];
     };
 
     while (remainingCardsPool.length > 0) {
