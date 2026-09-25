@@ -1,4 +1,4 @@
-import { getGermanCardDetails, formatCardMeta } from './tcg-translations.js';
+import { getGermanCardDetails, formatCardMeta, resolveOverlayNames } from './tcg-translations.js';
 import { extractCardCode, parseCardCodeComponents } from './csv-parser.js';
 
 function getGameSlug(item, code = '') {
@@ -527,15 +527,60 @@ export class StreamOverlay {
     this.render();
   }
 
+  renderCardListItemHtml(card, originalIndex, currentIndex) {
+    const resolved = resolveOverlayNames(card);
+    const nameDe = resolved.nameDe;
+    const nameEn = resolved.nameEn;
+    const setNameDe = resolved.setNameDe;
+    const cardCode = resolved.cardCode;
+    const variantTag = resolved.variantTag;
+    const isCurrent = originalIndex === currentIndex;
+    const isSold = card.isSold || originalIndex < currentIndex;
+    const hasPrice = card.lastPrice !== null && card.lastPrice !== undefined;
+    const priceDisplay = hasPrice ? `${card.lastPrice.toFixed(2).replace('.', ',')} €` : '-';
+    const soldPriceDisplay = (card.soldPrice !== undefined && card.soldPrice !== null) ? `${Number(card.soldPrice).toFixed(2).replace('.', ',')} €` : null;
+    const rawImage = card.imageUrl || card.cardDetails?.image_url || null;
+    const imageSrc = getProxiedImageUrl(rawImage);
+    const langFlag = getLanguageFlag(card.rawLanguage);
+
+    return `
+      <div class="so-list-card-item ${isCurrent ? 'is-current' : ''} ${isSold ? 'is-sold' : ''}" data-card-idx="${originalIndex}">
+        <div class="so-list-index-badge">#${originalIndex + 1}</div>
+        ${imageSrc ? `<img src="${imageSrc}" class="so-list-thumb" alt="${nameDe}" onerror="this.onerror=null; this.src='/logo.png';" />` : `
+          <div class="so-list-thumb-placeholder">🃏</div>
+        `}
+        <div class="so-list-info">
+          <div class="so-list-title-de">${nameDe}</div>
+          ${nameEn ? `<div class="so-list-title-en">${nameEn}</div>` : ''}
+          <div class="so-list-set-code">
+            <span>${setNameDe}</span>
+            ${cardCode ? `<span>• <strong>${cardCode}</strong></span>` : ''}
+            ${variantTag ? `<span class="so-list-pill" style="background: rgba(168,85,247,0.15); color: #d8b4fe; border-color: rgba(168,85,247,0.3); font-weight: 700;">✨ ${variantTag}</span>` : ''}
+          </div>
+          <div style="display: flex; gap: 6px; margin-top: 4px; align-items: center; flex-wrap: wrap;">
+            <span class="so-list-pill">${card.rawCondition || 'NM'}</span>
+            <span class="so-list-pill">${langFlag} ${card.rawLanguage || 'EN'}</span>
+            ${isCurrent ? `<span class="so-list-status-badge current">Aktiv</span>` : ''}
+            ${isSold ? `<span class="so-list-status-badge sold">✓ Verkauft ${soldPriceDisplay ? `(${soldPriceDisplay})` : ''}</span>` : ''}
+          </div>
+        </div>
+        <div class="so-list-price">
+          <div>${soldPriceDisplay || priceDisplay}</div>
+          <div style="font-size: 0.6875rem; color: #71717a; font-weight: 500;">${soldPriceDisplay ? 'Verkaufspreis' : 'CM Preis'}</div>
+        </div>
+      </div>
+    `;
+  }
+
   renderListDrawerHtml(totalCards, stats) {
     const q = (this.searchTerm || '').toLowerCase().trim();
     const filtered = this.queue.map((card, idx) => ({ card, originalIndex: idx })).filter(({ card, originalIndex }) => {
       if (!q) return true;
-      const details = getGermanCardDetails(card);
-      const nameDe = (card.nameDe || details.nameDe || '').toLowerCase();
-      const nameEn = (card.nameEn || card.detectedName || card.rawName || '').toLowerCase();
-      const setName = (card.setNameDe || details.setNameDe || '').toLowerCase();
-      const code = (card.detectedCode || card.rawCode || '').toLowerCase();
+      const resolved = resolveOverlayNames(card);
+      const nameDe = (resolved.nameDe || '').toLowerCase();
+      const nameEn = (resolved.nameEn || '').toLowerCase();
+      const setName = (resolved.setNameDe || '').toLowerCase();
+      const code = (resolved.cardCode || '').toLowerCase();
       const indexStr = String(originalIndex + 1);
       return nameDe.includes(q) || nameEn.includes(q) || setName.includes(q) || code.includes(q) || indexStr === q;
     });
@@ -568,52 +613,7 @@ export class StreamOverlay {
               <div style="text-align: center; padding: 48px 20px; color: #71717a;">
                 Keine Karten für "<strong>${this.searchTerm}</strong>" gefunden.
               </div>
-            ` : filtered.map(({ card, originalIndex }) => {
-              const details = getGermanCardDetails(card);
-              const nameDe = card.nameDe || details.nameDe;
-              const nameEn = card.nameEn || card.detectedName || '';
-              const setNameDe = card.setNameDe || details.setNameDe;
-              const cardCode = card.detectedCode || card.rawCode || '';
-              const isCurrent = originalIndex === this.currentIndex;
-              const isSold = card.isSold || originalIndex < this.currentIndex;
-              const hasPrice = card.lastPrice !== null && card.lastPrice !== undefined;
-              const priceDisplay = hasPrice ? `${card.lastPrice.toFixed(2).replace('.', ',')} €` : '-';
-              const soldPriceDisplay = (card.soldPrice !== undefined && card.soldPrice !== null) ? `${Number(card.soldPrice).toFixed(2).replace('.', ',')} €` : null;
-              const rawImage = card.imageUrl || card.cardDetails?.image_url || null;
-              const imageSrc = getProxiedImageUrl(rawImage);
-              const langFlag = getLanguageFlag(card.rawLanguage);
-              const rawVar = card.variant || details.variant || null;
-              const verNum = rawVar ? rawVar.replace(/\D/g, '') : '';
-              const variantTag = verNum ? `Version ${verNum}` : rawVar;
-
-              return `
-                <div class="so-list-card-item ${isCurrent ? 'is-current' : ''} ${isSold ? 'is-sold' : ''}" data-card-idx="${originalIndex}">
-                  <div class="so-list-index-badge">#${originalIndex + 1}</div>
-                  ${imageSrc ? `<img src="${imageSrc}" class="so-list-thumb" alt="Thumb" onerror="this.onerror=null; this.src='/logo.png';" />` : `
-                    <div class="so-list-thumb-placeholder">🃏</div>
-                  `}
-                  <div class="so-list-info">
-                    <div class="so-list-title-de">${nameDe}</div>
-                    ${nameEn && nameEn !== nameDe ? `<div class="so-list-title-en">${nameEn}</div>` : ''}
-                    <div class="so-list-set-code">
-                      <span>${setNameDe}</span>
-                      ${cardCode ? `<span>• <strong>${cardCode}</strong></span>` : ''}
-                      ${variantTag ? `<span class="so-list-pill" style="background: rgba(168,85,247,0.15); color: #d8b4fe; border-color: rgba(168,85,247,0.3); font-weight: 700;">✨ ${variantTag}</span>` : ''}
-                    </div>
-                    <div style="display: flex; gap: 6px; margin-top: 4px; align-items: center; flex-wrap: wrap;">
-                      <span class="so-list-pill">${card.rawCondition || 'NM'}</span>
-                      <span class="so-list-pill">${langFlag} ${card.rawLanguage || 'EN'}</span>
-                      ${isCurrent ? `<span class="so-list-status-badge current">Aktiv</span>` : ''}
-                      ${isSold ? `<span class="so-list-status-badge sold">✓ Verkauft ${soldPriceDisplay ? `(${soldPriceDisplay})` : ''}</span>` : ''}
-                    </div>
-                  </div>
-                  <div class="so-list-price">
-                    <div>${soldPriceDisplay || priceDisplay}</div>
-                    <div style="font-size: 0.6875rem; color: #71717a; font-weight: 500;">${soldPriceDisplay ? 'Verkaufspreis' : 'CM Preis'}</div>
-                  </div>
-                </div>
-              `;
-            }).join('')}
+            ` : filtered.map(({ card, originalIndex }) => this.renderCardListItemHtml(card, originalIndex, this.currentIndex)).join('')}
           </div>
         </div>
       </div>
@@ -709,11 +709,13 @@ export class StreamOverlay {
     }
 
     const currentCard = this.queue[this.currentIndex];
-    const details = getGermanCardDetails(currentCard);
-    const cardCode = currentCard.detectedCode || currentCard.rawCode || 'Code k.A.';
-    const nameDe = currentCard.nameDe || details.nameDe || 'Karte';
-    const nameEn = currentCard.nameEn || currentCard.detectedName || currentCard.rawName || '';
-    const setNameDe = currentCard.setNameDe || details.setNameDe || 'TCG Set';
+    const resolved = resolveOverlayNames(currentCard);
+    const cardCode = resolved.cardCode || 'Code k.A.';
+    const nameDe = resolved.nameDe || 'Karte';
+    const nameEn = resolved.nameEn || '';
+    const setNameDe = resolved.setNameDe || 'TCG Set';
+    const variantTag = resolved.variantTag;
+    const variantLabel = resolved.variantLabel;
 
     const hasPrice = currentCard.lastPrice !== null && currentCard.lastPrice !== undefined;
     const priceDisplay = hasPrice ? `${currentCard.lastPrice.toFixed(2).replace('.', ',')} €` : 'Keine DB-Daten';
@@ -726,8 +728,6 @@ export class StreamOverlay {
     const filterBadgesHtml = renderFilterBadges(filterDisplay, currentCard.rawCondition, currentCard.rawLanguage);
     const soldButtonText = this.getSoldButtonLabel(currentCard);
     const displayVal = this.currentInputPrice || '';
-
-    const meta = formatCardMeta(currentCard.cardDetails?.cardmarket_url || currentCard.card_id, nameDe, setNameDe, cardCode, currentCard.tcg);
 
     this.container.innerHTML = `
       <div class="stream-overlay-active glass-panel ${this.isFullscreen ? 'is-fullscreen' : ''}">
@@ -778,9 +778,9 @@ export class StreamOverlay {
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
               <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <div class="so-card-badge">${cardCode}</div>
-                ${(currentCard.variant || details.variant) ? `
+                ${variantTag ? `
                   <div class="so-card-badge" style="background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.35); color: #d8b4fe; font-weight: 700;">
-                    ✨ ${(details.variantLabel || `Version ${(currentCard.variant || details.variant).replace(/\D/g, '')}` || currentCard.variant)}
+                    ✨ ${variantLabel || variantTag}
                   </div>
                 ` : ''}
               </div>
@@ -798,7 +798,7 @@ export class StreamOverlay {
                 <strong class="so-set-name">${setNameDe}</strong>
               </div>
               <h1 class="so-card-title">${nameDe}</h1>
-              ${nameEn && nameEn !== nameDe ? `<div class="so-card-subtitle-en">Original: ${nameEn}</div>` : ''}
+              ${nameEn ? `<div class="so-card-subtitle-en">Original: ${nameEn}</div>` : ''}
             </div>
 
             <div class="so-price-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px;">
@@ -978,11 +978,11 @@ export class StreamOverlay {
           const q = (this.searchTerm || '').toLowerCase().trim();
           const filtered = this.queue.map((card, idx) => ({ card, originalIndex: idx })).filter(({ card, originalIndex }) => {
             if (!q) return true;
-            const details = getGermanCardDetails(card);
-            const nameDe = (card.nameDe || details.nameDe || '').toLowerCase();
-            const nameEn = (card.nameEn || card.detectedName || card.rawName || '').toLowerCase();
-            const setName = (card.setNameDe || details.setNameDe || '').toLowerCase();
-            const code = (card.detectedCode || card.rawCode || '').toLowerCase();
+            const resolved = resolveOverlayNames(card);
+            const nameDe = (resolved.nameDe || '').toLowerCase();
+            const nameEn = (resolved.nameEn || '').toLowerCase();
+            const setName = (resolved.setNameDe || '').toLowerCase();
+            const code = (resolved.cardCode || '').toLowerCase();
             const indexStr = String(originalIndex + 1);
             return nameDe.includes(q) || nameEn.includes(q) || setName.includes(q) || code.includes(q) || indexStr === q;
           });
@@ -990,48 +990,7 @@ export class StreamOverlay {
           if (filtered.length === 0) {
             scrollContainer.innerHTML = `<div style="text-align: center; padding: 48px 20px; color: #71717a;">Keine Karten für "<strong>${this.searchTerm}</strong>" gefunden.</div>`;
           } else {
-            scrollContainer.innerHTML = filtered.map(({ card, originalIndex }) => {
-              const details = getGermanCardDetails(card);
-              const nameDe = card.nameDe || details.nameDe;
-              const nameEn = card.nameEn || card.detectedName || '';
-              const setNameDe = card.setNameDe || details.setNameDe;
-              const cardCode = card.detectedCode || card.rawCode || '';
-              const isCurrent = originalIndex === this.currentIndex;
-              const isSold = card.isSold || originalIndex < this.currentIndex;
-              const hasPrice = card.lastPrice !== null && card.lastPrice !== undefined;
-              const priceDisplay = hasPrice ? `${card.lastPrice.toFixed(2).replace('.', ',')} €` : '-';
-              const soldPriceDisplay = (card.soldPrice !== undefined && card.soldPrice !== null) ? `${Number(card.soldPrice).toFixed(2).replace('.', ',')} €` : null;
-              const rawImage = card.imageUrl || card.cardDetails?.image_url || null;
-              const imageSrc = getProxiedImageUrl(rawImage);
-              const langFlag = getLanguageFlag(card.rawLanguage);
-
-              return `
-                <div class="so-list-card-item ${isCurrent ? 'is-current' : ''} ${isSold ? 'is-sold' : ''}" data-card-idx="${originalIndex}">
-                  <div class="so-list-index-badge">#${originalIndex + 1}</div>
-                  ${imageSrc ? `<img src="${imageSrc}" class="so-list-thumb" alt="Thumb" onerror="this.onerror=null; this.src='/logo.png';" />` : `
-                    <div class="so-list-thumb-placeholder">🃏</div>
-                  `}
-                  <div class="so-list-info">
-                    <div class="so-list-title-de">${nameDe}</div>
-                    ${nameEn && nameEn !== nameDe ? `<div class="so-list-title-en">${nameEn}</div>` : ''}
-                    <div class="so-list-set-code">
-                      <span>${setNameDe}</span>
-                      ${cardCode ? `<span>• <strong>${cardCode}</strong></span>` : ''}
-                    </div>
-                    <div style="display: flex; gap: 6px; margin-top: 4px; align-items: center; flex-wrap: wrap;">
-                      <span class="so-list-pill">${card.rawCondition || 'NM'}</span>
-                      <span class="so-list-pill">${langFlag} ${card.rawLanguage || 'EN'}</span>
-                      ${isCurrent ? `<span class="so-list-status-badge current">Aktiv</span>` : ''}
-                      ${isSold ? `<span class="so-list-status-badge sold">✓ Verkauft ${soldPriceDisplay ? `(${soldPriceDisplay})` : ''}</span>` : ''}
-                    </div>
-                  </div>
-                  <div class="so-list-price">
-                    <div>${soldPriceDisplay || priceDisplay}</div>
-                    <div style="font-size: 0.6875rem; color: #71717a; font-weight: 500;">${soldPriceDisplay ? 'Verkaufspreis' : 'CM Preis'}</div>
-                  </div>
-                </div>
-              `;
-            }).join('');
+            scrollContainer.innerHTML = filtered.map(({ card, originalIndex }) => this.renderCardListItemHtml(card, originalIndex, this.currentIndex)).join('');
           }
         }
       });

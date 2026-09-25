@@ -3270,33 +3270,568 @@ export function detectSetFromFraction(cardNumber, denominator, cardName = '') {
   return match;
 }
 
+// Comprehensive Pokémon TCG Trainer, Supporter, Item, Stadium, and Energy Dictionary
+export const TRAINER_NAME_EN_TO_DE = {
+  // Supporters
+  "Iono": "Enigmara",
+  "Professor's Research": "Forschung des Professors",
+  "Professors Research": "Forschung des Professors",
+  "Boss's Orders": "Befehl vom Boss",
+  "Bosses Orders": "Befehl vom Boss",
+  "Arven": "Pepper",
+  "Carmine": "Tara",
+  "Kieran": "Jo",
+  "Penny": "Cosima",
+  "Miriam": "Miriam",
+  "Nemona": "Nemila",
+  "Grusha": "Grusha",
+  "Geeta": "Sagaria",
+  "Rika": "Cay",
+  "Poppy": "Poppi",
+  "Larry": "Aoki",
+  "Hassel": "Sinius",
+  "Tulip": "Tulpi",
+  "Dendra": "Moira",
+  "Salvatore": "Salvatore",
+  "Jacq": "Jim",
+  "Clavell": "Clavel",
+  "Crispin": "Crispin",
+  "Drayton": "Levy",
+  "Lacey": "Erin",
+  "Amarys": "Hana",
+  "Briar": "Briar",
+  "Perrin": "Gemma",
+  "Lana's Aid": "Tröstende Worte von Tracy",
+  "Erika's Invitation": "Erikas Einladung",
+  "Giovanni's Charisma": "Giovannis Charisma",
+  "Daisy's Help": "Daisys Hilfe",
+  "Bill's Transfer": "Bills Verlegung",
+  "Judge": "Richter",
+  "Worker": "Arbeiterin",
+  "Youngster": "Teenager",
+  "Professor Sada's Vitality": "Antiquierte Vitalität von Prof. Antiqua",
+  "Professor Turo's Scenario": "Zukunftsszenario von Prof. Futurus",
+  "Explorer's Guidance": "Führung des Entdeckers",
+  "Ciphermaniac's Codebreaking": "Chiffrier-Code des Nerds",
+  "Morty's Conviction": "Jens' Überzeugung",
+  "Roseanne's Backup": "Beistand von Rosemarie",
+  "Cynthia's Ambition": "Cynthias Ehrgeiz",
+  "Irida": "Perla",
+  "Marnie": "Mary",
+  "Serena": "Serena",
+  "Cheren's Care": "Cherens Fürsorge",
+  "Melony": "Mel",
+  "Raihan": "Roy",
+  "Colress's Experiment": "Achromas' Experiment",
+  "Bea": "Saida",
+  "Bede": "Beto",
+  "Bird Keeper": "Vogelfänger",
+  "Brassius": "Kollardin",
+  "Candice": "Frida",
+  "Cheryl": "Raissa",
+  "Cook": "Koch",
+  "Copycat": "Nachahmerin",
+  "Elesa's Sparkle": "Kamillas Glanz",
+  "Giacomo": "Rio",
+  "Gordie": "Mac",
+  "Guzma": "Bromley",
+  "Kabu": "Kabu",
+  "Klara": "Klara",
+  "Korrina's Focus": "Connis Fokus",
+  "Leon": "Delion",
+  "Mallow": "Maho",
+  "Milo": "Yegg",
+  "Nessa": "Kate",
+  "Piers": "Nezz",
+  "Red's Challenge": "Rots Herausforderung",
+  "Roxanne": "Felizia",
+  "Skyla": "Géraldine",
+  "Sonia": "Sanis",
+  "Thorton": "Distmar",
+  "Volkner": "Volkner",
+  "Welder": "Schweißer",
+  "Zisu": "Zirpe",
+  "Aroma Lady": "Aromalady",
+  "Lady": "Dame",
+  "Beauty": "Schönheit",
+  "Fisherman": "Angler",
+  "Hiker": "Wanderer",
+  "Poké Maniac": "Poké-Maniac",
+  "Poke Maniac": "Poké-Maniac",
+  "Sightseer": "Urlauberin",
+  "Lillie": "Lilly",
+  "Lusamine": "Samantha",
+  "Gladion": "Gladio",
+  "Hau": "Tali",
+  "Acerola": "Lola",
+  "Kahili": "Kala",
+  "Mina": "Matsurika",
+  "Olivia": "Mayla",
+  "Sophocles": "Chrys",
+  "Nanu": "Yasu",
+  "Plumeria": "Fran",
+  "Faba": "Fabian",
+  "Professor Elm's Lecture": "Professor Linds Vorlesung",
+  "Professor Juniper": "Prof. Esche",
+  "Professor Oak's Setup": "Professor Eichs Vorbereitung",
+  "Professor Sycamore": "Prof. Platan",
+  "Professor Burnet": "Prof. Burnett",
+
+  // Items & Tools
+  "Ultra Ball": "Hyperball",
+  "Nest Ball": "Nestball",
+  "Quick Ball": "Fixball",
+  "Level Ball": "Levelball",
+  "Great Ball": "Superball",
+  "Poké Ball": "Pokéball",
+  "Poke Ball": "Pokéball",
+  "Master Ball": "Meisterball",
+  "Dusk Ball": "Finsterball",
+  "Dive Ball": "Tauchball",
+  "Timer Ball": "Timerball",
+  "Repeat Ball": "Wiederball",
+  "Net Ball": "Netzball",
+  "Heavy Ball": "Schwerball",
+  "Hisuian Heavy Ball": "Hisui-Schwerball",
+  "Cherish Ball": "Jubelball",
+  "Feather Ball": "Federball",
+  "Rare Candy": "Sonderbonbon",
+  "Switch": "Tausch",
+  "Switch Cart": "Tauschwagen",
+  "Escape Rope": "Fluchtseil",
+  "Super Rod": "Superangel",
+  "Ordinary Rod": "Gewöhnliche Angel",
+  "Energy Retrieval": "Energie-Zugewinn",
+  "Superior Energy Retrieval": "Überlegener Energie-Zugewinn",
+  "Night Stretcher": "Nachttrage",
+  "Earthen Vessel": "Irdenes Gefäß",
+  "Buddy-Buddy Poffin": "Knirps-Knirps-Poffin",
+  "Counter Catcher": "Konterfänger",
+  "Prime Catcher": "Prime-Fänger",
+  "Maximum Belt": "Maximalgürtel",
+  "Hero's Cape": "Heldenumhang",
+  "Heavy Baton": "Schwerer Schlagstock",
+  "Unfair Stamp": "Unfaire Marke",
+  "Secret Box": "Geheimbox",
+  "Hyper Aroma": "Hyperaroma",
+  "Pokégear 3.0": "Pokécom 3.0",
+  "Pokegear 3.0": "Pokécom 3.0",
+  "Trekking Shoes": "Wanderschuhe",
+  "Pal Pad": "Helferverbund",
+  "Energy Switch": "Energie-Umschalter",
+  "Lost Vacuum": "Nirgendwo-Sauger",
+  "Battle VIP Pass": "Kampf-VIP-Pass",
+  "Canceling Cologne": "Annullierendes Parfüm",
+  "Captivating Aroma": "Betörendes Aroma",
+  "Cram-o-matic": "Urglmator",
+  "Cross Receiver": "Kreuzempfänger",
+  "Cross Switcher": "Kreuzwechsler",
+  "Crushing Hammer": "Schmetterhammer",
+  "Enhanced Hammer": "Spezial-Hammer",
+  "Damage Pump": "Schadenspumpe",
+  "Dark Patch": "Finsternispflaster",
+  "Defiance Band": "Trotzband",
+  "Echoing Horn": "Echohorn",
+  "Electric Generator": "Elektro-Generator",
+  "Evolution Incense": "Entwicklungsrauch",
+  "Exp. Share": "EP-Teiler",
+  "Exp Share": "EP-Teiler",
+  "Fog Crystal": "Nebelkristall",
+  "Leftovers": "Überreste",
+  "Mirage Gate": "Mirage-Tor",
+  "Potion": "Trank",
+  "Super Potion": "Supertrank",
+  "Hyper Potion": "Hypertrank",
+  "Max Potion": "Top-Trank",
+  "Full Restore": "Top-Beleber",
+  "Revive": "Beleber",
+  "Max Revive": "Top-Beleber",
+  "Rescue Board": "Rettungsbrett",
+  "Technical Machine: Evolution": "Technische Maschine: Entwicklung",
+  "Technical Machine: Devolution": "Technische Maschine: Rückentwicklung",
+  "Technical Machine: Crisis Punch": "Technische Maschine: Krisenschlag",
+  "Technical Machine: Blindside": "Technische Maschine: Schleichangriff",
+  "Technical Machine: Turbo Energize": "Technische Maschine: Turbo-Energie",
+  "Bravery Charm": "Mutes Talisman",
+  "Choice Belt": "Wahlgürtel",
+  "Air Balloon": "Luftballon",
+  "Float Stone": "Leichtstein",
+  "Muscle Band": "Muskelband",
+  "Forest Seal Stone": "Wald-Siegelstein",
+  "Sky Seal Stone": "Himmels-Siegelstein",
+  "Earth Seal Stone": "Erd-Siegelstein",
+
+  // Stadiums
+  "Path to the Peak": "Schneegipfelpfad",
+  "Artazon": "Meszero",
+  "PokéStop": "PokéStop",
+  "PokeStop": "PokéStop",
+  "Mesagoza": "Mesalona City",
+  "Town Store": "Stadtladen",
+  "Beach Court": "Strandplatz",
+  "Temple of Sinnoh": "Tempel von Sinnoh",
+  "Collapsed Stadium": "Einstürzendes Stadion",
+  "Jamming Tower": "Störturm",
+  "Neutral Center": "Neutrales Zentrum",
+  "Grand Tree": "Riesenbaum",
+  "Dangerous Mine": "Gefährliche Mine",
+  "Lost City": "Verlorene Stadt",
+  "Training Court": "Trainingsplatz",
+  "Magma Basin": "Magmabecken",
+  "Lake Acuity": "Stärke-See",
+  "Galar Mine": "Galar-Mine",
+  "Turffield Stadium": "Turffield-Stadion",
+  "Stadium Nav": "Stadion-Navi",
+  "Festival Grounds": "Festplatz",
+
+  // Energy
+  "Double Turbo Energy": "Doppel-Turbo-Energie",
+  "Jet Energy": "Jet-Energie",
+  "Reversal Energy": "Umkehr-Energie",
+  "Mist Energy": "Nebel-Energie",
+  "Boomerang Energy": "Bumerang-Energie",
+  "Neo Upper Energy": "Neo-Obere-Energie",
+  "Legacy Energy": "Vermächtnis-Energie",
+  "Luminous Energy": "Leuchtende Energie",
+  "Therapeutic Energy": "Therapeutische Energie",
+  "Basic Grass Energy": "Pflanzen-Energie",
+  "Grass Energy": "Pflanzen-Energie",
+  "Basic Fire Energy": "Feuer-Energie",
+  "Fire Energy": "Feuer-Energie",
+  "Basic Water Energy": "Wasser-Energie",
+  "Water Energy": "Wasser-Energie",
+  "Basic Lightning Energy": "Elektro-Energie",
+  "Lightning Energy": "Elektro-Energie",
+  "Basic Psychic Energy": "Psycho-Energie",
+  "Psychic Energy": "Psycho-Energie",
+  "Basic Fighting Energy": "Kampf-Energie",
+  "Fighting Energy": "Kampf-Energie",
+  "Basic Darkness Energy": "Finsternis-Energie",
+  "Darkness Energy": "Finsternis-Energie",
+  "Basic Metal Energy": "Metall-Energie",
+  "Metal Energy": "Metall-Energie",
+  "Double Colorless Energy": "Doppel-Farblos-Energie",
+  "Twin Energy": "Zwillings-Energie",
+  "Capture Energy": "Fang-Energie",
+  "Aurora Energy": "Aurora-Energie",
+  "Speed Lightning Energy": "Tempo-Elektro-Energie",
+  "Horror Psychic Energy": "Horror-Psycho-Energie",
+  "Coating Metal Energy": "Beschichtungs-Metall-Energie",
+  "Wash Water Energy": "Wasch-Wasser-Energie",
+  "Heat Fire Energy": "Hitze-Feuer-Energie",
+  "Hiding Darkness Energy": "Tarn-Finsternis-Energie",
+  "Stone Fighting Energy": "Stein-Kampf-Energie",
+  "Aromatic Grass Energy": "Aroma-Pflanzen-Energie",
+  "Gift Energy": "Geschenk-Energie",
+  "V Guard Energy": "V-Schutz-Energie",
+  "Medical Energy": "Medizin-Energie",
+  "Regenerative Energy": "Regenerations-Energie"
+};
+
+// Other TCGs Character and Name Dictionaries
+export const OTHER_TCG_EN_TO_DE = {
+  // One Piece Card Game
+  "Monkey D. Luffy": "Monkey D. Ruffy",
+  "Monkey.D.Luffy": "Monkey D. Ruffy",
+  "Monkey D Luffy": "Monkey D. Ruffy",
+  "Luffy": "Ruffy",
+  "Roronoa Zoro": "Lorenor Zorro",
+  "Zoro": "Lorenor Zorro",
+  "Usopp": "Lysop",
+  "Tony Tony Chopper": "Tony Chopper",
+  "Tony.Tony.Chopper": "Tony Chopper",
+  "Tony Tony.Chopper": "Tony Chopper",
+  "Chopper": "Tony Chopper",
+  "Jinbe": "Jimbei",
+  "Jinbei": "Jimbei",
+  "Donquixote Doflamingo": "Don Quichotte de Flamingo",
+  "Doflamingo": "Don Quichotte de Flamingo",
+  "Edward Newgate": "Edward Newgate (Whitebeard)",
+  "Whitebeard": "Whitebeard",
+  "Charlotte Linlin": "Charlotte Linlin (Big Mom)",
+  "Big Mom": "Big Mom",
+  "Kuzan": "Kuzan (Aokiji)",
+  "Aokiji": "Aokiji",
+  "Sakazuki": "Sakazuki (Akainu)",
+  "Akainu": "Akainu",
+  "Borsalino": "Borsalino (Kizaru)",
+  "Kizaru": "Kizaru",
+  "Issho": "Issho (Fujitora)",
+  "Fujitora": "Fujitora",
+  "Portgas D. Ace": "Portgas D. Ace",
+  "Portgas.D.Ace": "Portgas D. Ace",
+  "Portgas D Ace": "Portgas D. Ace",
+  "Trafalgar Law": "Trafalgar Law",
+  "Eustass Captain Kid": "Eustass Captain Kid",
+  "Eustass Kid": "Eustass Captain Kid",
+  "Boa Hancock": "Boa Hancock",
+  "Nami": "Nami",
+  "Sanji": "Sanji",
+  "Nico Robin": "Nico Robin",
+  "Franky": "Franky",
+  "Brook": "Brook",
+  "Yamato": "Yamato",
+  "Shanks": "Shanks",
+  "Kaidou": "Kaido",
+  "Kaido": "Kaido",
+
+  // Disney Lorcana
+  "Mickey Mouse": "Micky Maus",
+  "Minnie Mouse": "Minnie Maus",
+  "Tinker Bell": "Naseweis",
+  "Beast": "Biest",
+  "Maleficent": "Malefiz",
+  "Captain Hook": "Käpt'n Hook",
+  "Ariel": "Arielle",
+  "Moana": "Vaiana",
+  "Genie": "Dschinni",
+  "Jafar": "Dschafar",
+  "Scar": "Narbe",
+  "Madam Mim": "Mad Madame Mim",
+  "Winnie the Pooh": "Pu der Bär",
+
+  // Yu-Gi-Oh!
+  "Blue-Eyes White Dragon": "Blauäugiger weißer Drache",
+  "Dark Magician": "Dunkler Magier",
+  "Dark Magician Girl": "Dunkles Magier-Mädchen",
+  "Red-Eyes Black Dragon": "Rotäugiger schwarzer Drache",
+  "Exodia the Forbidden One": "Exodia, die Verbotene",
+  "Slifer the Sky Dragon": "Slifer der Himmelsdrache",
+  "Obelisk the Tormentor": "Obelisk der Peiniger",
+  "The Winged Dragon of Ra": "Der geflügelte Drache von Ra",
+  "Pot of Greed": "Topf der Gier",
+  "Monster Reborn": "Wiedergeburt",
+  "Polymerization": "Polymerisation",
+  "Raigeki": "Raigeki",
+  "Mirror Force": "Spiegelkraft",
+  "Ash Blossom & Joyous Spring": "Aschenblüte & Freudiger Frühling"
+};
+
+// Normalized lookup key generator (strips punctuation, accents, spaces, symbols)
+export function normalizeLookupKey(str) {
+  return (str || '')
+    .toString()
+    .toLowerCase()
+    .replace(/['’.\-:\s&]/g, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+// Fast case-insensitive & normalized lookup maps
+const LOWER_EN_TO_DE = new Map();
+const LOWER_DE_TO_EN = new Map();
+const NORM_EN_TO_DE = new Map();
+const NORM_DE_TO_EN = new Map();
+
+function registerTranslation(en, de) {
+  if (!en || !de) return;
+  const enTrim = en.trim();
+  const deTrim = de.trim();
+
+  if (!LOWER_EN_TO_DE.has(enTrim.toLowerCase())) {
+    LOWER_EN_TO_DE.set(enTrim.toLowerCase(), deTrim);
+  }
+  if (!LOWER_DE_TO_EN.has(deTrim.toLowerCase())) {
+    LOWER_DE_TO_EN.set(deTrim.toLowerCase(), enTrim);
+  }
+
+  const normEn = normalizeLookupKey(enTrim);
+  const normDe = normalizeLookupKey(deTrim);
+  if (normEn && !NORM_EN_TO_DE.has(normEn)) NORM_EN_TO_DE.set(normEn, deTrim);
+  if (normDe && !NORM_DE_TO_EN.has(normDe)) NORM_DE_TO_EN.set(normDe, enTrim);
+}
+
+// Populate maps from dictionaries
+for (const [en, de] of Object.entries(POKEMON_NAME_EN_TO_DE)) {
+  registerTranslation(en, de);
+}
+for (const [de, en] of Object.entries(POKEMON_NAME_DE_TO_EN)) {
+  registerTranslation(en, de);
+}
+for (const [en, de] of Object.entries(TRAINER_NAME_EN_TO_DE)) {
+  registerTranslation(en, de);
+}
+for (const [en, de] of Object.entries(OTHER_TCG_EN_TO_DE)) {
+  registerTranslation(en, de);
+}
+
 /**
- * Translates a card name to German if known, preserving suffixes (e.g. ex, VMAX, GX, VSTAR)
+ * Sanitizes and extracts the pure base card title by removing set names, fractions, codes, rarities, etc.
+ */
+export function cleanBaseCardName(str) {
+  if (!str || typeof str !== 'string') return '';
+  let clean = str.trim();
+
+  // Strip leading card index like "#1 ", "#01 ", "1. ", "01 - "
+  clean = clean.replace(/^#?\d+[\.\s\-]+\s*/, '');
+
+  // Strip set names or notes in parentheses e.g. "(Obsidian Flames)", "(151)", "(German)", "(Schwert & Schild)"
+  clean = clean.replace(/\s*\([^\)]*\)/g, ' ').trim();
+
+  // Strip "aus <Set>" or "from <Set>"
+  clean = clean.replace(/\s+(?:aus|from|de|in)\s+([A-Za-z0-9\-_]+(?:\s+[A-Za-z0-9\-_]+){0,3})/i, '').trim();
+
+  // Strip card fractions e.g. "199/165", "#199/165", "020/189"
+  clean = clean.replace(/#?\b\d{1,4}\/\d{2,4}\b/g, '').trim();
+
+  // Strip variant tags like "V1", "V2", "Version 1"
+  clean = clean.replace(/\b(?:Version\s*\d+|V\d+)\b/gi, '').trim();
+
+  // Strip card codes like "#MEW173", "MEW173", "TWM204", "OBF199", "sv2a173", "CBB4C13", "OP05-119"
+  clean = clean.replace(/#?[A-Za-z]{2,5}[-_]?\d{1,4}[A-Za-z]?\b/g, '').trim();
+
+  // Strip standalone card numbers e.g. "#199", "#020"
+  clean = clean.replace(/#\d{1,4}\b/g, '').trim();
+
+  // Strip rarity tags like "SAR", "SIR", "AR", "UR", "SR", "RR", "HR", "CSR", "CHR", "SEC", "Promo"
+  clean = clean.replace(/\b(SAR|SIR|AR|UR|SR|RR|HR|CSR|CHR|SEC|Promo|[☆★⭐]+)\b/gi, '').trim();
+
+  // Replace underscores with space and tidy whitespace
+  clean = clean.replace(/_/g, ' ').replace(/^[-–—\s]+|[-–—\s]+$/g, '').replace(/\s+/g, ' ').trim();
+
+  return clean;
+}
+
+/**
+ * Translates a card name to German with 100% reliability, preserving suffixes and translating prefixes/forms
  */
 export function translateCardName(rawName, tcg = 'Pokemon') {
   if (!rawName || typeof rawName !== 'string') return '';
-  const clean = rawName.trim();
+  const clean = cleanBaseCardName(rawName);
   if (!clean || clean.toLowerCase() === 'karte') return 'Karte';
 
-  if (tcg !== 'Pokemon') {
+  const lower = clean.toLowerCase();
+  const norm = normalizeLookupKey(clean);
+
+  // 1. Direct match: If already known in German, return canonical German!
+  if (LOWER_DE_TO_EN.has(lower)) {
+    return clean;
+  }
+  if (NORM_DE_TO_EN.has(norm)) {
     return clean;
   }
 
-  // Check if direct match exists in dictionary
-  if (POKEMON_NAME_EN_TO_DE[clean]) {
-    return POKEMON_NAME_EN_TO_DE[clean];
+  // 2. Direct English -> German lookup
+  if (LOWER_EN_TO_DE.has(lower)) {
+    return LOWER_EN_TO_DE.get(lower);
+  }
+  if (NORM_EN_TO_DE.has(norm)) {
+    return NORM_EN_TO_DE.get(norm);
   }
 
-  // Extract base name and suffix e.g. "Charizard ex" -> base: "Charizard", suffix: "ex"
-  const suffixMatch = clean.match(/^([A-Za-z0-9'\.\s-]+?)\s+(ex|EX|GX|VMAX|VSTAR|V-UNION|V|LV\.\d+|Prime|Star|BREAK|Prism Star|Radiant|Tera|SP|FB|GL|C|G)$/i);
+  // 3. Tag Team Decomposition: e.g. "Reshiram & Charizard GX" or "Slowpoke & Psyduck"
+  if (clean.includes(' & ') || clean.includes(' and ')) {
+    const sep = clean.includes(' & ') ? ' & ' : ' and ';
+    const parts = clean.split(sep);
+    if (parts.length >= 2) {
+      const lastPart = parts[parts.length - 1];
+      const suffMatch = lastPart.match(/\s*[-–—]?\s*(ex|EX|GX|VMAX|VSTAR|V-UNION|V|LV\.\d+|Lv\.\d+|Prime|Star|BREAK|Prism Star|Radiant|Tera|SP|FB|GL|C|G)$/i);
+      let commonSuffix = '';
+      if (suffMatch) {
+        commonSuffix = ` ${suffMatch[1]}`;
+        parts[parts.length - 1] = lastPart.replace(suffMatch[0], '').trim();
+      }
+
+      const translatedParts = parts.map(p => translateCardName(p, tcg));
+      return `${translatedParts.join(' & ')}${commonSuffix}`.trim();
+    }
+  }
+
+  // 4. Suffix extraction (both spaced and hyphenated e.g. "Charizard ex", "Charizard-ex", "Charizard-EX", "Mewtwo GX")
+  let suffix = '';
+  let baseWithoutSuffix = clean;
+  const suffixMatch = clean.match(/^(.+?)\s*[-–—]?\s*(ex|EX|GX|VMAX|VSTAR|V-UNION|V|LV\.\d+|Lv\.\d+|Prime|Star|BREAK|Prism Star|Radiant|Tera|SP|FB|GL|C|G)$/i);
   if (suffixMatch && suffixMatch[1]) {
-    const base = suffixMatch[1].trim();
-    const suffix = suffixMatch[2].trim();
-    const deBase = POKEMON_NAME_EN_TO_DE[base] || base;
-    return `${deBase} ${suffix}`.trim();
+    baseWithoutSuffix = suffixMatch[1].trim();
+    suffix = ` ${suffixMatch[2].trim()}`;
+
+    // Test direct lookup of base
+    const baseLower = baseWithoutSuffix.toLowerCase();
+    const baseNorm = normalizeLookupKey(baseWithoutSuffix);
+
+    if (LOWER_DE_TO_EN.has(baseLower) || NORM_DE_TO_EN.has(baseNorm)) {
+      return `${baseWithoutSuffix}${suffix}`.trim();
+    }
+    if (LOWER_EN_TO_DE.has(baseLower)) {
+      return `${LOWER_EN_TO_DE.get(baseLower)}${suffix}`.trim();
+    }
+    if (NORM_EN_TO_DE.has(baseNorm)) {
+      return `${NORM_EN_TO_DE.get(baseNorm)}${suffix}`.trim();
+    }
   }
 
-  return clean;
+  // 5. Prefix extraction & regional / variant transformations
+  const PREFIX_PATTERNS = [
+    { regex: /^(?:Radiant|Strahlendes)\s+(.+)$/i, dePrefix: 'Strahlendes ' },
+    { regex: /^(?:Shining|Schimmerndes)\s+(.+)$/i, dePrefix: 'Schimmerndes ' },
+    { regex: /^(?:Shiny|Schillerndes)\s+(.+)$/i, dePrefix: 'Schillerndes ' },
+    { regex: /^(?:Dark|Dunkles)\s+(.+)$/i, dePrefix: 'Dunkles ' },
+    { regex: /^(?:Light|Helles)\s+(.+)$/i, dePrefix: 'Helles ' },
+    { regex: /^(?:Galarian|Galar[- ]?)\s*(.+)$/i, dePrefix: 'Galar-' },
+    { regex: /^(?:Hisuian|Hisui[- ]?)\s*(.+)$/i, dePrefix: 'Hisui-' },
+    { regex: /^(?:Alolan|Alola[- ]?)\s*(.+)$/i, dePrefix: 'Alola-' },
+    { regex: /^(?:Paldean|Paldea[- ]?)\s*(.+)$/i, dePrefix: 'Paldea-' },
+    { regex: /^(?:Mega|M)[- ]+(.+)$/i, dePrefix: 'Mega-' },
+    { regex: /^(?:Primal|Proto)[- ]+(.+)$/i, dePrefix: 'Proto-' },
+    { regex: /^(?:Origin Forme|Urform|Ur)[- ]+(.+)$/i, dePrefix: 'Ur-' },
+    { regex: /^(?:Dawn Wings)\s+(.+)$/i, dePrefix: 'Morgenschwingen-' },
+    { regex: /^(?:Dusk Mane)\s+(.+)$/i, dePrefix: 'Abendmähne-' },
+    { regex: /^(?:Ultra)\s+(.+)$/i, dePrefix: 'Ultra-' },
+    { regex: /^(?:Shadow Rider)\s+(.+)$/i, dePrefix: 'Rappstern-' },
+    { regex: /^(?:Ice Rider)\s+(.+)$/i, dePrefix: 'Schimmelreiter-' },
+    { regex: /^(?:Single Strike)\s+(.+)$/i, dePrefix: 'Fokussierter-Angriff-' },
+    { regex: /^(?:Rapid Strike)\s+(.+)$/i, dePrefix: 'Fließender-Angriff-' },
+    { regex: /^(?:Bloodmoon)\s+(.+)$/i, dePrefix: 'Blutmond-' },
+    { regex: /^(?:Ash)[- ]+(.+)$/i, dePrefix: 'Ash-' },
+    { regex: /^(?:Rocket's|Rockets)\s+(.+)$/i, dePrefix: 'Rockets ' },
+    { regex: /^(?:Brock's|Rockos)\s+(.+)$/i, dePrefix: 'Rockos ' },
+    { regex: /^(?:Misty's|Mistys)\s+(.+)$/i, dePrefix: 'Mistys ' },
+    { regex: /^(?:Lt\.?\s*Surge's|Major Bobs)\s+(.+)$/i, dePrefix: 'Major Bobs ' },
+    { regex: /^(?:Erika's|Erikas)\s+(.+)$/i, dePrefix: 'Erikas ' },
+    { regex: /^(?:Koga's|Kogas)\s+(.+)$/i, dePrefix: 'Kogas ' },
+    { regex: /^(?:Sabrina's|Sabrinas)\s+(.+)$/i, dePrefix: 'Sabrinas ' },
+    { regex: /^(?:Blaine's|Pyros)\s+(.+)$/i, dePrefix: 'Pyros ' },
+    { regex: /^(?:Giovanni's|Giovannis)\s+(.+)$/i, dePrefix: 'Giovannis ' },
+    { regex: /^(?:Team Magma's|Team Magmas)\s+(.+)$/i, dePrefix: 'Team Magmas ' },
+    { regex: /^(?:Team Aqua's|Team Aquas)\s+(.+)$/i, dePrefix: 'Team Aquas ' },
+    { regex: /^(?:Team Galactic's|Team Galaktiks)\s+(.+)$/i, dePrefix: 'Team Galaktiks ' },
+    { regex: /^(?:Team Plasma's|Team Plasmas)\s+(.+)$/i, dePrefix: 'Team Plasmas ' },
+    { regex: /^(?:Team Flare's|Team Flares)\s+(.+)$/i, dePrefix: 'Team Flares ' },
+  ];
+
+  for (const p of PREFIX_PATTERNS) {
+    const match = baseWithoutSuffix.match(p.regex);
+    if (match && match[1]) {
+      const coreName = match[1].trim();
+      const coreTrans = translateCardName(coreName, tcg);
+      return `${p.dePrefix}${coreTrans}${suffix}`.trim();
+    }
+  }
+
+  // 6. Word-by-word substitution fallback:
+  const words = baseWithoutSuffix.split(/\s+/);
+  if (words.length > 1) {
+    let anyReplaced = false;
+    const translatedWords = words.map(w => {
+      const wLower = w.toLowerCase();
+      const wNorm = normalizeLookupKey(w);
+      if (LOWER_EN_TO_DE.has(wLower)) {
+        anyReplaced = true;
+        return LOWER_EN_TO_DE.get(wLower);
+      }
+      if (NORM_EN_TO_DE.has(wNorm)) {
+        anyReplaced = true;
+        return NORM_EN_TO_DE.get(wNorm);
+      }
+      return w;
+    });
+
+    if (anyReplaced) {
+      return `${translatedWords.join(' ')}${suffix}`.trim();
+    }
+  }
+
+  return `${baseWithoutSuffix}${suffix}`.trim();
 }
 
 /**
@@ -3304,16 +3839,77 @@ export function translateCardName(rawName, tcg = 'Pokemon') {
  */
 export function getEnglishPokemonName(rawName) {
   if (!rawName || typeof rawName !== 'string') return '';
-  const clean = rawName.trim();
-  if (POKEMON_NAME_DE_TO_EN[clean]) return POKEMON_NAME_DE_TO_EN[clean];
-  if (POKEMON_NAME_EN_TO_DE[clean]) return clean;
+  const clean = cleanBaseCardName(rawName);
+  if (!clean || clean.toLowerCase() === 'karte') return '';
 
-  const suffixMatch = clean.match(/^([A-Za-z0-9'\.\s-]+?)\s+(ex|EX|GX|VMAX|VSTAR|V-UNION|V|LV\.\d+|Prime|Star|BREAK|Prism Star|Radiant|Tera|SP|FB|GL|C|G)$/i);
+  const lower = clean.toLowerCase();
+  const norm = normalizeLookupKey(clean);
+
+  // 1. Direct German -> English
+  if (LOWER_DE_TO_EN.has(lower)) {
+    return LOWER_DE_TO_EN.get(lower);
+  }
+  if (NORM_DE_TO_EN.has(norm)) {
+    return NORM_DE_TO_EN.get(norm);
+  }
+
+  // 2. Direct English check
+  if (LOWER_EN_TO_DE.has(lower) || NORM_EN_TO_DE.has(norm)) {
+    return clean;
+  }
+
+  // 3. Suffix extraction
+  let suffix = '';
+  let base = clean;
+  const suffixMatch = clean.match(/^(.+?)\s*[-–—]?\s*(ex|EX|GX|VMAX|VSTAR|V-UNION|V|LV\.\d+|Lv\.\d+|Prime|Star|BREAK|Prism Star|Radiant|Tera|SP|FB|GL|C|G)$/i);
   if (suffixMatch && suffixMatch[1]) {
-    const base = suffixMatch[1].trim();
-    const suffix = suffixMatch[2].trim();
-    const enBase = POKEMON_NAME_DE_TO_EN[base] || base;
-    return `${enBase} ${suffix}`.trim();
+    base = suffixMatch[1].trim();
+    suffix = ` ${suffixMatch[2].trim()}`;
+
+    const bLower = base.toLowerCase();
+    const bNorm = normalizeLookupKey(base);
+    if (LOWER_DE_TO_EN.has(bLower)) return `${LOWER_DE_TO_EN.get(bLower)}${suffix}`.trim();
+    if (NORM_DE_TO_EN.has(bNorm)) return `${NORM_DE_TO_EN.get(bNorm)}${suffix}`.trim();
+    if (LOWER_EN_TO_DE.has(bLower) || NORM_EN_TO_DE.has(bNorm)) return `${base}${suffix}`.trim();
+  }
+
+  // 4. Prefix extraction in reverse
+  const REV_PREFIXES = [
+    { regex: /^Strahlendes\s+(.+)$/i, enPrefix: 'Radiant ' },
+    { regex: /^Schimmerndes\s+(.+)$/i, enPrefix: 'Shining ' },
+    { regex: /^Schillerndes\s+(.+)$/i, enPrefix: 'Shiny ' },
+    { regex: /^Dunkles\s+(.+)$/i, enPrefix: 'Dark ' },
+    { regex: /^Helles\s+(.+)$/i, enPrefix: 'Light ' },
+    { regex: /^Galar[- ]\s*(.+)$/i, enPrefix: 'Galarian ' },
+    { regex: /^Hisui[- ]\s*(.+)$/i, enPrefix: 'Hisuian ' },
+    { regex: /^Alola[- ]\s*(.+)$/i, enPrefix: 'Alolan ' },
+    { regex: /^Paldea[- ]\s*(.+)$/i, enPrefix: 'Paldean ' },
+    { regex: /^Mega[- ]+(.+)$/i, enPrefix: 'Mega ' },
+    { regex: /^Proto[- ]+(.+)$/i, enPrefix: 'Primal ' },
+    { regex: /^Ur[- ]+(.+)$/i, enPrefix: 'Origin Forme ' },
+    { regex: /^Rockos\s+(.+)$/i, enPrefix: "Brock's " },
+    { regex: /^Mistys\s+(.+)$/i, enPrefix: "Misty's " },
+    { regex: /^Major Bobs\s+(.+)$/i, enPrefix: "Lt. Surge's " },
+    { regex: /^Erikas\s+(.+)$/i, enPrefix: "Erika's " },
+    { regex: /^Kogas\s+(.+)$/i, enPrefix: "Koga's " },
+    { regex: /^Sabrinas\s+(.+)$/i, enPrefix: "Sabrina's " },
+    { regex: /^Pyros\s+(.+)$/i, enPrefix: "Blaine's " },
+    { regex: /^Giovannis\s+(.+)$/i, enPrefix: "Giovanni's " },
+    { regex: /^Rockets\s+(.+)$/i, enPrefix: "Rocket's " },
+  ];
+
+  for (const p of REV_PREFIXES) {
+    const m = base.match(p.regex);
+    if (m && m[1]) {
+      const coreEn = getEnglishPokemonName(m[1].trim());
+      return `${p.enPrefix}${coreEn}${suffix}`.trim();
+    }
+  }
+
+  // 5. Tag team reverse
+  if (clean.includes(' & ')) {
+    const parts = clean.split(' & ');
+    return parts.map(p => getEnglishPokemonName(p)).join(' & ');
   }
 
   return clean;
@@ -3414,7 +4010,7 @@ export function formatCardMeta(cardId, rawName = '', rawSet = '', code = '', tcg
   const variantLabel = verNum ? `Version ${verNum}` : (variantTag ? `Version ${variantTag}` : '');
 
   // 3. Extract clean base card name
-  let nameClean = rawName || '';
+  let nameClean = cleanBaseCardName(rawName);
   if (!nameClean || nameClean.toLowerCase() === 'karte') {
     let baseSlug = extractedCardSlug.replace(/^tcgdex_/i, '').replace(/\([^)]*\)/g, '').trim();
     if (variantTag) {
@@ -3432,10 +4028,11 @@ export function formatCardMeta(cardId, rawName = '', rawSet = '', code = '', tcg
                         .replace(/PortgasDAce/i, 'Portgas.D.Ace')
                         .replace(/TonyTonyChopper/i, 'Tony Tony Chopper')
                         .trim();
+    nameClean = cleanBaseCardName(nameClean);
   }
 
   const nameDe = translateCardName(nameClean, tcg) || nameClean || 'Karte';
-  const nameEn = getEnglishPokemonName(nameClean) || nameClean || nameDe;
+  const nameEn = getEnglishPokemonName(nameClean) || getEnglishPokemonName(nameDe) || nameClean || nameDe;
 
   // 4. Extract clean set name
   const rawSetEff = rawSet || extractedSetSlug || '';
@@ -3482,7 +4079,7 @@ export function cleanCardName(cardId, tcg = 'Pokemon') {
 export function getGermanCardDetails(item) {
   if (!item) return { nameDe: 'Karte', setNameDe: 'TCG', nameEn: 'Karte', code: '' };
 
-  const rawName = item.detectedName || item.rawName || 'Karte';
+  const rawName = item.detectedName || item.rawName || item.name || item.nameDe || 'Karte';
   const tcg = item.tcg || 'Pokemon';
   const code = item.detectedCode || item.rawCode || '';
   const rawSet = item.rawSet || item.set || item.cardDetails?.set_name || '';
@@ -3495,6 +4092,103 @@ export function getGermanCardDetails(item) {
     nameEn: meta.nameEn,
     code: meta.cardCode || code,
     variant: meta.variant || item.variant || null,
+    variantLabel: meta.variantLabel || null,
     isTranslated: meta.nameDe !== rawName,
+  };
+}
+
+/**
+ * Resolves localized card names with a 100% guarantee that the primary name (nameDe) is in German.
+ * Deduces original/English name (nameEn) for display as a subtitle.
+ */
+export function resolveOverlayNames(card) {
+  if (!card) {
+    return {
+      nameDe: 'Karte',
+      nameEn: null,
+      setNameDe: 'TCG Set',
+      cardCode: '',
+      variantTag: null,
+      variantLabel: ''
+    };
+  }
+
+  const tcg = card.tcg || 'Pokemon';
+  const cardCode = (card.detectedCode || card.rawCode || '').trim();
+
+  // 1. Details from formatCardMeta / getGermanCardDetails
+  const details = getGermanCardDetails(card);
+
+  // 2. Gather candidate strings across all possible fields
+  const candidates = [
+    card.nameDe,
+    details.nameDe,
+    card.detectedName,
+    card.rawName,
+    card.name,
+    card.whatnot?.titel,
+    card.cardDetails?.name_de,
+    card.cardDetails?.name,
+    card.cardDetails?.cardmarket_url,
+    card.card_id,
+  ].filter(c => c && typeof c === 'string' && c.trim() && c.trim().toLowerCase() !== 'karte');
+
+  let bestDe = '';
+  let bestEn = card.nameEn || '';
+
+  // 3. Translate candidates
+  for (const cand of candidates) {
+    let cleanCand = cand;
+    if (cleanCand.startsWith('/') || cleanCand.includes('cardmarket.com') || cleanCand.includes('/Singles/') || cleanCand.includes('/Products/')) {
+      const parts = cleanCand.split('/').filter(Boolean);
+      cleanCand = parts[parts.length - 1] || cleanCand;
+    }
+    const cleaned = cleanBaseCardName(cleanCand);
+    if (!cleaned) continue;
+
+    const trans = translateCardName(cleaned, tcg);
+    if (trans && trans.toLowerCase() !== 'karte') {
+      bestDe = trans;
+      if (!bestEn) {
+        bestEn = getEnglishPokemonName(cleaned) || getEnglishPokemonName(trans) || cleaned;
+      }
+      break;
+    }
+  }
+
+  // Fallback if no translation matched
+  if (!bestDe) {
+    bestDe = details.nameDe || card.nameDe || cleanBaseCardName(card.detectedName || card.rawName || 'Karte');
+  }
+
+  // Guarantee bestDe is translated through translateCardName
+  const guaranteedDe = translateCardName(bestDe, tcg);
+  if (guaranteedDe && guaranteedDe.toLowerCase() !== 'karte') {
+    bestDe = guaranteedDe;
+  }
+
+  // Resolve English / Original subtitle name
+  if (!bestEn) {
+    const rawCandidate = cleanBaseCardName(card.nameEn || card.detectedName || card.rawName || card.whatnot?.titel || '');
+    bestEn = getEnglishPokemonName(rawCandidate) || getEnglishPokemonName(bestDe) || rawCandidate;
+  }
+  bestEn = cleanBaseCardName(bestEn);
+
+  // If bestEn is identical to bestDe, hide the subtitle
+  const isIdentical = !bestEn || (bestEn.toLowerCase().trim() === bestDe.toLowerCase().trim());
+  const finalEn = isIdentical ? null : bestEn;
+
+  const setNameDe = card.setNameDe || details.setNameDe || 'TCG Set';
+  const rawVar = card.variant || details.variant || null;
+  const verNum = rawVar ? rawVar.replace(/\D/g, '') : '';
+  const variantTag = verNum ? `Version ${verNum}` : rawVar;
+
+  return {
+    nameDe: bestDe,
+    nameEn: finalEn,
+    setNameDe,
+    cardCode: cardCode || details.code || '',
+    variantTag,
+    variantLabel: details.variantLabel || (variantTag ? `Version ${variantTag.replace(/\D/g, '') || variantTag}` : '')
   };
 }
