@@ -3,26 +3,21 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5v
 
 
 
-// Register declarativeNetRequest rules to inject Cardmarket Referer header for Amazon S3 images
+// Clean up legacy dynamic and session declarativeNetRequest rules to avoid cross-origin interference
 if (typeof chrome !== 'undefined' && chrome.declarativeNetRequest) {
-  chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: [1001],
-    addRules: [{
-      id: 1001,
-      priority: 1,
-      action: {
-        type: 'modifyHeaders',
-        requestHeaders: [
-          { header: 'referer', operation: 'set', value: 'https://www.cardmarket.com/' },
-          { header: 'origin', operation: 'set', value: 'https://www.cardmarket.com' }
-        ]
-      },
-      condition: {
-        urlFilter: '*cardmarket.com*',
-        resourceTypes: ['xmlhttprequest', 'image', 'other']
-      }
-    }]
-  }).catch(err => console.warn('Failed setting declarativeNetRequest rules:', err));
+  chrome.declarativeNetRequest.getDynamicRules?.().then(rules => {
+    const ids = rules.map(r => r.id);
+    if (ids.length > 0) {
+      chrome.declarativeNetRequest.updateDynamicRules({ removeRuleIds: ids, addRules: [] });
+    }
+  }).catch(err => console.warn('Failed cleaning dynamic declarativeNetRequest rules:', err));
+
+  chrome.declarativeNetRequest.getSessionRules?.().then(rules => {
+    const ids = rules.map(r => r.id);
+    if (ids.length > 0) {
+      chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: ids, addRules: [] });
+    }
+  }).catch(() => {});
 }
 
 // Convert Image Blob to WebP format with max dimension scaling via OffscreenCanvas
