@@ -15,7 +15,11 @@ function getGameSlug(item, code = '') {
 }
 
 export function getCardmarketSearchUrl(item) {
-  if (item.cardDetails?.cardmarket_url) {
+  if (
+    item.cardDetails?.cardmarket_url &&
+    !String(item.cardDetails.cardmarket_url).startsWith('/Manual/') &&
+    !String(item.cardDetails.cardmarket_url).includes('/Manual/')
+  ) {
     const path = item.cardDetails.cardmarket_url.startsWith('/') ? item.cardDetails.cardmarket_url : `/${item.cardDetails.cardmarket_url}`;
     return `https://www.cardmarket.com${path}`;
   }
@@ -57,7 +61,9 @@ export function getCardmarketSearchUrl(item) {
     } else if (/^[A-Za-z0-9]{2,6}[-\s]+[A-Za-z0-9\-]+$/.test(code)) {
       searchQuery = code.replace(/\/\d+$/, '');
     } else if (/^\d{1,4}\/\d{2,4}$/.test(code) || /^\d+$/.test(code)) {
-      searchQuery = cleanName ? `${cleanName} ${code}` : code;
+      const fallbackCleanName = rawFullName.replace(/\([^)]*\)/g, '').split(/\s+LV\./i)[0].trim();
+      const numOnly = code.split('/')[0];
+      searchQuery = fallbackCleanName ? `${fallbackCleanName} ${numOnly}` : numOnly;
     } else {
       searchQuery = code.replace(/^([A-Za-z0-9]{2,6})\s+(\d{1,4})/i, '$1$2');
     }
@@ -109,8 +115,9 @@ function renderFilterBadges(filterInfo, rawCond, rawLang) {
   let cond = rawCond || 'NM';
   let sellerCountry = 'DE';
   let cardLang = rawLang || 'EN';
+  const isManualPrice = Boolean(filterInfo && /manuell|manual/i.test(filterInfo));
 
-  if (filterInfo) {
+  if (filterInfo && !isManualPrice) {
     const parts = filterInfo.split(',').map(s => s.trim());
     if (parts.length >= 3) {
       cond = parts[0] || cond;
@@ -131,6 +138,11 @@ function renderFilterBadges(filterInfo, rawCond, rawLang) {
 
   return `
     <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
+      ${isManualPrice ? `
+        <span style="background: rgba(16, 185, 129, 0.14); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.32); padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 0.75rem;" title="Manuell gepflegter & synchronisierter Preis">
+          Manuell Sync
+        </span>
+      ` : ''}
       <span style="background: rgba(255, 255, 255, 0.08); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.12); padding: 2px 8px; border-radius: 6px; font-weight: 600; font-size: 0.75rem;" title="Zustand">
         ${cond}
       </span>
@@ -550,12 +562,12 @@ export class StreamOverlay {
           <div class="so-list-thumb-placeholder">🃏</div>
         `}
         <div class="so-list-info">
-          <div class="so-list-title-de">${nameDe}</div>
-          ${nameEn ? `<div class="so-list-title-en">${nameEn}</div>` : ''}
+          <div class="so-list-title-de"><span class="so-list-lang-prefix">Deutsch:</span> ${nameDe}</div>
+          ${nameEn ? `<div class="so-list-title-en">Original: ${nameEn}</div>` : ''}
           <div class="so-list-set-code">
             <span>${setNameDe}</span>
             ${cardCode ? `<span>• <strong>${cardCode}</strong></span>` : ''}
-            ${variantTag ? `<span class="so-list-pill" style="background: rgba(168,85,247,0.15); color: #d8b4fe; border-color: rgba(168,85,247,0.3); font-weight: 700;">✨ ${variantTag}</span>` : ''}
+            ${variantTag ? `<span class="so-list-pill" style="background: rgba(168,85,247,0.15); color: #d8b4fe; border-color: rgba(168,85,247,0.3); font-weight: 700;">${variantTag}</span>` : ''}
           </div>
           <div style="display: flex; gap: 6px; margin-top: 4px; align-items: center; flex-wrap: wrap;">
             <span class="so-list-pill">${card.rawCondition || 'NM'}</span>
@@ -780,7 +792,7 @@ export class StreamOverlay {
                 <div class="so-card-badge">${cardCode}</div>
                 ${variantTag ? `
                   <div class="so-card-badge" style="background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.35); color: #d8b4fe; font-weight: 700;">
-                    ✨ ${variantLabel || variantTag}
+                    ${variantLabel || variantTag}
                   </div>
                 ` : ''}
               </div>
@@ -797,7 +809,7 @@ export class StreamOverlay {
                 <span class="so-set-label">Set:</span>
                 <strong class="so-set-name">${setNameDe}</strong>
               </div>
-              <h1 class="so-card-title">${nameDe}</h1>
+              <h1 class="so-card-title"><span class="so-card-lang-prefix">Deutsch:</span> <span class="so-card-name-de">${nameDe}</span></h1>
               ${nameEn ? `<div class="so-card-subtitle-en">Original: ${nameEn}</div>` : ''}
             </div>
 

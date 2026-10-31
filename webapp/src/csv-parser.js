@@ -264,12 +264,24 @@ export function normalizeCondition(condStr) {
 }
 
 /**
- * Extracts language from text (e.g. "(Japanese)", "Japanisch", "(German)")
+ * Extracts language from text (including regional flag emojis e.g. 🇯🇵, 🇩🇪, 🇨🇳, 🇺🇸 and text labels)
  */
 export function extractLanguageFromText(text) {
   if (!text || typeof text !== 'string') return null;
-  const t = text.toLowerCase();
 
+  // 1. Regional indicator flag emojis (ScanConverter3000 Whatnot titles)
+  if (text.includes('🇯🇵')) return 'JP';
+  if (text.includes('🇩🇪') || text.includes('🇦🇹') || text.includes('🇨🇭')) return 'DE';
+  if (text.includes('🇨🇳') || text.includes('🇹🇼') || text.includes('🇭🇰')) return 'ZH';
+  if (text.includes('🇰🇷')) return 'KO';
+  if (text.includes('🇫🇷')) return 'FR';
+  if (text.includes('🇮🇹')) return 'IT';
+  if (text.includes('🇪🇸')) return 'ES';
+  if (text.includes('🇷🇺')) return 'RU';
+  if (text.includes('🇺🇸') || text.includes('🇬🇧')) return 'EN';
+
+  // 2. Textual language tags
+  const t = text.toLowerCase();
   if (t.includes('japanese') || t.includes('japanisch') || t.includes('(ja)') || t.includes('(jp)')) return 'JP';
   if (t.includes('chinese') || t.includes('chinesisch') || t.includes('(zh)') || t.includes('(cn)')) return 'ZH';
   if (t.includes('korean') || t.includes('koreanisch') || t.includes('(ko)') || t.includes('(kr)')) return 'KO';
@@ -282,28 +294,84 @@ export function extractLanguageFromText(text) {
   return null;
 }
 
+function padCardNumber(numStr) {
+  if (!numStr || !/^\d+$/.test(numStr)) return numStr;
+  const n = parseInt(numStr, 10);
+  if (isNaN(n)) return numStr;
+  return n < 1000 ? String(n).padStart(3, '0') : String(n);
+}
+
+const NON_SET_TOKENS_RE =
+  /^(CARD|SKU|ITEM|SCAN|PROD|PAGE|HTTP|HTML|JPEG|PNG|FILE|TEST|PROMO|KARTE|SAMMELKARTE|POKEMON|AR|CHR|CSR|SAR|SIR|SR|UR|SSR|HR|RRR|RR|MA|IR|TR|PR|SEC|SP|C|U|R)$/i;
+
 /**
  * Intelligent pattern matcher for TCG Card Codes across all major TCGs
  * (One Piece, Pokémon, Yu-Gi-Oh, Lorcana, Dragon Ball, Union Arena, Weiss Schwarz, etc.)
  */
 export function extractCardCode(text) {
   if (!text || typeof text !== 'string') return null;
-  const cleanText = text.trim();
+  let cleanText = text.trim();
 
-  // Exclude internal inventory SKUs like CARD-0008, SKU-123, ITEM-999
+  // Exclude internal inventory SKUs like CARD-0008, SKU-123, ITEM-999 or bare Sammelkarte #167
   if (/^(CARD|SKU|ITEM|SCAN|PROD)[-_]\d+/i.test(cleanText)) return null;
+  if (/^(?:Sammelkarte|Karte|Trading Card)\s*#\d+\s*$/i.test(cleanText)) return null;
 
-  // 0. Description Explicit: <SetCode> #<CardNum>/<Denom> or Title Explicit: #<SetCode> <CardNum>/<Denom>
-  // e.g. "M2 #088/080" -> "M2088", "M2a #195/193" -> "M2A195", "sv1V #087/078" -> "SV1V087", "sv6 #109/101" -> "SV6109", "M1L #074/063" -> "M1L074"
-  const descExplicit = cleanText.match(/\b([A-Za-z0-9]{2,6})\s*#(\d{1,4})(?:\/(\d{1,4}))?\b/i);
-  if (descExplicit && !/^(CARD|PAGE|HTTP|JPEG|PNG|FILE|PROD|AR|CHR|CSR|SAR|SR|UR|HR|RR|C|U|R|SEC)$/i.test(descExplicit[1])) {
-    return `${descExplicit[1].toUpperCase()}${descExplicit[2]}`;
+  // Strip leading Whatnot auction hit index e.g. "#1⚡️" or "#12 " so "#1" is never mistaken for a code
+  cleanText = cleanText.replace(/^#\s*\d+\s*(?:⚡️|⚡)\s*/i, '');
+  if (/^#\d+\s+[A-Za-z]/.test(cleanText)) {
+    cleanText = cleanText.replace(/^#\d+\s+/, '');
   }
 
-  const titleExplicit = cleanText.match(/#([A-Za-z0-9]{2,6})\s+(\d{1,4})(?:\/(\d{1,4}))?\b/i);
-  if (titleExplicit && !/^(CARD|PAGE|HTTP|JPEG|PNG|FILE|PROD|AR|CHR|CSR|SAR|SR|UR|HR|RR|C|U|R|SEC)$/i.test(titleExplicit[1])) {
-    return `${titleExplicit[1].toUpperCase()}${titleExplicit[2]}`;
+  // 0a. Promo denominator slash format (highest priority so "PROMO #127/M-P" -> "M-P127", "#271/SV-P" -> "SV-P271", "#293/S-P" -> "S-P293")
+  const promoSlashMatch = cleanText.match(/#?\b(\d{1,4})\/([A-Za-z0-9]{1,5}-P)\b/i);
+  if (promoSlashMatch) {
+    return `${promoSlashMatch[2].toUpperCase()}${padCardNumber(promoSlashMatch[1])}`;
   }
+
+  // 0b. Dotted / Spaced Chinese & Anniversary sets: "#CSV9.5 C 195/208", "CSv9.5 C #072/208", "#30th C 033/103", "30C #046/128"
+  const csvSetMatch = cleanText.match(/#?\b(CSV\d+(?:\.\d+)?\s*C?)\s*#?(\d{1,4})(?:\/(\d{1,4}))?\b/i);
+  if (csvSetMatch) {
+    const normSet = csvSetMatch[1].replace(/\s+/g, '').toUpperCase();
+    return `${normSet}${padCardNumber(csvSetMatch[2])}`;
+  }
+
+  const annivSetMatch = cleanText.match(/#?\b(30(?:th)?\s*C)\s*#?(\d{1,4})(?:\/(\d{1,4}))?\b/i);
+  if (annivSetMatch) {
+    return `30C${padCardNumber(annivSetMatch[2])}`;
+  }
+
+  // 0c. Explicit Set + Gallery number: "CRZ #GG27/GG70", "#CRZ GG27/GG70", "LOR #TG05/TG30"
+  const setGalleryMatch = cleanText.match(/#?\b([A-Za-z][A-Za-z0-9]{1,5})\s+#?((?:GG|TG)\d{1,3})(?:\/(?:GG|TG)?\d{1,3})?\b/i);
+  if (setGalleryMatch && !NON_SET_TOKENS_RE.test(setGalleryMatch[1])) {
+    return `${setGalleryMatch[1].toUpperCase()}${setGalleryMatch[2].toUpperCase()}`;
+  }
+
+  // 0d. Description Explicit: <SetCode> #<CardNum>/<Denom> (e.g. "M2a #208/193", "SV11B #150/086", "s0 #002/030", "CBB4C #1301/07")
+  const descExplicit = cleanText.match(/\b([A-Za-z0-9.]{2,8})\s*#(\d{1,4})(?:\/(\d{1,4}))?\b/i);
+  if (descExplicit && /[A-Za-z]/.test(descExplicit[1]) && !NON_SET_TOKENS_RE.test(descExplicit[1])) {
+    const sCode = descExplicit[1].toUpperCase();
+    const rawNum = descExplicit[2];
+    const denom = descExplicit[3];
+    // Preserve compound Gem Pack denominator (e.g. CBB4C 1301/07)
+    if (rawNum.length === 4 && denom && denom.length === 2 && parseInt(denom, 10) <= 25) {
+      return `${sCode}${rawNum}/${denom}`;
+    }
+    return `${sCode}${padCardNumber(rawNum)}`;
+  }
+
+  // 0e. Title Explicit: #<SetCode> [optional Rarity] <CardNum>/<Denom> (e.g. "#S1a 073/070", "#MBG AR 022/021", "#MC 754/742", "#s0 002/030")
+  const titleExplicit = cleanText.match(/#([A-Za-z0-9.]{2,8})\s+(?:(?:MA|SAR|SIR|AR|IR|UR|SSR|SR|RRR|RR|HR|CSR|CHR|TR|PR|SEC|SP|C|U|R)\s+)?(\d{1,4})(?:\/(\d{1,4}))?\b/i);
+  if (titleExplicit && /[A-Za-z]/.test(titleExplicit[1]) && !NON_SET_TOKENS_RE.test(titleExplicit[1])) {
+    const sCode = titleExplicit[1].toUpperCase();
+    const rawNum = titleExplicit[2];
+    const denom = titleExplicit[3];
+    if (rawNum.length === 4 && denom && denom.length === 2 && parseInt(denom, 10) <= 25) {
+      return `${sCode}${rawNum}/${denom}`;
+    }
+    return `${sCode}${padCardNumber(rawNum)}`;
+  }
+
+  // 0f. Rarity-only #SetCode without number? No — only if number follows elsewhere e.g. "Haunter #MBG AR 022/021" (already caught above)
 
   // 1. One Piece TCG formats: OP05-119, OP01-001, ST01-001, EB01-001, PRB01-001, P-001, OP05 119
   const opMatch = cleanText.match(/\b(OP|ST|EB|PRB)[\s-]*\d{1,2}[\s-]+[A-Z0-9]{3,4}\b/i) ||
@@ -314,37 +382,54 @@ export function extractCardCode(text) {
     return raw.toUpperCase().replace(/\s+/g, '-').replace(/--+/g, '-');
   }
 
-  // 2. Pokémon Trainer Gallery / Galarian Gallery: LORTG05, TG01/TG30, GG01/GG70
-  const galleryMatch = cleanText.match(/\b[A-Z]{3}TG\d{1,2}\b/i) ||
-                        cleanText.match(/\b(TG|GG)\d{1,2}[\/-](TG|GG)?\d{1,2}\b/i);
+  // 2. Pokémon Trainer Gallery / Galarian Gallery: LORTG05, CRZGG27, TG01/TG30, GG01/GG70
+  const galleryMatch = cleanText.match(/\b[A-Z]{2,4}(?:TG|GG)\d{1,3}\b/i) ||
+                        cleanText.match(/\b(TG|GG)\d{1,3}[\/-](TG|GG)?\d{1,3}\b/i);
   if (galleryMatch) {
     return galleryMatch[0].toUpperCase().replace(/\s+/g, '-');
   }
 
   // 3. Pokémon Japanese / Asian / New Gen alphanumeric set + number:
-  // e.g. CBB4C2805, sv2a173, s12a210, sv4a009, CS1a010, PAF091, OBF125, SVP088, DAA089, M2088, SV6109
-  const jpSetNumMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d[a-zA-Z]?|me\d{1,2}(?:\.\d+)?[a-zA-Z]?|S-P|SVP|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS)[-\s]*(\d{1,4})(?:\/(\d{1,4}))?\b/i);
+  // Includes Mega Evolution (m1-m6a, mc, mbg, mee, mem, mez, mf, asc, pbl, pfl, sp4, sek, s0, sv0d, m-p, sv-p, s-p, csv9.5c, 30c, sv10, sv11b, sv11w)
+  const KNOWN_SET_PATTERN = 'CSV\\d+(?:\\.\\d+)?C?|CBB\\d{1,2}[A-Za-z]?|CS\\d{1,2}[a-zA-Z]*|CSM|CSD|30C|AC\\d{1,2}[a-zA-Z]?|sv1[0-2][a-zA-Z]?|sv\\d[a-zA-Z]?|s1[0-2][a-zA-Z]?|s\\d[a-zA-Z]?|sm1[0-2][a-zA-Z]?|sm\\d[a-zA-Z]?|xy1[0-2][a-zA-Z]?|xy\\d[a-zA-Z]?|bw1[01][a-zA-Z]?|bw\\d[a-zA-Z]?|hgss\\d?|dp\\d?|ex\\d{1,2}|m\\d[a-zA-Z]?|me\\d{1,2}(?:\\.\\d+)?[a-zA-Z]?|M-P|SV-P|S-P|SM-P|XY-P|BW-P|SVP|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEP|MBG|MEE|MEM|MEZ|MC|MF|ASC|PBL|PFL|SP\\d+|SEK|SVAL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|MEW|CRZ|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|SV|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|B2|FO|JU|BS';
+
+  const jpSetNumRegex = new RegExp(`\\b(${KNOWN_SET_PATTERN})[-\\s]*(\\d{1,4})(?:\\/(\\d{1,4}))?\\b`, 'i');
+  const jpSetNumMatch = cleanText.match(jpSetNumRegex);
   if (jpSetNumMatch) {
     const setCode = jpSetNumMatch[1].toUpperCase();
     const cardNum = jpSetNumMatch[2];
     const total = jpSetNumMatch[3];
-    return total ? `${setCode}${cardNum}/${total}` : `${setCode}${cardNum}`;
+    if (cardNum.length === 4 && total && total.length === 2 && parseInt(total, 10) <= 25) {
+      return `${setCode}${cardNum}/${total}`;
+    }
+    return `${setCode}${padCardNumber(cardNum)}`;
   }
 
-  // 3b. Separated Set Code and Number (e.g. "Phione 1301/07 aus cBB4C" or "cBB4C Phione 1301/07")
-  const sepSetMatch = cleanText.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d[a-zA-Z]?|me\d{1,2}(?:\.\d+)?[a-zA-Z]?|S-P|SVP|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEP|PFL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS)\b/i);
-  const sepNumMatch = cleanText.match(/\b(\d{1,4}(?:\/\d{2,4})?)\b/);
+  // 3b. Separated Set Code and Number (e.g. "Phione 1301/07 aus cBB4C" or "Haunter #MBG AR" + "022/021")
+  const sepSetRegex = new RegExp(`#?\\b(${KNOWN_SET_PATTERN})\\b`, 'i');
+  const sepSetMatch = cleanText.match(sepSetRegex);
+  const sepNumMatch = cleanText.match(/\b(\d{1,4})(?:\/(\d{2,4}))?\b/);
   if (sepSetMatch && sepNumMatch) {
-    return `${sepSetMatch[1].toUpperCase()}${sepNumMatch[1]}`;
+    const setCode = sepSetMatch[1].toUpperCase();
+    const rawNum = sepNumMatch[1];
+    const denom = sepNumMatch[2];
+    if (rawNum.length === 4 && denom && denom.length === 2 && parseInt(denom, 10) <= 25) {
+      return `${setCode}${rawNum}/${denom}`;
+    }
+    return `${setCode}${padCardNumber(rawNum)}`;
   }
 
-  // 3c. Generic New Gen pattern: [SetCode 2-6 chars] [CardNumber 1-4 digits] e.g. CBB4C2805
+  // 3c. Generic New Gen pattern: [SetCode 2-6 chars] [CardNumber 1-4 digits] e.g. CBB4C 2805
   const genericSetNumMatch = cleanText.match(/\b([A-Za-z]{2,5}\d{0,2}[A-Za-z]?)[-\s]+(\d{1,4})(?:\/(\d{1,4}))?\b/);
   if (genericSetNumMatch) {
     const prefix = genericSetNumMatch[1];
-    if (!/^(CARD|SKU|ITEM|SCAN|PROD|PAGE|HTTP|HTML|JPEG|PNG|FILE|TEST)$/i.test(prefix)) {
+    if (!NON_SET_TOKENS_RE.test(prefix)) {
+      const rawNum = genericSetNumMatch[2];
       const total = genericSetNumMatch[3];
-      return total ? `${prefix.toUpperCase()}${genericSetNumMatch[2]}/${total}` : `${prefix.toUpperCase()}${genericSetNumMatch[2]}`;
+      if (rawNum.length === 4 && total && total.length === 2 && parseInt(total, 10) <= 25) {
+        return `${prefix.toUpperCase()}${rawNum}/${total}`;
+      }
+      return `${prefix.toUpperCase()}${padCardNumber(rawNum)}`;
     }
   }
 
@@ -355,10 +440,10 @@ export function extractCardCode(text) {
     return fractionMatch[1] || fractionMatch[0].replace(/^#/, '');
   }
 
-  // 5. Promo codes: SVP088, SVP-088, S-P325, SWSH123, SM123
-  const promoMatch = cleanText.match(/\b(SVP|S-P|SWSH|SM|XY|BW|DP|HGSS|PROMO)[-\s]*\d{1,3}\b/i);
+  // 5. Promo codes: SVP088, SVP-088, M-P120, SV-P271, S-P325, SWSH123, SM123
+  const promoMatch = cleanText.match(/\b(M-P|SV-P|S-P|SM-P|SVP|SWSH|SM|XY|BW|DP|HGSS|PROMO)[-\s]*(\d{1,4})\b/i);
   if (promoMatch) {
-    return promoMatch[0].toUpperCase().replace(/\s+/g, '-');
+    return `${promoMatch[1].toUpperCase()}${padCardNumber(promoMatch[2])}`;
   }
 
   // 6. Yu-Gi-Oh format: LOB-001, SDK-E001, RA01-EN001, RA01-DE001, MP23-EN001
@@ -402,91 +487,110 @@ export function extractCardName(title, description, rawCode) {
 
   let clean = (title || '').trim();
 
-  // Format 1: "Pokémon - Phione #0/170 C (Japanese)13" or "One Piece - Monkey D. Luffy #OP05-119 SEC (Japanese)"
-  if (clean.includes(' - ')) {
-    const parts = clean.split(' - ');
-    if (parts.length >= 2) {
-      clean = parts.slice(1).join(' - ');
-    }
+  // Format 1: "Pokémon - Phione #0/170 C (Japanese)" or "One Piece - Monkey D. Luffy #OP05-119 SEC"
+  if (/^(?:Pokémon|Pokemon|One Piece|Yu-Gi-Oh!?|Lorcana|Magic|Dragon Ball|Digimon|TCG)\s+-\s+/i.test(clean)) {
+    clean = clean.replace(/^(?:Pokémon|Pokemon|One Piece|Yu-Gi-Oh!?|Lorcana|Magic|Dragon Ball|Digimon|TCG)\s+-\s+/i, '');
   }
 
-  // Format 2: "#{index} {name_en} #{number} {rarity} ({language})" e.g. "#1 Phione #130/170 C (Japanese)"
-  if (clean.startsWith('#') && clean.match(/^#\d+\s+/)) {
-    clean = clean.replace(/^#\d+\s+/, '');
-  }
+  // Format 2: Leading index with optional lightning bolt (with or without space, e.g. "#1⚡️Inteleon V" or "#12 Pincurchin")
+  clean = clean.replace(/^#\s*\d+\s*(?:⚡️|⚡)?\s*/i, '');
 
   // Format 3: "Karte #8 (0016.png)"
   if (clean.startsWith('Karte #') || clean.startsWith('Sammelkarte #')) {
     return clean.split('(')[0].trim();
   }
 
-  // Remove "aus <Set>" or "from <Set>" phrases e.g. "aus cBB4C", "aus Obsidian-Flammen", "from Gem Pack Vol 4"
-  clean = clean.replace(/\s+(?:aus|from|de|in)\s+([A-Za-z0-9\-_]+(?:\s+[A-Za-z0-9\-_]+){0,3})/i, '').trim();
+  // Strip lightning bolt emojis and regional flag emojis (🇯🇵, 🇩🇪, 🇺🇸, 🇨🇳, etc.)
+  clean = clean.replace(/[⚡️⚡]/g, '').replace(/[\u{1F1E6}-\u{1F1FF}]{2}/gu, '').trim();
 
   // Remove trailing language tags like "(Japanese)", "(German)", "(English)", "(Chinese)"
-  clean = clean.replace(/\s*\([A-Za-z\s]+\)\s*\d*$/i, '').trim();
+  clean = clean.replace(/\s*\((?:Japanese|Japanisch|German|Deutsch|English|Englisch|Chinese|Chinesisch|Korean|Koreanisch|French|Italian|Spanish|JA|JP|DE|EN|ZH|CN|KO|KR|FR|IT|ES)\)\s*\d*$/i, '').trim();
 
-  // Remove card number / code tags like "#130/170", "#OP05-119", "#002/070", "#1301/07", "#me02.5-220"
-  clean = clean.replace(/#[A-Za-z0-9\/\.\-_]+/g, '').trim();
+  // Remove promo fractions ("#119/M-P", "271/SV-P"), gallery fractions ("GG27/GG70"), spaced set codes ("#30th C", "#CSV9.5 C")
+  clean = clean.replace(/#?\b\d{1,4}\/[A-Za-z0-9]{1,5}-P\b/gi, ' ');
+  clean = clean.replace(/#?\b(?:GG|TG)\d{1,3}\/(?:GG|TG)?\d{1,3}\b/gi, ' ');
+  clean = clean.replace(/#?\b(?:30th\s*C|30C|CSV\d+(?:\.\d+)?\s*C?)\b/gi, ' ');
+
+  // Remove card number / code tags like "#S1a", "#130/170", "#OP05-119", "#PROMO", "#me02.5-220", standalone "#"
+  clean = clean.replace(/#[A-Za-z0-9\/\.\-_]+/g, ' ');
+  clean = clean.replace(/(?:^|\s)#(?=\s|$)/g, ' ');
 
   // Remove bare fractions like "1301/07", "183/165", "002/070"
-  clean = clean.replace(/\b\d{1,4}\/\d{2,4}\b/g, '').trim();
+  clean = clean.replace(/\b\d{1,4}\/\d{2,4}\b/g, ' ').trim();
 
-  // Remove set codes like "CBB4C", "CBB1C", "sv2a", "OP05", "PAF", "DAA", "m2", etc.
-  clean = clean.replace(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d+|me\d+(?:\.\d+)?|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|SVP|S-P|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEW|CRZ|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS)\b/gi, '').trim();
+  // Remove "aus <Set>" or "from <Set>" phrases (do NOT match "in" or "de" which appear in "Friends in Paldea" / "Don Quichotte de Flamingo")
+  clean = clean.replace(/\s+(?:aus|from)\s+([A-Za-z0-9.\-_]+(?:\s+[A-Za-z0-9.\-_]+){0,3})$/i, '').trim();
 
-  // Remove rarity tags and stars at the end like "C", "U", "R", "RR", "AR", "SAR", "SR", "UR", "SEC", "☆☆", "⭐", "★"
-  clean = clean.replace(/\s+(C|U|R|RR|AR|SAR|SR|UR|SEC|HR|CSR|CHR|TR|Promo|[☆★⭐]+)\s*$/i, '').trim();
-  clean = clean.replace(/[☆★⭐]+/g, '').trim();
+  // Remove standalone set codes
+  clean = clean.replace(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]*|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d[a-zA-Z]?|me\d+(?:\.\d+)?[a-zA-Z]?|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|MBG|MEE|MEM|MEZ|MC|MF|ASC|PBL|PFL|SP\d+|SEK|SVAL|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|M-P|SV-P|S-P|SM-P|SVP|SWSH|SWSHP|SMP|XYP|BWP|DPP|MEW|CRZ|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|TRR|FRLG)\b/gi, ' ').trim();
 
   // Remove code if prepended or appended e.g. "MEW173 Mew ex" -> "Mew ex"
   if (rawCode) {
-    const codeClean = rawCode.replace(/[\/-]/g, '');
-    const regex = new RegExp(`^${rawCode}\\s+|^${codeClean}\\s+|\\s+${rawCode}$|\\s+${codeClean}$`, 'i');
-    clean = clean.replace(regex, '').trim();
+    const escapedRaw = rawCode.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const codeClean = rawCode.replace(/[\/-]/g, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`^${escapedRaw}\\s+|^${codeClean}\\s+|\\s+${escapedRaw}$|\\s+${codeClean}$`, 'i');
+    clean = clean.replace(regex, ' ').trim();
   }
 
-  // Remove trailing or leading dashes/hashes/spaces
-  clean = clean.replace(/^[-#\s]+|[-#\s]+$/g, '').trim();
+  // Collapse multiple spaces before stripping trailing rarities
+  clean = clean.replace(/\s+/g, ' ').trim();
+
+  // Remove trailing rarity tags in loop (e.g. "Ultra Rare", "SIR", "RRR", "AR", "MA", "PROMO", "C", "U", "R")
+  const trailingMultiRarityRe = /\s+(?:Special Illustration Rare|Illustration Rare|Ultra Rare|Double Rare|Hyper Rare|ACE SPEC|PROMO|Promo|MA|SAR|SIR|AR|IR|UR|SSR|SR|RRR|RR|HR|CSR|CHR|TR|PR|SEC|SP|[☆★⭐]+)\s*$/i;
+  while (trailingMultiRarityRe.test(clean)) {
+    clean = clean.replace(trailingMultiRarityRe, '').trim();
+  }
+  // Strip single-letter C / U / R rarity at end unless part of "Unown C" / "Unown R" / "Unown U"
+  if (!/\b(?:Unown|Icognito)\s+[CUR]$/i.test(clean)) {
+    clean = clean.replace(/\s+(?:C|U|R)\s*$/i, '').trim();
+  }
+  clean = clean.replace(/[☆★⭐]+/g, '').trim();
+
+  // Remove trailing or leading dashes/hashes/spaces (preserve trailing '!' for e.g. "Ditto!", "Meowth Meow!")
+  clean = clean.replace(/^[-#\s]+|[-#\s]+$/g, '').replace(/\s+/g, ' ').trim();
 
   // If title was too bare, look into description: "Pokémon Phione (フィオネ) #130/170 [C] - Japanisch."
   if (!clean || clean.length < 2) {
     if (description) {
-      const descMatch = description.match(/^(?:Pokémon|One Piece|Yu-Gi-Oh!|Lorcana|Dragon Ball)?\s*([A-Za-z0-9\s'\.\-]+?)(?:\s*\([^)]+\))?\s*(?:#|OP|\d+\/|\[)/i);
+      const descMatch = description.match(/^(?:Pokémon|Pokemon|One Piece|Yu-Gi-Oh!|Lorcana|Dragon Ball)?\s*([A-Za-z0-9\s'’.\-!&]+?)(?:\s*\([^)]+\))?\s*(?:#|OP|\d+\/|\[|-)/i);
       if (descMatch && descMatch[1] && descMatch[1].trim().length > 1) {
         return descMatch[1].trim();
       }
     }
   }
-    return clean || title || 'Karte';
+  return clean || title || 'Karte';
 }
 
 /**
  * Parses card code components
  * Handles complex variant codes across Pokémon, One Piece, Lorcana, etc.
  * Supports:
- * - Compound Asian variant codes (e.g. CBB4C 1301/07 -> Card #13, Variant V1, Set CBB4C)
+ * - Compound Asian variant codes (ONLY genuine Gem Pack 4-digit codes e.g. CBB4C 1301/07 -> Card #13, Variant V1, Set CBB4C)
  * - Suffix variants (e.g. OP05-119-V1, EB02-061-V3, ST01-012-V1, 055/066-V1, Card (V1))
  * - Prefix variants (e.g. V1-CBB4C13, V7-CBB5C01)
- * - Standard Promo and Set codes (e.g. SVP-001, OP05-119, MEW 199/165)
+ * - Promo, Dotted Chinese, Gallery, and Japanese/English Set codes (e.g. M-P120, SV-P271, CSV9.5C195, 30C033, MBG022, SV10082, S8035, S0002)
  */
 export function parseCardCodeComponents(codeStr, nameStr = '', setStr = '') {
   if (!codeStr && !nameStr && !setStr) return null;
   const combined = `${codeStr || ''} ${nameStr || ''} ${setStr || ''}`.trim();
 
-  // 1. Detect compound Asian/Chinese set variant e.g. "CBB4C 1301/07", "1301/07 aus CBB4C", "1301/07"
-  const setMatch = combined.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d{1,2}[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|m\d+|me\d+|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|SVP)\b/i);
-  const setCode = setMatch ? setMatch[1].toUpperCase() : '';
+  // 1. Detect genuine compound Asian/Chinese Gem Pack variant ONLY when denominator <= 25 (e.g. "CBB4C 1301/07", "1301/07") or explicit CBB set + 4 digits
+  const cbbSetMatch = combined.match(/\b(CBB\d{1,2}[A-Za-z]?)\b/i);
+  const compSlashMatch = combined.match(/\b(\d{2})(\d{2})\/(0[1-9]|1\d|2[0-5])\b/);
+  const cbbFourDigitMatch = cbbSetMatch ? combined.match(/\b(?:CBB\d{1,2}[A-Za-z]?)[-\s]*(\d{2})(\d{2})\b/i) : null;
 
-  const compMatch = combined.match(/\b(\d{2})(\d{2})(?:\/(\d{2}))?\b/);
-  if (compMatch) {
-    const cardNum = parseInt(compMatch[1], 10).toString(); // "13" or "23"
-    const cardNumPad = compMatch[1]; // "13" or "23"
-    const variantNum = parseInt(compMatch[2], 10).toString(); // "1" or "6"
-    const variantTag = `V${variantNum}`; // "V1" or "V6"
-    const totalVariants = compMatch[3] || '07'; // "07"
-    const setCardCode = setCode ? `${setCode}${cardNumPad}` : cardNumPad; // "CBB4C13"
-    const fullVariantSlug = setCode ? `${variantTag}-${setCode}${cardNumPad}` : `${variantTag}-${cardNumPad}`; // "V1-CBB4C13"
+  if (compSlashMatch || cbbFourDigitMatch) {
+    const anySetMatch = combined.match(/\b(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]*|CSM|CSD|AC\d{1,2}[a-zA-Z]?)\b/i);
+    const setCode = (cbbSetMatch?.[1] || anySetMatch?.[1] || '').toUpperCase();
+    const d1 = compSlashMatch ? compSlashMatch[1] : cbbFourDigitMatch[1];
+    const d2 = compSlashMatch ? compSlashMatch[2] : cbbFourDigitMatch[2];
+    const totalVariants = compSlashMatch ? compSlashMatch[3] : '07';
+    const cardNum = parseInt(d1, 10).toString();
+    const cardNumPad = d1;
+    const variantNum = parseInt(d2, 10).toString();
+    const variantTag = `V${variantNum}`;
+    const setCardCode = setCode ? `${setCode}${cardNumPad}` : cardNumPad;
+    const fullVariantSlug = setCode ? `${variantTag}-${setCode}${cardNumPad}` : `${variantTag}-${cardNumPad}`;
 
     return {
       isCompound: true,
@@ -539,50 +643,91 @@ export function parseCardCodeComponents(codeStr, nameStr = '', setStr = '') {
     };
   }
 
-  // 4. Standard code components (e.g. "OP05-119", "CBB4C13", "CBB4C 13", "sv2a 173", "SV6109", "M2088", "199/165")
-  const ALL_SET_REGEX = /^(CBB\d{1,2}[A-Za-z]?|CS\d{1,2}[a-zA-Z]?|CSM|CSD|AC\d{1,2}[a-zA-Z]?|sv\d[a-zA-Z]?|s\d{1,2}[a-zA-Z]?|sm\d{1,2}[a-zA-Z]?|xy\d{1,2}[a-zA-Z]?|bw\d{1,2}[a-zA-Z]?|hgss\d?|dp\d?|ex\d{1,2}|m\d[a-zA-Z]?|me\d{1,2}(?:\.\d+)?[a-zA-Z]?|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2}|PAF|OBF|PAR|TEF|TWM|PAL|SVI|SIT|LOR|ASR|BRS|FST|EVS|CRE|BST|SHF|VIV|CPA|DAA|RCL|SSH|DRI|JTG|PRE|SFA|SCR|SSP|SVP|S-P|SWSH|SWSHP|SMP|SM|XYP|XY|BWP|BW|DPP|DP|MEW|CRZ|CEC|HIF|UNM|UNB|DET|TEU|LOT|DRM|CES|FLI|UPR|CRI|SLG|BUS|GRI|SUM|EVO|STS|FCO|GEN|BKP|BKT|AOR|ROS|DCR|PRC|PHF|FFI|FLF|LTR|PLB|PLF|PLS|BCR|DRV|DRX|DEX|NXD|NVI|EPO|BLW|CL|TM|UD|UL|AR|SV|RR|PL|SF|LA|MD|GE|SW|MT|PK|DF|CG|HP|LM|DS|UF|EM|DX|TRR|FRLG|HL|MA|DR|SS|RS|SK|AQ|LC|N4|N3|N2|N1|GC|GH|TR|B2|FO|JU|BS)/i;
-  
   const cleanCode = (codeStr || '').trim();
-  const cleanSetMatch = cleanCode.match(ALL_SET_REGEX);
-  if (cleanSetMatch) {
-    const sCode = cleanSetMatch[1].toUpperCase();
-    const rest = cleanCode.slice(cleanSetMatch[0].length).replace(/^[\s\-_#]+/, '');
-    const numMatch = rest.match(/^(\d{1,4})(?:[\/-](\d{1,4}))?$/);
-    if (numMatch) {
-      const rawNum = numMatch[1];
-      const cardNum = parseInt(rawNum, 10).toString();
-      return {
-        isCompound: false,
-        setCode: sCode,
-        cardNum,
-        cardNumPad: rawNum,
-        variantTag: null,
-        variantNum: null,
-        totalVariants: numMatch[2] || null,
-        setCardCode: `${sCode}${rawNum}`,
-        fullVariantSlug: null,
-        searchCode: `${sCode}${rawNum}`
-      };
-    }
-  }
+  if (!cleanCode) return null;
 
-  const stdMatch = (codeStr || '').trim().match(/^([A-Za-z0-9\-_]{2,10})[-\s]+(\d{1,4})(?:[\/-](\d{1,4}))?$/);
-  if (stdMatch) {
-    const sCode = stdMatch[1].toUpperCase();
-    const rawNum = stdMatch[2];
-    const cardNum = parseInt(rawNum, 10).toString();
+  // Helper to build standard component result
+  const makeStandard = (sCode, rawNum, total = null) => {
+    const normSet = sCode.replace(/\s+/g, '').toUpperCase() === '30THC' ? '30C' : sCode.replace(/\s+/g, '').toUpperCase();
+    const isNumeric = /^\d+$/.test(rawNum);
+    const cardNum = isNumeric ? parseInt(rawNum, 10).toString() : rawNum.toUpperCase();
+    const cardNumPad = isNumeric ? padCardNumber(rawNum) : rawNum.toUpperCase();
     return {
       isCompound: false,
-      setCode: sCode,
+      setCode: normSet,
       cardNum,
-      cardNumPad: rawNum,
+      cardNumPad,
       variantTag: null,
       variantNum: null,
-      totalVariants: stdMatch[3] || null,
-      setCardCode: `${sCode}${rawNum}`,
+      totalVariants: total || null,
+      setCardCode: `${normSet}${cardNumPad}`,
       fullVariantSlug: null,
-      searchCode: `${sCode}${rawNum}`
+      searchCode: `${normSet}${cardNumPad}`
     };
+  };
+
+  // 4a. Promo codes: "120/M-P", "M-P120", "SV-P271", "S-P293", "SVP088"
+  const promoDenom = cleanCode.match(/^#?(\d{1,4})\/([A-Za-z0-9]{1,5}-P)$/i);
+  if (promoDenom) {
+    return makeStandard(promoDenom[2], promoDenom[1]);
+  }
+  const promoPrefix = cleanCode.match(/^(M-P|SV-P|S-P|SM-P|XY-P|BW-P|DP-P|SVP|SWSHP|SMP)[-\s]*(\d{1,4})(?:\/[A-Za-z0-9-]+)?$/i);
+  if (promoPrefix) {
+    return makeStandard(promoPrefix[1], promoPrefix[2]);
+  }
+
+  // 4b. Dotted / Chinese / Special sets: CSV9.5C195, 30C033, MBG022, MC754, MEE020, MEM018, MEZ015, MF042, ASC275, PBL010, PFL109, SP4004, SEK002, SV0D015
+  const specialPrefix = cleanCode.match(/^(CSV\d+(?:\.\d+)?\s*C?|30(?:th)?\s*C|CS\d+[A-Za-z]*|CBB\d+[A-Za-z]?|MBG|MEE|MEM|MEZ|MC|MF|ASC|PBL|PFL|SEK|SVAL|SV0D)[-\s]*(\d{1,4})(?:\/(\d{1,4}))?$/i);
+  if (specialPrefix) {
+    return makeStandard(specialPrefix[1], specialPrefix[2], specialPrefix[3]);
+  }
+  // SP4 + 3-digit padded e.g. SP4004 or SP4-004
+  const spDeckMatch = cleanCode.match(/^(SP\d)(?:[-\s]+(\d{1,4})|(\d{3}))(?:\/(\d{1,4}))?$/i);
+  if (spDeckMatch) {
+    return makeStandard(spDeckMatch[1], spDeckMatch[2] || spDeckMatch[3], spDeckMatch[4]);
+  }
+
+  // 4c. Gallery codes: CRZGG27, LORTG05, CRZ-GG27
+  const galleryComp = cleanCode.match(/^([A-Za-z0-9]{2,5}?)[-\s]*((?:GG|TG)\d{1,3})(?:\/(?:GG|TG)?\d{1,3})?$/i);
+  if (galleryComp && /[A-Za-z]/.test(galleryComp[1])) {
+    return makeStandard(galleryComp[1], galleryComp[2]);
+  }
+
+  // 4d. Letter-suffixed Japanese/Asian set codes (unambiguous boundary between trailing letter of setCode and digits of cardNum):
+  // e.g. SV11B150, SV11W172, S12A127, S5A008, M2A208, SM11B036, M1S072, SV4K078
+  const letterSuffixSet = cleanCode.match(/^(SV1[0-2][A-Za-z]|SV\d[A-Za-z]|S1[0-2][A-Za-z]|S\d[A-Za-z]|SM1[0-2][A-Za-z]|SM\d[A-Za-z]|XY1[0-2][A-Za-z]|XY\d[A-Za-z]|BW1[01][A-Za-z]|BW\d[A-Za-z]|M\d[A-Za-z]|ME\d+(?:\.\d+)?[A-Za-z])[-\s]*(\d{1,4})(?:[\/-](\d{1,4}))?$/i);
+  if (letterSuffixSet) {
+    return makeStandard(letterSuffixSet[1], letterSuffixSet[2], letterSuffixSet[3]);
+  }
+
+  // 4e. Digit-ending Japanese/Asian set codes with explicit separator (e.g. "SV10-082", "S8 035", "s0-002")
+  const sepDigitSet = cleanCode.match(/^(SV1[0-2]|SV\d|S1[0-2]|S\d|SM1[0-2]|SM\d|XY1[0-2]|XY\d|BW1[01]|BW\d|M\d|OP\d{1,2}|ST\d{1,2}|EB\d{1,2}|PRB\d{1,2})[-\s]+(\d{1,4})(?:[\/-](\d{1,4}))?$/i);
+  if (sepDigitSet) {
+    return makeStandard(sepDigitSet[1], sepDigitSet[2], sepDigitSet[3]);
+  }
+
+  // 4f. Digit-ending Japanese/Asian set codes concatenated with 3-digit padded collector number:
+  // e.g. SV10082 -> SV10 + 082, SV3129 -> SV3 + 129, S8035 -> S8 + 035, S0002 -> S0 + 002, SM12065 -> SM12 + 065, M6082 -> M6 + 082
+  const concatPaddedDigitSet = cleanCode.match(/^(SV1[0-2]|SV\d|S1[0-2]|S\d|SM1[0-2]|SM\d|XY1[0-2]|XY\d|BW1[01]|BW\d|M\d)(\d{3})(?:\/(\d{1,4}))?$/i);
+  if (concatPaddedDigitSet) {
+    return makeStandard(concatPaddedDigitSet[1], concatPaddedDigitSet[2], concatPaddedDigitSet[3]);
+  }
+
+  // 4g. Unpadded concatenated fallback (e.g. manually typed "M582" -> M5 + 082, "S835" -> S8 + 035, "SV695" -> SV6 + 095)
+  const concatShortDigitSet = cleanCode.match(/^(SV1[0-2]|SV\d|S1[0-2]|S\d|SM1[0-2]|SM\d|XY\d|BW\d|M\d)(\d{1,2})(?:\/(\d{1,4}))?$/i);
+  if (concatShortDigitSet) {
+    return makeStandard(concatShortDigitSet[1], concatShortDigitSet[2], concatShortDigitSet[3]);
+  }
+
+  // 4h. Pure alpha 2-4 letter Western/Classic set codes (e.g. PRE170, RCL015, DRI185, PAF091, MEW173, CRZ001)
+  const alphaSetMatch = cleanCode.match(/^([A-Za-z]{2,5})[-\s]*(\d{1,4})(?:[\/-](\d{1,4}))?$/);
+  if (alphaSetMatch && !NON_SET_TOKENS_RE.test(alphaSetMatch[1])) {
+    return makeStandard(alphaSetMatch[1], alphaSetMatch[2], alphaSetMatch[3]);
+  }
+
+  const stdMatch = cleanCode.match(/^([A-Za-z0-9.\-_]{2,10})[-\s]+(\d{1,4})(?:[\/-](\d{1,4}))?$/);
+  if (stdMatch) {
+    return makeStandard(stdMatch[1], stdMatch[2], stdMatch[3]);
   }
 
   return null;
@@ -738,6 +883,7 @@ export function normalizeScanData(parsedCSV) {
       detectedCode,
       rawCode: rawLegacyCode || detectedCode || '',
       tcg: detectedTcg,
+      whatnot: whatnotObject,
     });
 
     return {

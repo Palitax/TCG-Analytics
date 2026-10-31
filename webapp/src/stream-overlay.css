@@ -442,11 +442,36 @@
 
 .so-card-title {
   font-size: 1.85rem;
-  font-weight: 700;
+  font-weight: 800;
   color: #ffffff;
   margin: 0;
-  line-height: 1.2;
+  line-height: 1.25;
   letter-spacing: -0.01em;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.so-card-lang-prefix {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 3px 10px;
+  border-radius: 7px;
+  line-height: 1.3;
+  flex-shrink: 0;
+  transform: translateY(-2px);
+}
+
+.so-card-name-de {
+  color: #ffffff;
+  font-weight: 800;
 }
 
 /* Metric Cards */
@@ -1035,6 +1060,14 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.so-list-lang-prefix {
+  color: #34d399;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-right: 3px;
 }
 
 .so-list-title-en {

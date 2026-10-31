@@ -2285,7 +2285,7 @@ function renderWatchlistTab(container) {
           <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px;">
             ${titleInfo.setName ? `<span style="font-size: 0.72rem; color: #a1a1aa;">📁 ${titleInfo.setName}</span>` : ''}
             ${titleInfo.number ? `<span class="watchlist-item-number" style="margin: 0;">${titleInfo.number}</span>` : ''}
-            ${titleInfo.variant ? `<span style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 6px; border-radius: 4px;">✨ ${titleInfo.variant}</span>` : ''}
+            ${titleInfo.variant ? `<span style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 6px; border-radius: 4px;">${titleInfo.variant}</span>` : ''}
           </div>
         </div>
         <div class="watchlist-item-price-col">
@@ -3013,7 +3013,7 @@ function renderCollectionTab(container) {
           <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px;">
             ${titleInfo.setName ? `<span style="font-size: 0.72rem; color: #a1a1aa;">📁 ${titleInfo.setName}</span>` : ''}
             ${titleInfo.number ? `<span class="watchlist-item-number" style="margin: 0;">${titleInfo.number}</span>` : ''}
-            ${titleInfo.variant ? `<span style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 6px; border-radius: 4px;">✨ ${titleInfo.variant}</span>` : ''}
+            ${titleInfo.variant ? `<span style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 6px; border-radius: 4px;">${titleInfo.variant}</span>` : ''}
           </div>
           <span class="collection-item-purchase-price" style="font-size: 0.72rem; color: var(--primary); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-weight: 500; text-decoration: underline;" data-action="set-purchase-price">
             <svg style="width: 10px; height: 10px;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
@@ -3791,7 +3791,7 @@ async function renderAnalyticsTab(container) {
               <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 2px;">
                 ${titleInfo.setName ? `<span style="font-size: 0.72rem; color: #a1a1aa;">📁 ${titleInfo.setName}</span>` : ''}
                 ${titleInfo.number ? `<span class="watchlist-item-number" style="margin: 0;">${titleInfo.number}</span>` : ''}
-                ${titleInfo.variant ? `<span style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 6px; border-radius: 4px;">✨ ${titleInfo.variant}</span>` : ''}
+                ${titleInfo.variant ? `<span style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 6px; border-radius: 4px;">${titleInfo.variant}</span>` : ''}
               </div>
             </div>
             <div class="watchlist-item-price-col">
@@ -3919,7 +3919,7 @@ function buildCardmarketSearchUrl(item) {
   const languageVal = LANGUAGE_URL_MAP[rawLang] || '1';
 
   // Direct Cardmarket URL path if matched in DB e.g. "/de/OnePiece/Products/Singles/..." or "https://www.cardmarket.com..."
-  if (cardId && (cardId.startsWith('/') || cardId.includes('cardmarket.com'))) {
+  if (cardId && !cardId.startsWith('/Manual/') && (cardId.startsWith('/') || cardId.includes('cardmarket.com'))) {
     let baseUrl = cardId.startsWith('/') ? `https://www.cardmarket.com${cardId}` : cardId;
     try {
       const urlObj = new URL(baseUrl);
@@ -3931,7 +3931,7 @@ function buildCardmarketSearchUrl(item) {
   }
 
   // Parse details from cardId path if available e.g. "/Pokemon/Products/Singles/Obsidian-Flammen/Glurak-ex-183-165"
-  if (cardId.includes('/')) {
+  if (cardId.includes('/') && !cardId.startsWith('/Manual/')) {
     const parts = cardId.split('/').filter(Boolean);
     const lastPart = parts.pop() || '';
     if (parts.length >= 1) {
@@ -4079,7 +4079,7 @@ function renderBulkScanTab(container) {
               <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
-              ✨ Pipeline Builder
+              Pipeline Builder
             </button>
             <button class="shadcn-btn shadcn-btn-secondary" id="btn-refresh-bulk-db" type="button" title="Fragt Supabase neu ab nach kürzlich gescannten Preisen & Bildern">
               <svg style="width: 14px; height: 14px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -4330,7 +4330,7 @@ function renderBulkScanTab(container) {
                 <input type="text" class="form-input code-input" value="${item.detectedCode ? item.detectedCode.replace(/^([A-Za-z0-9]{2,6})\s+(\d{1,4})/i, '$1$2') : ''}" style="min-width: 95px; max-width: 125px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 3px 6px; font-size: 0.8rem;" />
                 ${setBadgeHtml}
               </div>
-              ${item.variant ? `<div style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 5px; border-radius: 4px; display: inline-block; margin-top: 2px;">✨ ${item.variant.replace(/\D/g, '') ? `Version ${item.variant.replace(/\D/g, '')}` : item.variant}</div>` : ''}
+              ${item.variant ? `<div style="font-size: 0.68rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); padding: 1px 5px; border-radius: 4px; display: inline-block; margin-top: 2px;">${item.variant.replace(/\D/g, '') ? `Version ${item.variant.replace(/\D/g, '')}` : item.variant}</div>` : ''}
             </div>
           </div>
         </td>
@@ -4559,7 +4559,7 @@ function renderBulkScanTab(container) {
       if (manualPriceInput) {
         manualPriceInput.addEventListener('input', (e) => {
           const raw = e.target.value.trim().replace(',', '.');
-          const codeKey = (item.detectedCode || item.rawCode || '').trim();
+          const codeKey = (item.detectedCode || item.rawCode || item.detectedName || item.rawName || '').trim();
           if (raw === '') {
             item.lastPrice = null;
             item.isManualPrice = false;
@@ -4580,6 +4580,9 @@ function renderBulkScanTab(container) {
                 saveManualPrice(codeKey, parsedPrice, {
                   name: item.detectedName || item.rawName,
                   set: item.setNameDe || item.rawSet,
+                  tcg: item.tcg,
+                  language: item.rawLanguage,
+                  condition: item.rawCondition,
                   cardmarket_url: item.cardDetails?.cardmarket_url
                 });
               }
@@ -4589,7 +4592,7 @@ function renderBulkScanTab(container) {
 
         manualPriceInput.addEventListener('change', (e) => {
           const raw = e.target.value.trim().replace(',', '.');
-          const codeKey = (item.detectedCode || item.rawCode || '').trim();
+          const codeKey = (item.detectedCode || item.rawCode || item.detectedName || item.rawName || '').trim();
           if (raw !== '') {
             const parsedPrice = parseFloat(raw);
             if (!isNaN(parsedPrice) && parsedPrice >= 0) {
@@ -4603,6 +4606,9 @@ function renderBulkScanTab(container) {
                 saveManualPrice(codeKey, parsedPrice, {
                   name: item.detectedName || item.rawName,
                   set: item.setNameDe || item.rawSet,
+                  tcg: item.tcg,
+                  language: item.rawLanguage,
+                  condition: item.rawCondition,
                   cardmarket_url: item.cardDetails?.cardmarket_url
                 });
               }
@@ -4914,7 +4920,7 @@ function renderBulkScanTab(container) {
                   <div style="display: flex; gap: 8px; flex-wrap: wrap;" id="template-chips-container">
                     ${splitTemplates.map((t, idx) => `
                       <button type="button" class="split-template-chip" data-template-idx="${idx}">
-                        ✨ ${t.label}
+                        ⚡ ${t.label}
                       </button>
                     `).join('')}
                   </div>
@@ -4966,7 +4972,7 @@ function renderBulkScanTab(container) {
                 <input type="checkbox" id="chk-use-hit-rule" checked style="width: 16px; height: 16px; accent-color: #a855f7; cursor: pointer;" />
                 2. Garantierte Hit-Karten pro Set festlegen
               </label>
-              <span class="hit-slot-badge">✨ Hit Feature</span>
+              <span class="hit-slot-badge">⚡ Hit Feature</span>
             </div>
             <p style="color: #94a3b8; font-size: 0.82rem; margin: 0 0 14px 0;">
               Definiere, wie viele wertvolle Karten garantiert in jedem Set enthalten sein sollen.
@@ -5334,7 +5340,7 @@ function renderBulkScanTab(container) {
           }
 
           simContainer.innerHTML = `
-            <div>✨ Gefundene Hits (≥ ${minHitPrice.toFixed(2)} €): <strong style="color: #facc15;">${hitCandidates.length}</strong></div>
+            <div>⚡ Gefundene Hits (≥ ${minHitPrice.toFixed(2)} €): <strong style="color: #facc15;">${hitCandidates.length}</strong></div>
             <div>🃏 Basis-Karten: <strong style="color: #38bdf8;">${baseCandidates.length}</strong></div>
             <div>🛡️ Duplikat-Limit: <strong style="color: #38bdf8;">${useDupLimit ? `Max ${maxDup}x` : 'Unbegrenzt'}</strong></div>
             <div>📦 Geplante Sets: <strong style="color: #c084fc;">${customPipelines.length} Sets (${customPipelines.map((p) => p.size).join(' + ')} Karten)</strong></div>
@@ -5365,7 +5371,7 @@ function renderBulkScanTab(container) {
           const remaining = Math.max(0, availablePool.length - totalUsed);
 
           simContainer.innerHTML = `
-            <div>✨ Gefundene Hits (≥ ${minHitPrice.toFixed(2)} €): <strong style="color: #facc15;">${hitCandidates.length}</strong></div>
+            <div>⚡ Gefundene Hits (≥ ${minHitPrice.toFixed(2)} €): <strong style="color: #facc15;">${hitCandidates.length}</strong></div>
             <div>🃏 Basis-Karten: <strong style="color: #38bdf8;">${baseCandidates.length}</strong></div>
             <div>🛡️ Duplikat-Limit: <strong style="color: #38bdf8;">${useDupLimit ? `Max ${maxDup}x` : 'Unbegrenzt'}</strong></div>
             <div>📦 Mögliche Sets: <strong style="color: #4ade80;">${maxSets} Sets à ${selectedPackSize} Karten</strong></div>
@@ -5613,7 +5619,7 @@ function renderBulkScanTab(container) {
             </div>
             ${avgSpread <= 0.2 ? `
               <span class="hit-slot-badge" style="background: rgba(74, 222, 128, 0.15); border-color: rgba(74, 222, 128, 0.4); color: #4ade80;">
-                ✨ Optimal ausbalanciert
+                ✓ Optimal ausbalanciert
               </span>
             ` : `
               <span class="hit-slot-badge" style="background: rgba(250, 204, 21, 0.15); border-color: rgba(250, 204, 21, 0.4); color: #facc15;">
@@ -5776,7 +5782,7 @@ function renderBulkScanTab(container) {
       container.querySelector('#btn-overview-balance-values')?.addEventListener('click', () => {
         setBuilderInstance.balanceExistingSets(allCards, 1);
         renderModalContent();
-        showToast(`✨ Durchschnittswerte über alle ${sets.length} Sets wurden erfolgreich angeglichen!`);
+        showToast(`✓ Durchschnittswerte über alle ${sets.length} Sets wurden erfolgreich angeglichen!`);
       });
 
       container.querySelector('#btn-overview-separate-duplicates-all')?.addEventListener('click', () => {
@@ -5990,7 +5996,7 @@ function renderBulkScanTab(container) {
                   ${card.nameDe || card.detectedName || card.rawName}
                 </span>
                 ${card.detectedCode ? `<span style="font-size: 0.75rem; color: #a1a1aa; font-family: monospace;">(${card.detectedCode})</span>` : ''}
-                ${isHit ? `<span class="hit-slot-badge">✨ Hit</span>` : ''}
+                ${isHit ? `<span class="hit-slot-badge">⚡ Hit</span>` : ''}
               </div>
               <div style="font-size: 0.75rem; color: #71717a; display: flex; gap: 8px;">
                 <span>${card.setNameDe || card.rawSet || 'TCG'}</span>
@@ -6850,7 +6856,7 @@ function renderDetail(container) {
     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px 0;">
       ${meta.setNameDe ? `<span style="font-size: 0.8rem; color: #cbd5e1; background: rgba(255,255,255,0.06); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); font-weight: 500;">📁 ${meta.setNameDe}</span>` : ''}
       ${meta.cardCode ? `<span style="font-size: 0.8rem; font-weight: 600; color: #fff; background: rgba(255,255,255,0.06); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1);">${meta.cardCode}</span>` : ''}
-      ${meta.variant ? `<span style="font-size: 0.78rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(168, 85, 247, 0.35);">✨ ${meta.variantLabel || `Variante ${meta.variant}`}</span>` : ''}
+      ${meta.variant ? `<span style="font-size: 0.78rem; font-weight: 700; color: #d8b4fe; background: rgba(168, 85, 247, 0.15); padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(168, 85, 247, 0.35);">${meta.variantLabel || `Variante ${meta.variant}`}</span>` : ''}
     </div>
     <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 6px;">
       <a href="${cmSearchUrl}" target="_blank" rel="noopener noreferrer" class="cardmarket-link" style="font-size: 0.78rem; color: #60a5fa; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; font-weight: 500; transition: color 0.2s;">
