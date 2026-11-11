@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tcg-card-tracker-v4';
+const CACHE_NAME = 'tcg-card-tracker-v5';
 const ASSETS = [
   '/',
   '/index.html',
@@ -25,8 +25,12 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
-  // NEVER intercept external API requests (e.g. Supabase, Cardmarket)
-  if (url.origin !== self.location.origin) {
+  // NEVER intercept external API requests or same-origin API/Supabase proxy routes
+  if (
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith('/supabase-proxy/') ||
+    url.pathname.startsWith('/api/')
+  ) {
     return;
   }
 

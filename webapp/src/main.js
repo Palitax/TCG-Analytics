@@ -66,6 +66,7 @@ let gridCards = []; // Active search/analytics grid cards
 let activeTcgFilter = 'all'; // TCG filter for tabs ('all', 'OnePiece', 'Pokemon', 'Riftbound', 'DragonBall')
 let collectionValueHistory = []; // Historical values of collection market value
 let isBackgroundFetching = false; // Flag to indicate active database load operation
+let lastDataFetchTime = 0; // Timestamp of last successful background fetch
 let watchlistSyncOffset = 0; // Current batch offset for syncing watchlist tabs in chunks of 20
 let collectionSyncOffset = 0; // Current batch offset for syncing collection tabs in chunks of 20
 const SYNC_BATCH_SIZE = 20;
@@ -1064,6 +1065,34 @@ async function init() {
     }
   });
 
+  // Auto-refresh collection & watchlist when returning to tab (e.g. after saving on Cardmarket)
+  const refreshDashboardOnFocus = () => {
+    if (document.visibilityState === 'hidden') return;
+    if (!currentUser || currentView !== 'dashboard' || isBackgroundFetching) return;
+    if (Date.now() - lastDataFetchTime < 3000) return;
+
+    isBackgroundFetching = true;
+    Promise.all([fetchMarkedCards(), fetchCollectionCards()])
+      .then(() => {
+        lastDataFetchTime = Date.now();
+        isBackgroundFetching = false;
+        updateDashboardTabCounts();
+        const tabContentWrapper = document.getElementById('dashboard-tab-content');
+        if (tabContentWrapper && currentView === 'dashboard') {
+          if (activeDashboardTab === 'watchlist') {
+            renderWatchlistTab(tabContentWrapper);
+          } else if (activeDashboardTab === 'collection') {
+            renderCollectionTab(tabContentWrapper);
+          }
+        }
+      })
+      .catch(() => {
+        isBackgroundFetching = false;
+      });
+  };
+  document.addEventListener('visibilitychange', refreshDashboardOnFocus);
+  window.addEventListener('focus', refreshDashboardOnFocus);
+
   // If user is logged in, load dashboard or current route
   if (currentUser) {
     if (window.location.href.includes('from=extension')) {
@@ -1510,12 +1539,25 @@ async function navigate(path, pushState = true) {
       streamOverlayInstance = null;
     }
 
+    const now = Date.now();
+    const isCacheStale = now - lastDataFetchTime > 15000;
+    const isMemoryEmpty =
+      (activeDashboardTab === 'collection' && collectionCards.length === 0) ||
+      (activeDashboardTab === 'watchlist' && markedCards.length === 0) ||
+      (markedCards.length === 0 && collectionCards.length === 0);
+    const shouldFetch = isMemoryEmpty || isCacheStale;
+
+    if (shouldFetch) {
+      isBackgroundFetching = true;
+    }
+
     const existingTabWrapper = document.getElementById('dashboard-tab-content');
     if (currentView === 'dashboard' && existingTabWrapper) {
       // Highlight active tab button
       document.querySelectorAll('.cm-landing-btn').forEach(btn => btn.classList.remove('active'));
       const activeBtn = document.getElementById(`btn-tab-${activeDashboardTab}`);
       if (activeBtn) activeBtn.classList.add('active');
+      updateDashboardTabCounts();
 
       existingTabWrapper.innerHTML = '';
       if (activeDashboardTab === 'watchlist') {
@@ -1533,14 +1575,10 @@ async function navigate(path, pushState = true) {
       await setView('dashboard');
     }
 
-    // Only trigger background DB fetch if cache is older than 30 seconds
-    const now = Date.now();
-    const isCacheStale = now - lastDataFetchTime > 30000;
-    const isMemoryEmpty = markedCards.length === 0 && collectionCards.length === 0;
-
-    if (isMemoryEmpty || isCacheStale) {
-      if (isMemoryEmpty) showLoadingProgress(true);
-      isBackgroundFetching = true;
+    if (shouldFetch) {
+      if (markedCards.length === 0 && collectionCards.length === 0) {
+        showLoadingProgress(true);
+      }
 
       Promise.all([
         fetchMarkedCards(),
@@ -1549,6 +1587,7 @@ async function navigate(path, pushState = true) {
         lastDataFetchTime = Date.now();
         showLoadingProgress(false);
         isBackgroundFetching = false;
+        updateDashboardTabCounts();
         syncLocalImageCacheToCloud();
 
         const tabContentWrapper = document.getElementById('dashboard-tab-content');
@@ -1748,12 +1787,35 @@ function showLogoutModal() {
 
   modal.querySelector('#modal-btn-logout').addEventListener('click', async () => {
     closeModal();
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {}
+    try {
+      localStorage.removeItem('sb-api-supabase-auth-token');
+      localStorage.removeItem('tcg_user_session');
+    } catch (e) {}
+    currentUser = null;
+    markedCards = [];
+    collectionCards = [];
+    collectionValueHistory = [];
+    lastDataFetchTime = 0;
+    navigate('/login');
   });
 
   modal.querySelector('#modal-btn-switch').addEventListener('click', async () => {
     closeModal();
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {}
+    try {
+      localStorage.removeItem('sb-api-supabase-auth-token');
+      localStorage.removeItem('tcg_user_session');
+    } catch (e) {}
+    currentUser = null;
+    markedCards = [];
+    collectionCards = [];
+    collectionValueHistory = [];
+    lastDataFetchTime = 0;
     // Re-auth immediately with prompt selector
     await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -1772,6 +1834,23 @@ function showLogoutModal() {
       closeModal();
     }
   });
+}
+
+function updateDashboardTabCounts() {
+  const btnWatchlist = document.getElementById('btn-tab-watchlist');
+  if (btnWatchlist) {
+    const labelNode = document.getElementById('tab-count-watchlist');
+    if (labelNode) {
+      labelNode.textContent = `Watchlist (${markedCards.length})`;
+    }
+  }
+  const btnCollection = document.getElementById('btn-tab-collection');
+  if (btnCollection) {
+    const labelNode = document.getElementById('tab-count-collection');
+    if (labelNode) {
+      labelNode.textContent = `Collection (${collectionCards.length})`;
+    }
+  }
 }
 
 // RENDER: Dashboard Panel
@@ -1990,14 +2069,14 @@ async function renderDashboard(container) {
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499c.151-.377.728-.377.879 0l2.09 5.011 5.4 1.018a.5.5 0 01.29.839l-3.834 3.738 1.05 5.378a.5.5 0 01-.707.567L12 17.766l-4.664 2.483a.5.5 0 01-.707-.567l1.05-5.378-3.834-3.738a.5.5 0 01.29-.839l5.4-1.018 2.09-5.011z" />
         </svg>
-        Watchlist (${markedCards.length})
+        <span id="tab-count-watchlist">Watchlist (${markedCards.length})</span>
       </button>
       <button id="btn-tab-collection" class="cm-landing-btn ${activeDashboardTab === 'collection' ? 'active' : ''}">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width: 14px; height: 14px;">
           <rect x="3" y="3" width="12" height="12" rx="2" />
           <path d="M9 15v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-2" />
         </svg>
-        Collection (${collectionCards.length})
+        <span id="tab-count-collection">Collection (${collectionCards.length})</span>
       </button>
       <button id="btn-tab-analytics" class="cm-landing-btn ${activeDashboardTab === 'analytics' ? 'active' : ''}">
         <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -2592,7 +2671,8 @@ function renderWatchlistTab(container) {
               tcg: card.tcg,
               card_id: card.card_id,
               image_url: card.image_url,
-              comment: formatCollectionMetaComment(card.condition, card.language, card.seller_country)
+              comment: formatCollectionMetaComment(card.condition, card.language, card.seller_country),
+              created_at: new Date().toISOString()
             };
             const { error } = await supabase
               .from('collection_cards')
@@ -2601,6 +2681,7 @@ function renderWatchlistTab(container) {
             showToast('Karte zur Collection hinzugefügt!');
           }
           await fetchCollectionCards(); // Refresh collection list
+          updateDashboardTabCounts();
           container.innerHTML = '';
           renderWatchlistTab(container); // Refresh watchlist view to update collect checkmark state
         } catch (err) {
@@ -3201,6 +3282,7 @@ function renderCollectionTab(container) {
 
                 if (error) throw error;
                 await fetchCollectionCards();
+                updateDashboardTabCounts();
                 container.innerHTML = '';
                 renderCollectionTab(container);
               } catch (err) {
@@ -3346,6 +3428,7 @@ function renderCollectionTab(container) {
 
             if (error) throw error;
             await fetchCollectionCards();
+            updateDashboardTabCounts();
             container.innerHTML = '';
             renderCollectionTab(container);
           } catch (err) {
@@ -6871,7 +6954,8 @@ function renderDetail(container) {
           tcg: details.tcg,
           card_id: details.cardId,
           image_url: details.imageUrl,
-          comment: formatCollectionMetaComment(condVal, langVal, locVal)
+          comment: formatCollectionMetaComment(condVal, langVal, locVal),
+          created_at: new Date().toISOString()
         };
         const { error } = await supabase
           .from('collection_cards')

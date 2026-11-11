@@ -614,7 +614,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             image_url: imageUrl || null,
             condition: condition || null,
             language: language || null,
-            seller_country: sellerCountry || null
+            seller_country: sellerCountry || null,
+            created_at: new Date().toISOString()
           };
 
           const postRes = await fetch(`${SUPABASE_URL}/rest/v1/marked_cards`, {
@@ -685,7 +686,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             tcg: tcg,
             card_id: cardId,
             image_url: imageUrl || null,
-            comment: metaComment
+            comment: metaComment,
+            created_at: new Date().toISOString()
           };
 
           const postRes = await fetch(`${SUPABASE_URL}/rest/v1/collection_cards`, {
