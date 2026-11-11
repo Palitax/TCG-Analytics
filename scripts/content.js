@@ -1216,6 +1216,8 @@ function attachListeners() {
 
       btnBookmark.style.pointerEvents = 'none';
       const { activeCond, activeLoc, activeLang } = getActiveFilters();
+      const mainImg = findMainCardImageOnPage();
+      const pageImageUrl = (mainImg?.src && /^https?:\/\//i.test(mainImg.src)) ? mainImg.src : null;
 
       chrome.runtime.sendMessage({
         action: "toggleBookmark",
@@ -1224,6 +1226,7 @@ function attachListeners() {
         condition: activeCond,
         language: activeLang,
         sellerCountry: activeLoc,
+        imageUrl: pageImageUrl,
         shouldMark: !isMarked
       }, async (response) => {
         btnBookmark.style.pointerEvents = 'auto';
@@ -1241,11 +1244,14 @@ function attachListeners() {
             };
             await chrome.storage.local.set({ [cardPrefsKey]: cardPrefs });
           } else {
-            // Remove card preferences on unbookmark
-            const cardPrefsKey = 'card_preferences_' + currentUserId;
-            const { [cardPrefsKey]: cardPrefs = {} } = await chrome.storage.local.get(cardPrefsKey);
-            delete cardPrefs[cardId];
-            await chrome.storage.local.set({ [cardPrefsKey]: cardPrefs });
+            // Remove card preferences on unbookmark only if not also in collection
+            const stillCollected = document.getElementById('cm-btn-collection')?.classList.contains('collected');
+            if (!stillCollected) {
+              const cardPrefsKey = 'card_preferences_' + currentUserId;
+              const { [cardPrefsKey]: cardPrefs = {} } = await chrome.storage.local.get(cardPrefsKey);
+              delete cardPrefs[cardId];
+              await chrome.storage.local.set({ [cardPrefsKey]: cardPrefs });
+            }
           }
           runScan();
         } else if (response && response.error === 'UNAUTHENTICATED') {
@@ -1268,6 +1274,8 @@ function attachListeners() {
 
       btnCollection.style.pointerEvents = 'none';
       const { activeCond, activeLoc, activeLang } = getActiveFilters();
+      const mainImg = findMainCardImageOnPage();
+      const pageImageUrl = (mainImg?.src && /^https?:\/\//i.test(mainImg.src)) ? mainImg.src : null;
 
       chrome.runtime.sendMessage({
         action: "toggleCollection",
@@ -1276,10 +1284,29 @@ function attachListeners() {
         condition: activeCond,
         language: activeLang,
         sellerCountry: activeLoc,
+        imageUrl: pageImageUrl,
         shouldCollect: !isCollected
       }, async (response) => {
         btnCollection.style.pointerEvents = 'auto';
         if (response && response.success) {
+          if (currentUserId) {
+            const cardPrefsKey = 'card_preferences_' + currentUserId;
+            const { [cardPrefsKey]: cardPrefs = {} } = await chrome.storage.local.get(cardPrefsKey);
+            if (!isCollected) {
+              cardPrefs[cardId] = {
+                condition: activeCond,
+                location: activeLoc,
+                language: activeLang
+              };
+              await chrome.storage.local.set({ [cardPrefsKey]: cardPrefs });
+            } else {
+              const stillMarked = document.getElementById('cm-btn-bookmark')?.classList.contains('marked');
+              if (!stillMarked) {
+                delete cardPrefs[cardId];
+                await chrome.storage.local.set({ [cardPrefsKey]: cardPrefs });
+              }
+            }
+          }
           runScan();
         } else if (response && response.error === 'UNAUTHENTICATED') {
           alert('Bitte logge dich über das Extension-Popup ein!');
@@ -1511,7 +1538,7 @@ async function runScan(force = false) {
         isAdmin: dbResponse.isAdmin || false
       });
 
-      if (dbResponse.isMarked) {
+      if (dbResponse.isMarked || dbResponse.isInCollection) {
         (async () => {
           const cardPrefsKey = 'card_preferences_' + currentUserId;
           const { [cardPrefsKey]: latestCardPrefs = {} } = await chrome.storage.local.get(cardPrefsKey);

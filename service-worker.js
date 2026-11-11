@@ -473,7 +473,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Query collection state from the database
         let isInCollection = false;
         try {
-          const collectionUrl = `${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}`;
+          const cleanCardId = (cardId || '').replace(/^\/+/, '');
+          const slashedCardId = '/' + cleanCardId;
+          const encClean = encodeURIComponent(cleanCardId);
+          const encSlashed = encodeURIComponent(slashedCardId);
+          const collectionUrl = `${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&or=(card_id.eq.${encClean},card_id.eq.${encSlashed})`;
           const collectionResponse = await fetch(collectionUrl, {
             method: "GET",
             credentials: "omit",
@@ -598,7 +602,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return sendResponse({ error: "UNAUTHENTICATED" });
         }
 
-        const { tcg, cardId, condition, language, sellerCountry, shouldMark } = message;
+        const { tcg, cardId, condition, language, sellerCountry, imageUrl, shouldMark } = message;
         const accessToken = session.access_token;
         const userId = session.user.id;
 
@@ -607,7 +611,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             user_id: userId,
             tcg: tcg,
             card_id: cardId,
-            image_url: null,
+            image_url: imageUrl || null,
             condition: condition || null,
             language: language || null,
             seller_country: sellerCountry || null
@@ -662,19 +666,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return sendResponse({ error: "UNAUTHENTICATED" });
         }
 
-        const { tcg, cardId, condition, language, sellerCountry, shouldCollect } = message;
+        const { tcg, cardId, condition, language, sellerCountry, imageUrl, shouldCollect } = message;
         const accessToken = session.access_token;
         const userId = session.user.id;
+        const cleanCardId = (cardId || '').replace(/^\/+/, '');
+        const slashedCardId = '/' + cleanCardId;
+        const encClean = encodeURIComponent(cleanCardId);
+        const encSlashed = encodeURIComponent(slashedCardId);
 
         if (shouldCollect) {
+          const cond = condition && condition !== 'ALL' ? condition : '';
+          const lang = language && language !== 'ALL' ? language : '';
+          const loc = sellerCountry && sellerCountry !== 'ALL' ? sellerCountry : '';
+          const metaComment = (cond || lang || loc) ? `[${lang}|${loc}|${cond}]` : null;
+
           const collectData = {
             user_id: userId,
             tcg: tcg,
             card_id: cardId,
-            image_url: null,
-            condition: condition || null,
-            language: language || null,
-            seller_country: sellerCountry || null
+            image_url: imageUrl || null,
+            comment: metaComment
           };
 
           const postRes = await fetch(`${SUPABASE_URL}/rest/v1/collection_cards`, {
@@ -701,7 +712,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             throw new Error(`Failed to add card to collection: ${postRes.statusText} - ${errTxt}`);
           }
         } else {
-          const deleteUrl = `${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}`;
+          const deleteUrl = `${SUPABASE_URL}/rest/v1/collection_cards?user_id=eq.${userId}&or=(card_id.eq.${encClean},card_id.eq.${encSlashed})`;
           const deleteRes = await fetch(deleteUrl, {
             method: "DELETE",
             credentials: "omit",

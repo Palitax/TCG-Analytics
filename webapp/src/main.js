@@ -253,7 +253,12 @@ function loadCachedUserData(userId) {
     }
 
     const cachedColl = localStorage.getItem(`cache_coll_${userId}`);
-    if (cachedColl) collectionCards = JSON.parse(cachedColl);
+    if (cachedColl) {
+      collectionCards = JSON.parse(cachedColl);
+      if (Array.isArray(collectionCards)) {
+        collectionCards.forEach(hydrateCollectionCardMeta);
+      }
+    }
 
     const cachedHist = localStorage.getItem(`cache_hist_${userId}`);
     if (cachedHist) collectionValueHistory = JSON.parse(cachedHist);
@@ -883,6 +888,42 @@ function parseHistoryItem(item) {
   };
 }
 
+// Encode/decode filter preferences inside collection_cards.comment ([lang|loc|cond])
+// since collection_cards in Supabase does not have dedicated condition/language/seller_country columns.
+function formatCollectionMetaComment(condition, language, sellerCountry, existingComment = '') {
+  let cleanComment = existingComment || '';
+  if (cleanComment.startsWith('[')) {
+    const closeIdx = cleanComment.indexOf(']');
+    if (closeIdx > 1) {
+      cleanComment = cleanComment.slice(closeIdx + 1).trim();
+    }
+  }
+  const cond = condition && condition !== 'ALL' ? condition : '';
+  const lang = language && language !== 'ALL' ? language : '';
+  const loc = sellerCountry && sellerCountry !== 'ALL' ? sellerCountry : '';
+  if (!cond && !lang && !loc) {
+    return cleanComment || null;
+  }
+  const prefix = `[${lang}|${loc}|${cond}]`;
+  return cleanComment ? `${prefix} ${cleanComment}` : prefix;
+}
+
+function hydrateCollectionCardMeta(card) {
+  if (!card || typeof card !== 'object') return card;
+  if (card.comment && card.comment.startsWith('[')) {
+    const closeIdx = card.comment.indexOf(']');
+    if (closeIdx > 1) {
+      const parts = card.comment.slice(1, closeIdx).split('|');
+      if (parts.length >= 3) {
+        if (!card.language && parts[0]) card.language = parts[0];
+        if (!card.seller_country && parts[1]) card.seller_country = parts[1];
+        if (!card.condition && parts[2]) card.condition = parts[2];
+      }
+    }
+  }
+  return card;
+}
+
 function decodeJWT(token) {
   try {
     const base64Url = token.split('.')[1];
@@ -1137,6 +1178,10 @@ async function fetchCollectionCards() {
         listData = await resp.json();
       }
     } catch (fErr) {}
+
+    if (Array.isArray(listData)) {
+      listData.forEach(hydrateCollectionCardMeta);
+    }
 
     const cardIds = (listData || []).map(c => c.card_id);
     if (cardIds.length > 0) {
@@ -2546,12 +2591,13 @@ function renderWatchlistTab(container) {
               user_id: currentUser.id,
               tcg: card.tcg,
               card_id: card.card_id,
-              image_url: card.image_url
+              image_url: card.image_url,
+              comment: formatCollectionMetaComment(card.condition, card.language, card.seller_country)
             };
             const { error } = await supabase
               .from('collection_cards')
               .insert(collectData);
-            if (error) throw error;
+            if (error && error.code !== '23505') throw error;
             showToast('Karte zur Collection hinzugefügt!');
           }
           await fetchCollectionCards(); // Refresh collection list
@@ -4662,9 +4708,11 @@ function renderBulkScanTab(container) {
           card_id: cardId,
           tcg: 'OnePiece',
           image_url: item.imageUrl || null,
-          condition: item.rawCondition || 'NM',
-          language: item.rawLanguage || 'EN',
-          seller_country: item.rawLocation || 'DE'
+          comment: formatCollectionMetaComment(
+            item.rawCondition || 'NM',
+            item.rawLanguage || 'EN',
+            item.rawLocation || 'DE'
+          )
         };
       });
 
@@ -6815,20 +6863,21 @@ function renderDetail(container) {
         showToast('Karte aus Collection entfernt!');
       } else {
         // Create collection card
+        const condVal = details.selectedCondition !== 'ALL' ? details.selectedCondition : null;
+        const langVal = details.selectedLanguage !== 'ALL' ? details.selectedLanguage : null;
+        const locVal = details.selectedLocation !== 'ALL' ? details.selectedLocation : null;
         const collectData = {
           user_id: currentUser.id,
           tcg: details.tcg,
           card_id: details.cardId,
           image_url: details.imageUrl,
-          condition: details.selectedCondition !== 'ALL' ? details.selectedCondition : null,
-          language: details.selectedLanguage !== 'ALL' ? details.selectedLanguage : null,
-          seller_country: details.selectedLocation !== 'ALL' ? details.selectedLocation : null
+          comment: formatCollectionMetaComment(condVal, langVal, locVal)
         };
         const { error } = await supabase
           .from('collection_cards')
           .insert(collectData);
 
-        if (error) throw error;
+        if (error && error.code !== '23505') throw error;
         details.isCollected = true;
         showToast('Karte zur Collection hinzugefügt!');
       }
@@ -6836,6 +6885,7 @@ function renderDetail(container) {
       updateCollectIconStyle();
     } catch (err) {
       console.error('Collection toggle failed:', err.message);
+      alert('Fehler beim Aktualisieren der Collection: ' + (err.message || 'Unbekannter Fehler'));
     } finally {
       collectBtn.style.pointerEvents = 'auto';
     }
@@ -7272,18 +7322,18 @@ function renderDetail(container) {
       }
 
       if (details.isCollected) {
+        const localColl = collectionCards.find(c => c.card_id === details.cardId);
+        const updatedComment = formatCollectionMetaComment(condVal, langVal, locVal, localColl?.comment);
         await supabase
           .from('collection_cards')
           .update({
-            condition: condVal,
-            language: langVal,
-            seller_country: locVal
+            comment: updatedComment
           })
           .eq('user_id', currentUser.id)
           .eq('card_id', details.cardId);
 
-        const localColl = collectionCards.find(c => c.card_id === details.cardId);
         if (localColl) {
+          localColl.comment = updatedComment;
           localColl.condition = condVal;
           localColl.language = langVal;
           localColl.seller_country = locVal;
