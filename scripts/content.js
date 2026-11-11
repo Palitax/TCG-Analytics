@@ -13,11 +13,40 @@ function formatRemainingTime(ms) {
   return `${minutes} Min.`;
 }
 
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+let activeToastTimer = null;
+function showTrackerToast(message, isError = false) {
+  document.querySelectorAll('.cm-tracker-toast').forEach(el => el.remove());
+  if (activeToastTimer) clearTimeout(activeToastTimer);
+
+  const toast = document.createElement('div');
+  toast.className = isError ? 'cm-tracker-toast error' : 'cm-tracker-toast';
+  const iconSvg = isError
+    ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`
+    : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+  toast.innerHTML = `${iconSvg}<span>${escapeHtml(message)}</span>`;
+  document.body.appendChild(toast);
+
+  activeToastTimer = setTimeout(() => {
+    toast.remove();
+  }, 3400);
+}
+
 function parseHistoryItem(item) {
   let matchedLang = item.language;
   let matchedCountry = item.seller_country;
   let matchedCond = item.condition;
   let imageUrl = null;
+  let isManualOverride = false;
   let cleanComment = item.comment || '';
 
   if (item.comment && item.comment.startsWith('[')) {
@@ -25,6 +54,7 @@ function parseHistoryItem(item) {
     if (closeBracketIdx > 1) {
       const metaContent = item.comment.slice(1, closeBracketIdx);
       cleanComment = item.comment.slice(closeBracketIdx + 1).trim();
+      cleanComment = cleanComment.replace(/^Code:\S+\s*/i, '').trim();
       
       const parts = metaContent.split('|');
       if (parts.length >= 3) {
@@ -33,6 +63,9 @@ function parseHistoryItem(item) {
         matchedCond = parts[2] || item.condition;
         if (parts.length >= 4) {
           imageUrl = parts[3] || null;
+        }
+        if (parts.length >= 5 && parts[4] === 'OVR') {
+          isManualOverride = true;
         }
       }
     }
@@ -45,6 +78,7 @@ function parseHistoryItem(item) {
     matchedCountry: matchedCountry,
     matchedCondition: matchedCond,
     imageUrl: imageUrl,
+    isManualOverride: isManualOverride,
     comment: cleanComment
   };
 }
@@ -446,12 +480,20 @@ function extractSellerCountry(sellerCol) {
 }
 
 function extractCondition(conditionElements) {
+  // Check compound condition names ("Near Mint", "Light Played") before substring names ("Mint", "Played")!
+  const titleOrder = ["NM", "LP", "MT", "EX", "GD", "PL", "PO"];
   const codes = ["MT", "NM", "EX", "GD", "LP", "PL", "PO"];
+
   for (const el of conditionElements) {
-    const title = (el.getAttribute('title') || el.getAttribute('data-bs-original-title') || el.getAttribute('data-original-title') || '').trim();
+    if (el.closest('.col-seller, .seller-name, .product-comments, .article-comment, [class*="comment"]')) {
+      continue;
+    }
+
+    const title = (el.getAttribute('title') || el.getAttribute('data-bs-original-title') || el.getAttribute('data-original-title') || el.getAttribute('aria-label') || '').trim();
     if (title) {
-      for (const code of codes) {
-        if (CONDITION_NAMES[code] && title.toLowerCase().includes(CONDITION_NAMES[code].toLowerCase())) {
+      const lowerTitle = title.toLowerCase();
+      for (const code of titleOrder) {
+        if (CONDITION_NAMES[code] && lowerTitle.includes(CONDITION_NAMES[code].toLowerCase())) {
           return code;
         }
       }
@@ -471,6 +513,37 @@ function extractCondition(conditionElements) {
     }
   }
   return null;
+}
+
+function extractRowCondition(row, productInfoCell = null) {
+  if (!row) return null;
+  const primaryEls = row.querySelectorAll('.article-condition, [class*="article-condition"], .product-attributes .badge, .col-product .badge, .product-info .badge, .condition, [class*="condition"]');
+  const foundPrimary = extractCondition(primaryEls);
+  if (foundPrimary) return foundPrimary;
+
+  const scope = productInfoCell || row.querySelector('.col-product, .product-info') || row;
+  return extractCondition(scope.querySelectorAll('.badge, span, a'));
+}
+
+function extractCommentFromRow(row, productInfoCell = null) {
+  const scope = productInfoCell || row?.querySelector('.col-product, .product-info');
+  if (!scope) {
+    const fallbackEl = row?.querySelector('.product-comments span, .article-comment, .comment-text');
+    return fallbackEl ? fallbackEl.textContent.trim() : '';
+  }
+
+  const commentElement = scope.querySelector('.product-comments span, .product-comments, .article-comment, .comment-text, .comment, [class*="comment"], .description');
+  if (commentElement) {
+    return commentElement.innerText.trim();
+  }
+
+  let cellText = scope.innerText.trim();
+  const condBadge = scope.querySelector('.condition, .article-condition, .badge');
+  if (condBadge) {
+    const condText = condBadge.innerText.trim();
+    if (condText) cellText = cellText.replace(condText, '');
+  }
+  return cellText.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function extractLanguage(productInfoCell) {
@@ -573,7 +646,12 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
       continue;
     }
 
-    // 2. Verify card condition matches target (minimum condition logic: target or better)
+    // 2. Locate product info cell & verify card condition matches target (minimum condition logic: target or better)
+    const productInfoCell = row.querySelector('.col-product, .product-info') || 
+                            row.querySelector('.col-sellerProductInfo .col-product') ||
+                            row.querySelector('.col-sellerProductInfo div.row > div:nth-child(2)') ||
+                            row.querySelector('td:nth-child(2)');
+
     const CONDITION_RANK = {
       "MT": 1,
       "NM": 2,
@@ -583,9 +661,8 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
       "PL": 6,
       "PO": 7
     };
-    const conditionElements = row.querySelectorAll('.article-condition, .condition, .badge, [class*="condition"]');
     let conditionMatches = false;
-    const foundConditionCode = extractCondition(conditionElements.length > 0 ? conditionElements : row.querySelectorAll('span, a'));
+    const foundConditionCode = extractRowCondition(row, productInfoCell);
 
     if (foundConditionCode) {
       const targetVal = CONDITION_RANK[targetCondition] || 7;
@@ -598,11 +675,6 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     if (!conditionMatches) continue;
 
     // 3. Verify card language matches target
-    const productInfoCell = row.querySelector('.col-product, .product-info') || 
-                            row.querySelector('.col-sellerProductInfo .col-product') ||
-                            row.querySelector('.col-sellerProductInfo div.row > div:nth-child(2)') ||
-                            row.querySelector('td:nth-child(2)');
-                            
     const matchedLanguage = extractLanguage(productInfoCell);
 
     if (targetLanguages && !targetLanguages.includes('ALL') && !targetLanguages.includes(matchedLanguage)) {
@@ -610,21 +682,7 @@ function scrapePrice(targetCondition, targetLocation, targetLanguages) {
     }
 
     // 4. Extract product comment/description from Produktinfo cell
-    let comment = '';
-    if (productInfoCell) {
-      const commentElement = productInfoCell.querySelector('.article-comment, .comment, [class*="comment"], .description, .product-comments span');
-      if (commentElement) {
-        comment = commentElement.innerText.trim();
-      } else {
-        let cellText = productInfoCell.innerText.trim();
-        const condBadge = productInfoCell.querySelector('.condition, .article-condition, .badge');
-        if (condBadge) {
-          const condText = condBadge.innerText.trim();
-          cellText = cellText.replace(condText, '');
-        }
-        comment = cellText.replace(/[\n\r\t]+/g, ' ').replace(/\s+/g, ' ').trim();
-      }
-    }
+    const comment = extractCommentFromRow(row, productInfoCell);
 
     // 5. Extract price
     const parsedPrice = extractPriceFromRow(row);
@@ -699,7 +757,8 @@ function updateOverlay(status, details = {}) {
     forceSyncKey = null,
     isMarked = false,
     isInCollection = false,
-    isAdmin = false
+    isAdmin = false,
+    isManualOverride = false
   } = details;
 
   const dotClass = blocked ? 'blocked' : 'active';
@@ -759,7 +818,7 @@ function updateOverlay(status, details = {}) {
   if (status === 'error') {
     resultHtml = `
       <div class="cm-tracker-results error-state">
-        <span class="cm-tracker-text error">${errorText || "Fehler bei der Analyse."}</span>
+        <span class="cm-tracker-text error">${escapeHtml(errorText || "Fehler bei der Analyse.")}</span>
       </div>
     `;
   } else if (status === 'loading') {
@@ -807,7 +866,7 @@ function updateOverlay(status, details = {}) {
     if (comment) {
       currentCommentHtml = `
         <div class="cm-current-comment-row">
-          <span class="cm-comment-quote">"${comment}"</span>
+          <span class="cm-comment-quote">"${escapeHtml(comment)}"</span>
         </div>
       `;
     }
@@ -815,12 +874,16 @@ function updateOverlay(status, details = {}) {
     const sellerFlag = getFlagHtml('seller', matchedCountry);
     const langFlag = getFlagHtml('language', matchedLanguage);
     const displayMatchedCondition = matchedCondition || 'Unbekannt';
+    const manualTagHtml = isManualOverride
+      ? `<span class="cm-tile-tag cm-tag-manual" title="Manuell ausgewähltes Angebot – automatisches Überschreiben durch günstigere Angebote ist für 24 Std. gesperrt (Force Sync hebt die Sperre auf).">Manuell gesetzt</span>`
+      : '';
 
     const currentTileHtml = `
       <div class="cm-tracker-tile cm-current-tile" title="Klicke hier, um zum Verkäufer in der Liste zu springen">
         <div class="cm-tile-header">
           <div class="cm-tile-header-left">
             <span class="cm-tile-tag cm-tag-current">Aktuelles Angebot</span>
+            ${manualTagHtml}
             ${diffBadge}
           </div>
         </div>
@@ -1335,8 +1398,35 @@ function attachListeners() {
   }
 }
 
+// Find best matching DOM row on page for a given price & comment (used when manual override is active)
+function findMatchingOfferRowElement(targetPrice, targetComment = '') {
+  const rows = document.querySelectorAll('.article-row, [id^="articleRow"]');
+  let priceOnlyFallback = null;
+  const normalizedTargetComment = (targetComment || '').trim();
+
+  for (const row of rows) {
+    const rowPrice = extractPriceFromRow(row);
+    if (rowPrice === null || Math.abs(rowPrice - targetPrice) > 0.005) continue;
+
+    if (!priceOnlyFallback) {
+      priceOnlyFallback = row;
+    }
+    const productInfoCell = row.querySelector('.col-product, .product-info') ||
+                            row.querySelector('.col-sellerProductInfo .col-product') ||
+                            row.querySelector('.col-sellerProductInfo div.row > div:nth-child(2)') ||
+                            row.querySelector('td:nth-child(2)');
+    const rowComment = extractCommentFromRow(row, productInfoCell);
+    if (rowComment === normalizedTargetComment) {
+      return row;
+    }
+  }
+  return priceOnlyFallback;
+}
+
 // Execute active scan sequence matching interactive selection criteria
-async function runScan(force = false) {
+async function runScan(force = false, options = {}) {
+  const { skipUpload = false } = options;
+
   chrome.runtime.sendMessage({ action: "getSession" }, async (response) => {
     if (chrome.runtime.lastError) {
       console.error("Message passing error:", chrome.runtime.lastError);
@@ -1455,7 +1545,7 @@ async function runScan(force = false) {
       availableLanguages: availableLangs
     });
 
-    // Since Cardmarket filtered the page, we simply scrape the matching condition row
+    // Scrape the first row matching active filters
     const match = scrapePrice(savedCondition, savedLocation, [savedLanguage]);
     if (!match) {
       currentMatchedElement = null;
@@ -1466,6 +1556,7 @@ async function runScan(force = false) {
         availableLanguages: availableLangs,
         noMatch: true
       });
+      injectAdminActions(true, savedCondition, savedLocation, [savedLanguage], { history: [] });
       return;
     }
 
@@ -1481,6 +1572,7 @@ async function runScan(force = false) {
       currentPrice: match.price,
       comment: match.comment,
       force: force,
+      skipUpload: skipUpload,
       matchedCondition: match.condition,
       matchedLanguage: match.language,
       matchedCountry: match.sellerCountry
@@ -1512,13 +1604,29 @@ async function runScan(force = false) {
       let history = dbResponse.history || [];
       history = history.map(parseHistoryItem);
       const firstRecord = history.length > 0 ? history[0] : null;
+      const latestRecord = history.length > 0 ? history[history.length - 1] : null;
+
+      // When a manual override is active, show the manually selected offer instead of Row #1 (e.g. "whitening")
+      const useManualLatest = Boolean(latestRecord && dbResponse.manualOverrideActive && !force);
+      const displayPrice = useManualLatest ? latestRecord.price : match.price;
+      const displayLang = useManualLatest ? (latestRecord.matchedLanguage || match.language) : match.language;
+      const displayCountry = useManualLatest ? (latestRecord.matchedCountry || match.sellerCountry) : match.sellerCountry;
+      const displayCond = useManualLatest ? (latestRecord.matchedCondition || match.condition) : match.condition;
+      const displayComment = useManualLatest ? latestRecord.comment : match.comment;
+
+      if (useManualLatest) {
+        const overriddenRowEl = findMatchingOfferRowElement(latestRecord.price, latestRecord.comment);
+        if (overriddenRowEl) {
+          currentMatchedElement = overriddenRowEl;
+        }
+      }
 
       updateOverlay('success', {
         selectedCondition: savedCondition,
         selectedLocation: savedLocation,
         selectedLanguage: savedLanguage,
         availableLanguages: availableLangs,
-        currentPrice: match.price,
+        currentPrice: displayPrice,
         history: history,
         firstPrice: firstRecord ? firstRecord.price : null,
         firstScannedAt: firstRecord ? firstRecord.scanned_at : null,
@@ -1527,15 +1635,16 @@ async function runScan(force = false) {
         firstCondition: firstRecord ? firstRecord.matchedCondition : null,
         firstLanguage: firstRecord ? firstRecord.matchedLanguage : null,
         firstCountry: firstRecord ? firstRecord.matchedCountry : null,
-        matchedLanguage: match.language,
-        matchedCountry: match.sellerCountry,
-        matchedCondition: match.condition,
-        comment: match.comment,
+        matchedLanguage: displayLang,
+        matchedCountry: displayCountry,
+        matchedCondition: displayCond,
+        comment: displayComment,
         blocked: dbResponse.blocked || false,
         remainingTime: dbResponse.remainingTime || 0,
         isMarked: dbResponse.isMarked || false,
         isInCollection: dbResponse.isInCollection || false,
-        isAdmin: dbResponse.isAdmin || false
+        isAdmin: dbResponse.isAdmin !== false,
+        isManualOverride: useManualLatest
       });
 
       if (dbResponse.isMarked || dbResponse.isInCollection) {
@@ -1551,9 +1660,22 @@ async function runScan(force = false) {
         })();
       }
 
-      injectAdminActions(dbResponse.isAdmin, savedCondition, savedLocation, [savedLanguage]);
+      injectAdminActions(dbResponse.isAdmin !== false, savedCondition, savedLocation, [savedLanguage], {
+        history: history,
+        activeManualLatest: useManualLatest ? latestRecord : null
+      });
     });
   });
+}
+
+// Helper to check if a DOM node belongs to our own injected tracker UI
+function isTrackerInternalNode(node) {
+  if (!node || node.nodeType !== 1) return false;
+  return Boolean(
+    node.closest?.(
+      '.cm-price-tracker-overlay, .cm-row-override-btn, .cm-override-popover, .cm-tracker-toast, .cm-webclipper-btn'
+    )
+  );
 }
 
 // Watch table container DOM changes for dynamic pagination/filter updates
@@ -1562,7 +1684,16 @@ function setupObserver() {
   const targetNode = document.querySelector('.table-body, #table-container, #articlesTable') || document.body;
   if (!targetNode) return;
 
-  const observer = new MutationObserver(() => {
+  const observer = new MutationObserver((mutations) => {
+    // Ignore mutations caused exclusively by our own injected buttons, popovers, or overlay
+    const hasExternalChange = mutations.some((m) => {
+      if (isTrackerInternalNode(m.target)) return false;
+      const changedNodes = [...m.addedNodes, ...m.removedNodes];
+      if (changedNodes.length === 0) return false;
+      return changedNodes.some((n) => !isTrackerInternalNode(n));
+    });
+    if (!hasExternalChange) return;
+
     clearTimeout(scanTimeout);
     scanTimeout = setTimeout(() => {
       runScan();
@@ -1600,11 +1731,18 @@ function findBuyCellAndForm(row) {
   ].join(', '));
 
   if (buyElement) {
-    const buyCell = buyElement.closest('.col-buy, [class*="buy"], .col-action, div:last-child') || buyElement.parentElement;
+    const buyCell = buyElement.closest('.actions-container, .col-buy, [class*="buy"], .col-action, div:last-child') || buyElement.parentElement;
     return { buyCell, buyForm: buyElement };
   }
 
-  // 2. Fallback: Find the last child div of the row
+  // 2. Cardmarket actions container (works even when logged out of Cardmarket or on vacation rows)
+  const actionsContainer = row.querySelector('.actions-container, .col-action, .col-buy, .price-container');
+  if (actionsContainer) {
+    const lastActionEl = actionsContainer.querySelector('form, button, a');
+    return { buyCell: actionsContainer, buyForm: lastActionEl };
+  }
+
+  // 3. Fallback: Find the last child div of the row
   const childDivs = [...row.querySelectorAll(':scope > div')];
   if (childDivs.length > 0) {
     const buyCell = childDivs[childDivs.length - 1];
@@ -1615,107 +1753,299 @@ function findBuyCellAndForm(row) {
   return { buyCell: null, buyForm: null };
 }
 
-// Inject admin override action buttons next to matching Cardmarket list offers
-function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLanguages) {
-  // Clear any existing admin buttons first
-  document.querySelectorAll('.cm-admin-btn-first-scan').forEach(btn => btn.remove());
+const OVERRIDE_CROWN_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"/><path d="M5 14l-2-8 5.5 3.5L12 4l3.5 5.5L21 6l-2 8H5z"/></svg>`;
+const OVERRIDE_CHECK_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
 
-  console.log("[TCG Tracker] injectAdminActions call - isAdmin:", isAdmin, "Filter:", { targetCondition, targetLocation, targetLanguages });
+let activeOverrideCleanup = null;
+function closeOverridePopover() {
+  document.querySelectorAll('.cm-override-popover').forEach(el => el.remove());
+  if (activeOverrideCleanup) {
+    activeOverrideCleanup();
+    activeOverrideCleanup = null;
+  }
+}
+
+function openOverridePopover(anchorBtn, offerData, filterContext, historyList = []) {
+  closeOverridePopover();
+
+  const { price, comment, rowCondition, rowLanguage, rowCountry, rowElement } = offerData;
+  const { targetCondition, targetLocation, targetLanguage } = filterContext;
+
+  const popover = document.createElement('div');
+  popover.className = 'cm-override-popover';
+
+  const latestItem = historyList.length > 0 ? historyList[historyList.length - 1] : null;
+  const firstItem = historyList.length > 0 ? historyList[0] : null;
+  const hasMultipleScans = historyList.length >= 2;
+
+  const langFlag = getFlagHtml('language', rowLanguage);
+  const countryFlag = getFlagHtml('seller', rowCountry);
+  const condCode = rowCondition || targetCondition || 'NM';
+
+  const commentPreviewHtml = comment
+    ? `<div class="cm-override-offer-comment">"${escapeHtml(comment)}"</div>`
+    : `<div class="cm-override-offer-comment empty">Kein Verkäufer-Kommentar (sauberes Angebot)</div>`;
+
+  let actionsHtml = '';
+  if (hasMultipleScans && latestItem && firstItem) {
+    const latestSub = `Ersetzt ${latestItem.price.toFixed(2)} €${latestItem.comment ? ` · "${latestItem.comment}"` : ''}`;
+    const firstDateStr = firstItem.scanned_at
+      ? new Date(firstItem.scanned_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })
+      : '';
+    const firstSub = `Startwert${firstDateStr ? ` (${firstDateStr})` : ''}: ${firstItem.price.toFixed(2)} €${firstItem.comment ? ` · "${firstItem.comment}"` : ''}`;
+
+    actionsHtml = `
+      <button type="button" class="cm-override-choice primary" data-target="latest">
+        <svg class="cm-override-choice-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>
+        </svg>
+        <div class="cm-override-choice-text">
+          <span class="cm-override-choice-title">Aktuellen Scan ersetzen</span>
+          <span class="cm-override-choice-sub" title="${escapeHtml(latestSub)}">${escapeHtml(latestSub)}</span>
+        </div>
+      </button>
+      <button type="button" class="cm-override-choice secondary" data-target="first">
+        <svg class="cm-override-choice-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 18h18"/><path d="M5 14l-2-8 5.5 3.5L12 4l3.5 5.5L21 6l-2 8H5z"/>
+        </svg>
+        <div class="cm-override-choice-text">
+          <span class="cm-override-choice-title">Startwert (1. Scan) ersetzen</span>
+          <span class="cm-override-choice-sub" title="${escapeHtml(firstSub)}">${escapeHtml(firstSub)}</span>
+        </div>
+      </button>
+    `;
+  } else if (latestItem) {
+    const singleSub = `Ersetzt ${latestItem.price.toFixed(2)} €${latestItem.comment ? ` · "${latestItem.comment}"` : ''}`;
+    actionsHtml = `
+      <button type="button" class="cm-override-choice primary" data-target="latest">
+        <svg class="cm-override-choice-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <div class="cm-override-choice-text">
+          <span class="cm-override-choice-title">Eintrag überschreiben</span>
+          <span class="cm-override-choice-sub" title="${escapeHtml(singleSub)}">${escapeHtml(singleSub)}</span>
+        </div>
+      </button>
+    `;
+  } else {
+    actionsHtml = `
+      <button type="button" class="cm-override-choice primary" data-target="latest">
+        <svg class="cm-override-choice-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        <div class="cm-override-choice-text">
+          <span class="cm-override-choice-title">Als aktuellen Scan speichern</span>
+          <span class="cm-override-choice-sub">Speichert ${price.toFixed(2)} € für die aktiven Filter</span>
+        </div>
+      </button>
+    `;
+  }
+
+  popover.innerHTML = `
+    <div class="cm-override-popover-header">
+      <span class="cm-override-eyebrow">Scan-Eintrag überschreiben</span>
+      <button type="button" class="cm-override-close" aria-label="Schließen">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <div class="cm-override-offer-summary">
+      <div class="cm-override-offer-top">
+        <span class="cm-override-offer-price">${price.toFixed(2)} €</span>
+        <div class="cm-override-offer-badges">
+          <span>${countryFlag} ${escapeHtml(rowCountry)}</span>
+          <span>${langFlag} ${escapeHtml(rowLanguage)}</span>
+          <span class="cm-tile-meta-cond cm-tracker-badge cm-cond-${escapeHtml(condCode)}">${escapeHtml(condCode)}</span>
+        </div>
+      </div>
+      ${commentPreviewHtml}
+    </div>
+    <div class="cm-override-actions">
+      ${actionsHtml}
+    </div>
+  `;
+
+  document.body.appendChild(popover);
+
+  // Position anchored near clicked button with viewport clamping
+  const btnRect = anchorBtn.getBoundingClientRect();
+  const popRect = popover.getBoundingClientRect();
+  const margin = 12;
+
+  let left = btnRect.right - popRect.width;
+  if (left < margin) left = margin;
+  if (left + popRect.width > window.innerWidth - margin) {
+    left = window.innerWidth - popRect.width - margin;
+  }
+
+  let top = btnRect.bottom + 8;
+  if (top + popRect.height > window.innerHeight - margin) {
+    top = Math.max(margin, btnRect.top - popRect.height - 8);
+  }
+
+  popover.style.left = `${Math.round(left)}px`;
+  popover.style.top = `${Math.round(top)}px`;
+
+  const closeBtn = popover.querySelector('.cm-override-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeOverridePopover();
+    });
+  }
+
+  popover.querySelectorAll('.cm-override-choice').forEach((choiceBtn) => {
+    choiceBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const chosenTarget = choiceBtn.getAttribute('data-target') || 'latest';
+      popover.querySelectorAll('.cm-override-choice').forEach(b => { b.disabled = true; });
+      const titleEl = choiceBtn.querySelector('.cm-override-choice-title');
+      if (titleEl) titleEl.textContent = 'Wird gespeichert...';
+
+      const { tcg, cardId } = getTcgAndCardId();
+      chrome.runtime.sendMessage({
+        action: 'overrideScan',
+        target: chosenTarget,
+        tcg,
+        cardId,
+        condition: targetCondition,
+        language: targetLanguage,
+        sellerCountry: targetLocation,
+        matchedCondition: condCode,
+        matchedLanguage: rowLanguage,
+        matchedCountry: rowCountry,
+        price,
+        comment
+      }, (res) => {
+        closeOverridePopover();
+        if (chrome.runtime.lastError || !res || !res.success) {
+          const errMsg = chrome.runtime.lastError?.message || res?.error || 'Unbekannter Fehler';
+          showTrackerToast(`Fehler beim Überschreiben: ${errMsg}`, true);
+          return;
+        }
+
+        const label = chosenTarget === 'first' ? 'Startwert' : 'Aktueller Scan';
+        showTrackerToast(`${label} auf ${price.toFixed(2)} € überschrieben`);
+
+        if (rowElement) {
+          rowElement.classList.add('cm-highlight-row');
+          setTimeout(() => rowElement.classList.remove('cm-highlight-row'), 3500);
+        }
+
+        // Refresh overlay & chart cleanly in-place without re-uploading Row #1
+        runScan(false, { skipUpload: true });
+      });
+    });
+  });
+
+  const onDocMouseDown = (ev) => {
+    if (!popover.contains(ev.target) && ev.target !== anchorBtn && !anchorBtn.contains(ev.target)) {
+      closeOverridePopover();
+    }
+  };
+  const onKeyDown = (ev) => {
+    if (ev.key === 'Escape') closeOverridePopover();
+  };
+  const onScrollOrResize = () => closeOverridePopover();
+
+  setTimeout(() => {
+    document.addEventListener('mousedown', onDocMouseDown, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('scroll', onScrollOrResize, { passive: true });
+    window.addEventListener('resize', onScrollOrResize, { passive: true });
+  }, 0);
+
+  activeOverrideCleanup = () => {
+    document.removeEventListener('mousedown', onDocMouseDown, true);
+    document.removeEventListener('keydown', onKeyDown, true);
+    window.removeEventListener('scroll', onScrollOrResize);
+    window.removeEventListener('resize', onScrollOrResize);
+  };
+}
+
+// Inject override action buttons next to Cardmarket list offers
+function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLanguages, context = {}) {
+  // Clear any existing override buttons first
+  document.querySelectorAll('.cm-admin-btn-first-scan, .cm-row-override-btn').forEach(btn => btn.remove());
 
   if (!isAdmin) {
-    console.log("[TCG Tracker] User is not recognized as admin. app_metadata.role or user_metadata.role must be 'admin'.");
     return;
   }
 
+  const { history = [], activeManualLatest = null } = context;
+  const targetLanguage = (targetLanguages && targetLanguages[0]) || 'ALL';
   const rows = document.querySelectorAll('.article-row, [id^="articleRow"]');
   let injectedCount = 0;
+  let activeHighlighted = false;
 
   for (const row of rows) {
-    // 1. Seller Country
+    // 1. Price (every valid offer row with a price gets the override button)
+    const price = extractPriceFromRow(row);
+    if (price === null) continue;
+
+    // 2. Extract actual row metadata for accurate saving & preview
     const sellerCol = row.querySelector('.col-seller, [class*="seller"], [class*="user"], .col-sellerProductInfo');
-    const sellerCountry = extractSellerCountry(sellerCol);
-    if (targetLocation === 'DE' && sellerCountry !== 'DE') continue;
+    const rawCountry = extractSellerCountry(sellerCol);
+    const rowCountry = rawCountry && rawCountry !== 'OTHER'
+      ? rawCountry
+      : (targetLocation === 'DE' ? 'DE' : 'OTHER');
 
-    // 2. Condition
-    const conditionElements = row.querySelectorAll('.article-condition, .condition, .badge, span, a');
-    const condition = extractCondition(conditionElements);
-    if (!condition) continue;
-
-    const CONDITION_RANK = { "MT": 1, "NM": 2, "EX": 3, "GD": 4, "LP": 5, "PL": 6, "PO": 7 };
-    const targetRank = CONDITION_RANK[targetCondition] || 99;
-    const rowRank = CONDITION_RANK[condition] || 99;
-    if (rowRank > targetRank) continue;
-
-    // 3. Language
     const productInfoCell = row.querySelector('.col-product, .product-info') || 
                             row.querySelector('.col-sellerProductInfo .col-product') ||
                             row.querySelector('.col-sellerProductInfo div.row > div:nth-child(2)') ||
                             row.querySelector('td:nth-child(2)');
-    const language = extractLanguage(productInfoCell);
-    if (targetLanguages[0] !== 'ALL' && !targetLanguages.includes(language)) continue;
 
-    // 4. Price
-    const price = extractPriceFromRow(row);
-    if (price === null) continue;
+    const rowCondition = extractRowCondition(row, productInfoCell) || targetCondition || 'NM';
+    const rowLanguage = extractLanguage(productInfoCell) || (targetLanguage !== 'ALL' ? targetLanguage : 'EN');
+    const comment = extractCommentFromRow(row, productInfoCell);
 
-    // 5. Comment
-    const commentEl = row.querySelector('.comment-text, .msg, .comment, [class*="comment"]');
-    const comment = commentEl ? commentEl.textContent.trim() : '';
+    const isActiveRow = Boolean(
+      !activeHighlighted &&
+      activeManualLatest &&
+      Math.abs(activeManualLatest.price - price) < 0.005 &&
+      (activeManualLatest.comment || '') === (comment || '')
+    );
+    if (isActiveRow) {
+      activeHighlighted = true;
+    }
 
-    // Inject "Als Startwert" button next to shopping cart icon
     const { buyCell, buyForm } = findBuyCellAndForm(row);
     if (buyCell) {
       const btn = document.createElement('button');
-      btn.className = 'cm-admin-btn-first-scan';
-      btn.innerHTML = '👑';
-      btn.title = `Dieses Angebot (${price.toFixed(2)} €) als neuen Startwert (First Scan) in Datenbank eintragen`;
-      btn.style.cssText = `
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        margin-left: 6px;
-        background: #fb8500;
-        border: none;
-        border-radius: 4px;
-        color: #000000;
-        font-size: 0.75rem;
-        cursor: pointer;
-        transition: opacity 0.2s, transform 0.2s;
-        vertical-align: middle;
-        width: 22px;
-        height: 22px;
-        padding: 0;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-      `;
-      btn.addEventListener('click', async (e) => {
+      btn.type = 'button';
+      btn.className = isActiveRow ? 'cm-row-override-btn is-active-override' : 'cm-row-override-btn';
+      btn.innerHTML = isActiveRow ? OVERRIDE_CHECK_SVG : OVERRIDE_CROWN_SVG;
+      btn.title = isActiveRow
+        ? `Aktives Referenz-Angebot (${price.toFixed(2)} €) – klicken für Optionen`
+        : `Scan mit diesem Angebot (${price.toFixed(2)} €) überschreiben`;
+
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
         e.stopPropagation();
-        if (confirm(`Möchtest du dieses Angebot für ${price.toFixed(2)} € als neuen Startwert (First Scan) in der Datenbank festlegen?\n(Der älteste Scan in der Datenbank für diese Filter wird überschrieben)`)) {
-          btn.disabled = true;
-          btn.innerHTML = '⏳';
-          const { tcg, cardId } = getTcgAndCardId();
-          chrome.runtime.sendMessage({
-            action: 'setFirstScan',
-            tcg,
-            cardId,
-            condition: targetCondition,
-            language: targetLanguages[0],
-            sellerCountry: targetLocation,
+        const latestHistory = activeOverlayDetails?.history || history;
+        openOverridePopover(
+          btn,
+          {
             price,
-            comment
-          }, (res) => {
-            if (res && res.success) {
-              alert('Startwert erfolgreich überschrieben!');
-              window.location.reload();
-            } else {
-              alert('Fehler beim Speichern: ' + (res?.error || 'Unbekannter Fehler'));
-              btn.disabled = false;
-              btn.innerHTML = '👑';
-            }
-          });
-        }
+            comment,
+            rowCondition,
+            rowLanguage,
+            rowCountry,
+            rowElement: row
+          },
+          {
+            targetCondition,
+            targetLocation,
+            targetLanguage
+          },
+          latestHistory
+        );
       });
 
-      if (buyForm) {
+      if (buyForm && buyForm.parentElement === buyCell) {
+        buyForm.after(btn);
+      } else if (buyForm) {
         buyForm.after(btn);
       } else {
         buyCell.appendChild(btn);
@@ -1724,7 +2054,7 @@ function injectAdminActions(isAdmin, targetCondition, targetLocation, targetLang
     }
   }
 
-  console.log("[TCG Tracker] injectAdminActions complete. Injected", injectedCount, "admin button overlays.");
+  console.log("[TCG Tracker] injectAdminActions complete. Injected", injectedCount, "override buttons.");
 }
 
 // --- Webclipper Feature ---

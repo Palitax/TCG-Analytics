@@ -336,9 +336,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return sendResponse({ error: "UNAUTHENTICATED" });
         }
 
-        const { tcg, cardId, condition, language, sellerCountry, currentPrice, comment, force, matchedCondition, matchedLanguage, matchedCountry } = message;
+        const {
+          tcg,
+          cardId,
+          condition,
+          language,
+          sellerCountry,
+          currentPrice,
+          comment,
+          force,
+          skipUpload,
+          matchedCondition,
+          matchedLanguage,
+          matchedCountry
+        } = message;
         const accessToken = session.access_token;
         const userId = session.user.id;
+        const lockKey = `${tcg}|${cardId}|${condition}|${language}|${sellerCountry}`;
+
+        const { manual_scan_locks: manualLocks = {} } = await chrome.storage.local
+          .get("manual_scan_locks")
+          .catch(() => ({}));
+
+        // Explicit Force Sync clears any manual override lock for this filter combination
+        if (force === true && manualLocks[lockKey]) {
+          delete manualLocks[lockKey];
+          await chrome.storage.local.set({ manual_scan_locks: manualLocks }).catch(() => {});
+        }
 
         // 1. Fetch full historical price list from Supabase sorted ascending (oldest first)
         const getUrl = `${SUPABASE_URL}/rest/v1/price_history?tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}&condition=eq.${encodeURIComponent(condition)}&language=eq.${encodeURIComponent(language)}&seller_country=eq.${encodeURIComponent(sellerCountry)}&order=scanned_at.asc`;
@@ -368,29 +392,56 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         let shouldUpload = false;
         let blocked = false;
         let remainingTime = 0;
+        let isLatestRecordOvr = false;
         
         if (!latestRecordBeforeScan) {
           // No history exists for this specific combination
-          shouldUpload = true;
+          shouldUpload = !skipUpload;
         } else {
           const lastPrice = parseFloat(latestRecordBeforeScan.price);
           const lastComment = latestRecordBeforeScan.comment || '';
           
           let parsedLastComment = lastComment;
           if (lastComment.startsWith('[')) {
-            const match = lastComment.match(/^\[[^\]]*\](?:\s*(.*))?$/);
-            if (match) {
-              parsedLastComment = match[1] || '';
+            const closeIdx = lastComment.indexOf(']');
+            if (closeIdx > 1) {
+              const metaParts = lastComment.slice(1, closeIdx).split('|');
+              if (metaParts.length >= 5 && metaParts[4] === 'OVR') {
+                isLatestRecordOvr = true;
+              }
+              parsedLastComment = lastComment.slice(closeIdx + 1).trim();
             }
           }
-          const currentComment = comment || '';
+          parsedLastComment = parsedLastComment.replace(/^Code:\S+\s*/i, '').trim();
+
+          const currentComment = (comment || '').trim();
           const timeSinceLastScan = Date.now() - new Date(latestRecordBeforeScan.scanned_at).getTime();
           
           const isPriceChanged = Math.abs(lastPrice - currentPrice) > 0.005;
           const isCommentChanged = (parsedLastComment || '') !== (currentComment || '');
 
+          const activeLock = manualLocks[lockKey];
+          const hasValidStorageLock = Boolean(activeLock && activeLock.lockedUntil > Date.now());
+          const isManualLatestProtected =
+            !force &&
+            ((isLatestRecordOvr && timeSinceLastScan < 86400000) ||
+              (hasValidStorageLock && activeLock.target === 'latest'));
+
           if (force === true) {
             shouldUpload = true;
+          } else if (skipUpload === true) {
+            shouldUpload = false;
+            blocked = isManualLatestProtected || timeSinceLastScan < 86400000;
+            remainingTime = hasValidStorageLock
+              ? Math.max(0, activeLock.lockedUntil - Date.now())
+              : Math.max(0, 86400000 - timeSinceLastScan);
+          } else if (isManualLatestProtected) {
+            // Protect manually overridden clean NM scan from being overwritten by cheaper damaged/whitening offers
+            shouldUpload = false;
+            blocked = true;
+            remainingTime = hasValidStorageLock
+              ? Math.max(0, activeLock.lockedUntil - Date.now())
+              : Math.max(0, 86400000 - timeSinceLastScan);
           } else if (isPriceChanged || isCommentChanged) {
             shouldUpload = true;
           } else if (timeSinceLastScan >= 86400000) {
@@ -402,7 +453,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         // 2. Perform upload if triggered
-        if (shouldUpload) {
+        if (shouldUpload && currentPrice !== null && currentPrice !== undefined) {
           // Embed specific match details & searched card code as metadata prefix in comment column
           const { last_clicked_card_code } = await chrome.storage.local.get('last_clicked_card_code').catch(() => ({}));
           let metadataPrefix = `[${matchedLanguage || ''}|${matchedCountry || ''}|${matchedCondition || ''}]`;
@@ -440,13 +491,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.error("Failed to upload new scan to Supabase:", postResponse.status, postResponse.statusText, errText);
           } else {
             console.log(`Successfully uploaded scan: ${tcg} | ${cardId} (${condition} | ${language} | ${sellerCountry}) = ${currentPrice} € (Comment: "${comment || ''}")`);
-            
-            // Push representation of new record with mock/actual timestamp to history array for graph visualization
-            const createdRecord = {
+            const insertedRows = await postResponse.json().catch(() => []);
+            const createdRecord = (Array.isArray(insertedRows) && insertedRows[0]) ? insertedRows[0] : {
               ...newRecordData,
               scanned_at: new Date().toISOString()
             };
             history.push(createdRecord);
+            isLatestRecordOvr = false;
           }
         }
 
@@ -495,13 +546,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         const payload = decodeJWT(accessToken);
-        const isAdmin = payload && (
-          payload.app_metadata?.role === 'admin' ||
-          payload.user_metadata?.role === 'admin' ||
-          payload.role === 'admin'
+        const isRestrictedRole =
+          payload?.app_metadata?.role === 'restricted' ||
+          payload?.user_metadata?.role === 'restricted';
+        const isAdmin = Boolean(userId && !isRestrictedRole);
+
+        const latestAfterScan = history.length > 0 ? history[history.length - 1] : null;
+        let latestHasOvrTag = false;
+        if (latestAfterScan?.comment?.startsWith('[')) {
+          const closeIdx = latestAfterScan.comment.indexOf(']');
+          if (closeIdx > 1) {
+            const parts = latestAfterScan.comment.slice(1, closeIdx).split('|');
+            latestHasOvrTag = parts.length >= 5 && parts[4] === 'OVR';
+          }
+        }
+        const activeLockAfter = manualLocks[lockKey];
+        const manualOverrideActive = Boolean(
+          !shouldUpload &&
+            latestAfterScan &&
+            ((latestHasOvrTag && (Date.now() - new Date(latestAfterScan.scanned_at).getTime()) < 86400000) ||
+              (activeLockAfter && activeLockAfter.lockedUntil > Date.now() && activeLockAfter.target === 'latest'))
         );
 
-        console.log("[TCG Tracker SW] scanCard completed response. Email:", session.user.email, "isAdmin:", !!isAdmin, "app_metadata:", payload?.app_metadata, "user_metadata:", payload?.user_metadata);
+        console.log("[TCG Tracker SW] scanCard completed. Email:", session.user.email, "isAdmin:", isAdmin, "manualOverrideActive:", manualOverrideActive);
 
         sendResponse({
           success: true,
@@ -512,88 +579,229 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           remainingTime: remainingTime,
           isMarked: isMarked,
           isInCollection: isInCollection,
-          isAdmin: !!isAdmin
+          isAdmin: isAdmin,
+          manualOverrideActive: manualOverrideActive
         });
       }
       
-      else if (message.action === "setFirstScan") {
+      else if (message.action === "overrideScan" || message.action === "setFirstScan") {
         const session = await getSession();
-        if (!session) {
+        if (!session || !session.user?.id) {
           return sendResponse({ error: "UNAUTHENTICATED" });
         }
 
         const payload = decodeJWT(session.access_token);
-        const isAdmin = payload && (
-          payload.app_metadata?.role === 'admin' ||
-          payload.user_metadata?.role === 'admin' ||
-          payload.role === 'admin'
-        );
-
-        if (!isAdmin) {
-          return sendResponse({ error: "UNAUTHORIZED: Admin only option" });
+        const isRestrictedRole =
+          payload?.app_metadata?.role === 'restricted' ||
+          payload?.user_metadata?.role === 'restricted';
+        if (isRestrictedRole) {
+          return sendResponse({ error: "UNAUTHORIZED: Restricted account" });
         }
 
-        const { tcg, cardId, condition, language, sellerCountry, price, comment } = message;
+        const {
+          tcg,
+          cardId,
+          condition,
+          language,
+          sellerCountry,
+          matchedCondition,
+          matchedLanguage,
+          matchedCountry,
+          price,
+          comment
+        } = message;
 
-        // Fetch the oldest record to get its ID (scanned_at ascending, limit 1)
-        const getUrl = `${SUPABASE_URL}/rest/v1/price_history?tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}&condition=eq.${encodeURIComponent(condition)}&language=eq.${encodeURIComponent(language)}&seller_country=eq.${encodeURIComponent(sellerCountry)}&order=scanned_at.asc&limit=1`;
-        
-        const getRes = await fetch(getUrl, {
-          method: "GET",
-          cache: "no-store",
-          credentials: "omit",
-          headers: {
-            "apikey": SUPABASE_ANON_KEY,
-            "Authorization": `Bearer ${session.access_token}`
+        const target = message.target || (message.action === "setFirstScan" ? "first" : "latest");
+        const orderDir = target === "first" ? "asc" : "desc";
+        const numericPrice = parseFloat(price);
+        if (isNaN(numericPrice) || numericPrice <= 0) {
+          return sendResponse({ error: "Ungültiger Preiswert." });
+        }
+
+        const queryHeaders = {
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${session.access_token}`
+        };
+
+        // 1. Locate target record (exact filter match first, then graceful fallbacks)
+        const candidateQueries = [
+          `${SUPABASE_URL}/rest/v1/price_history?tcg=eq.${encodeURIComponent(tcg)}&card_id=eq.${encodeURIComponent(cardId)}&condition=eq.${encodeURIComponent(condition)}&language=eq.${encodeURIComponent(language)}&seller_country=eq.${encodeURIComponent(sellerCountry)}&order=scanned_at.${orderDir}&limit=1`,
+          `${SUPABASE_URL}/rest/v1/price_history?card_id=eq.${encodeURIComponent(cardId)}&condition=eq.${encodeURIComponent(condition)}&seller_country=eq.${encodeURIComponent(sellerCountry)}&order=scanned_at.${orderDir}&limit=1`,
+          `${SUPABASE_URL}/rest/v1/price_history?card_id=eq.${encodeURIComponent(cardId)}&order=scanned_at.${orderDir}&limit=1`
+        ];
+
+        let targetRecord = null;
+        for (const qUrl of candidateQueries) {
+          const qRes = await fetch(qUrl, {
+            method: "GET",
+            cache: "no-store",
+            credentials: "omit",
+            headers: queryHeaders
+          });
+          if (qRes.ok) {
+            const rows = await qRes.json();
+            if (Array.isArray(rows) && rows.length > 0) {
+              targetRecord = rows[0];
+              break;
+            }
           }
-        });
-
-        if (!getRes.ok) {
-          return sendResponse({ error: `Failed to fetch oldest record: ${getRes.statusText}` });
         }
 
-        const oldestRecords = await getRes.json();
-        console.log("[TCG Tracker SW] setFirstScan - oldestRecords matching filters:", oldestRecords);
-        if (oldestRecords.length === 0) {
-          return sendResponse({ error: "No records found to overwrite" });
+        // Preserve any cached imageUrl or collector Code:... tag from existing record
+        let existingImg = "";
+        let existingCodeTag = "";
+        let fallbackLang = "";
+        let fallbackCountry = "";
+        let fallbackCond = "";
+
+        if (targetRecord?.comment?.startsWith("[")) {
+          const closeIdx = targetRecord.comment.indexOf("]");
+          if (closeIdx > 1) {
+            const parts = targetRecord.comment.slice(1, closeIdx).split("|");
+            fallbackLang = parts[0] || "";
+            fallbackCountry = parts[1] || "";
+            fallbackCond = parts[2] || "";
+            existingImg = parts[3] || "";
+            const afterBracket = targetRecord.comment.slice(closeIdx + 1).trim();
+            const codeMatch = afterBracket.match(/^(Code:\S+)/i);
+            if (codeMatch) {
+              existingCodeTag = codeMatch[1];
+            }
+          }
         }
 
-        const firstRecordId = oldestRecords[0].id;
+        const effLang = matchedLanguage || (language && language !== "ALL" ? language : fallbackLang) || "EN";
+        const effCountry = matchedCountry || (sellerCountry && sellerCountry !== "ALL" ? sellerCountry : fallbackCountry) || "DE";
+        const effCond = matchedCondition || condition || fallbackCond || "NM";
 
-        // Overwrite the first record in the database using PATCH
-        const updateUrl = `${SUPABASE_URL}/rest/v1/price_history?id=eq.${firstRecordId}`;
-        const metadataPrefix = `[${language}|${sellerCountry}|${condition}]`;
-        const dbComment = comment ? `${metadataPrefix} ${comment}` : metadataPrefix;
+        let metadataPrefix = `[${effLang}|${effCountry}|${effCond}|${existingImg}|OVR]`;
+        if (existingCodeTag) {
+          metadataPrefix += ` ${existingCodeTag}`;
+        }
+        const cleanComment = (comment || "").trim();
+        const dbComment = cleanComment ? `${metadataPrefix} ${cleanComment}` : metadataPrefix;
 
-        const updateRes = await fetch(updateUrl, {
-          method: "PATCH",
-          credentials: "omit",
-          headers: {
-            "apikey": SUPABASE_ANON_KEY,
-            "Authorization": `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-            "Prefer": "return=representation"
-          },
-          body: JSON.stringify({
-            price: parseFloat(price),
+        let savedRecord = null;
+
+        if (targetRecord?.id) {
+          const updateUrl = `${SUPABASE_URL}/rest/v1/price_history?id=eq.${encodeURIComponent(targetRecord.id)}`;
+          const patchPayload = {
+            price: numericPrice,
+            comment: dbComment
+          };
+          if (target === "latest") {
+            patchPayload.scanned_at = new Date().toISOString();
+          }
+
+          // Try with authenticated user token first
+          let updateRes = await fetch(updateUrl, {
+            method: "PATCH",
+            credentials: "omit",
+            headers: {
+              "apikey": SUPABASE_ANON_KEY,
+              "Authorization": `Bearer ${session.access_token}`,
+              "Content-Type": "application/json",
+              "Prefer": "return=representation"
+            },
+            body: JSON.stringify({
+              ...patchPayload,
+              user_id: session.user.id
+            })
+          });
+
+          let updatedData = updateRes.ok ? await updateRes.json().catch(() => []) : [];
+
+          // Fallback to anon key (preserving existing row owner) if RLS restricted cross-account PATCH
+          if (!updateRes.ok || !Array.isArray(updatedData) || updatedData.length === 0) {
+            updateRes = await fetch(updateUrl, {
+              method: "PATCH",
+              credentials: "omit",
+              headers: {
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+              },
+              body: JSON.stringify(patchPayload)
+            });
+
+            if (!updateRes.ok) {
+              const errText = await updateRes.text();
+              return sendResponse({ error: `Fehler beim Aktualisieren: ${errText}` });
+            }
+            updatedData = await updateRes.json().catch(() => []);
+          }
+
+          if (!Array.isArray(updatedData) || updatedData.length === 0) {
+            return sendResponse({ error: "Keine Zeile aktualisiert. Bitte prüfe die Datenbank-Berechtigungen." });
+          }
+
+          savedRecord = updatedData[0];
+        } else {
+          // No historical scan existed yet -> insert manual override directly
+          const insertPayload = {
+            tcg: tcg,
+            card_id: cardId,
+            price: numericPrice,
+            condition: condition || effCond,
+            language: language || effLang,
+            seller_country: sellerCountry || effCountry,
             comment: dbComment,
-            user_id: session.user.id
-          })
+            user_id: session.user.id,
+            scanned_at: new Date().toISOString()
+          };
+
+          const postRes = await fetch(`${SUPABASE_URL}/rest/v1/price_history`, {
+            method: "POST",
+            credentials: "omit",
+            headers: {
+              "apikey": SUPABASE_ANON_KEY,
+              "Authorization": `Bearer ${session.access_token}`,
+              "Content-Type": "application/json",
+              "Prefer": "return=representation"
+            },
+            body: JSON.stringify(insertPayload)
+          });
+
+          if (!postRes.ok) {
+            const errText = await postRes.text();
+            return sendResponse({ error: `Fehler beim Anlegen des Eintrags: ${errText}` });
+          }
+          const inserted = await postRes.json().catch(() => []);
+          savedRecord = inserted[0] || insertPayload;
+        }
+
+        // Persist 24h manual lock so auto-scanner does not immediately re-upload damaged/whitening Row #1
+        const lockKey = `${tcg}|${cardId}|${condition}|${language}|${sellerCountry}`;
+        const { manual_scan_locks: existingLocks = {} } = await chrome.storage.local
+          .get("manual_scan_locks")
+          .catch(() => ({}));
+
+        const previousLock = existingLocks[lockKey];
+        const effectiveLockTarget =
+          target === "latest" || !targetRecord
+            ? "latest"
+            : previousLock && previousLock.lockedUntil > Date.now() && previousLock.target === "latest"
+              ? "latest"
+              : "first";
+
+        existingLocks[lockKey] = {
+          lockedUntil: Date.now() + 86400000,
+          target: effectiveLockTarget,
+          price: numericPrice,
+          comment: cleanComment,
+          matchedCondition: effCond,
+          matchedLanguage: effLang,
+          matchedCountry: effCountry,
+          updatedAt: new Date().toISOString()
+        };
+        await chrome.storage.local.set({ manual_scan_locks: existingLocks }).catch(() => {});
+
+        sendResponse({
+          success: true,
+          target: target,
+          record: savedRecord
         });
-
-        if (!updateRes.ok) {
-          const errText = await updateRes.text();
-          return sendResponse({ error: `Failed to update record: ${errText}` });
-        }
-
-        const updatedData = await updateRes.json();
-        console.log("[TCG Tracker SW] PATCH response status:", updateRes.status, "data:", updatedData);
-        
-        if (updatedData.length === 0) {
-          return sendResponse({ error: "Keine Zeile aktualisiert. Bitte prüfe die RLS-Datenbankrechte (UPDATE-Policy auf price_history)." });
-        }
-
-        sendResponse({ success: true });
       }
 
       else if (message.action === "toggleBookmark") {

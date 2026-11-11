@@ -858,6 +858,7 @@ function parseHistoryItem(item) {
   let matchedCountry = item.seller_country;
   let matchedCond = item.condition;
   let imageUrl = null;
+  let isManualOverride = false;
   let cleanComment = item.comment || '';
 
   if (item.comment && item.comment.startsWith('[')) {
@@ -865,6 +866,7 @@ function parseHistoryItem(item) {
     if (closeBracketIdx > 1) {
       const metaContent = item.comment.slice(1, closeBracketIdx);
       cleanComment = item.comment.slice(closeBracketIdx + 1).trim();
+      cleanComment = cleanComment.replace(/^Code:\S+\s*/i, '').trim();
       
       const parts = metaContent.split('|');
       if (parts.length >= 3) {
@@ -873,6 +875,9 @@ function parseHistoryItem(item) {
         matchedCond = parts[2] || item.condition;
         if (parts.length >= 4) {
           imageUrl = parts[3] || null;
+        }
+        if (parts.length >= 5 && parts[4] === 'OVR') {
+          isManualOverride = true;
         }
       }
     }
@@ -885,6 +890,7 @@ function parseHistoryItem(item) {
     matchedCountry: matchedCountry,
     matchedCondition: matchedCond,
     imageUrl: imageUrl,
+    isManualOverride: isManualOverride,
     comment: cleanComment
   };
 }
